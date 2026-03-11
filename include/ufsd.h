@@ -13,6 +13,8 @@
 
 #include <clibecb.h>
 #include <clibcib.h>
+#include <clibssct.h>
+#include <clibssvt.h>
 
 /* ============================================================
 ** Common status flags
@@ -28,20 +30,8 @@
 ** Replaced by UFSD_ANCHOR in CSA from AP-1b onward.
 ** ============================================================ */
 
+/* Forward declarations for all control blocks */
 typedef struct ufsd_stc     UFSD_STC;
-
-struct ufsd_stc {
-    char        eye[8];     /* "**UFSD**"                       */
-    unsigned    flags;      /* UFSD_ACTIVE / UFSD_QUIESCE       */
-    ECB         wait_ecb;   /* reserved; AP-1b: server_ecb      */
-};
-
-/* ============================================================
-** AP-1b: CSA Anchor Block  (~512 bytes, GETMAIN SP=241)
-**
-** Located via SSCT->ssctsuse. Eye catcher "UFSDANCR".
-** ============================================================ */
-
 typedef struct ufsd_anchor  UFSD_ANCHOR;
 typedef struct ufsreq       UFSREQ;
 typedef struct ufsbuf       UFSBUF;
@@ -49,6 +39,19 @@ typedef struct ufsd_session UFSD_SESSION;
 typedef struct ufsd_fd      UFSD_FD;
 typedef struct ufsd_gfile   UFSD_GFILE;
 typedef struct ufsd_trace   UFSD_TRACE;
+
+struct ufsd_stc {
+    char            eye[8];     /* "**UFSD**"                   */
+    unsigned        flags;      /* UFSD_ACTIVE / UFSD_QUIESCE   */
+    ECB             wait_ecb;   /* reserved                     */
+    UFSD_ANCHOR    *anchor;     /* AP-1b: CSA anchor, or NULL   */
+};
+
+/* ============================================================
+** AP-1b: CSA Anchor Block  (~512 bytes, GETMAIN SP=241)
+**
+** Located via SSCT->ssctsuse. Eye catcher "UFSDANCR".
+** ============================================================ */
 
 /* Anchor flags (same bit positions as STC flags for consistency) */
 #define UFSD_ANCHOR_ACTIVE   0x80000000U
@@ -90,6 +93,26 @@ struct ufsd_anchor {
     unsigned        stat_requests;
     unsigned        stat_errors;
     unsigned        stat_posts_saved; /* conditional POST savings  */
+
+    /* AP-1b: SSCT/SSVT (for deregistration on shutdown) */
+    SSCT           *ssct;
+    SSVT           *ssvt;
+
+    /* AP-1b: base pointers for pool freemain.
+    ** Individual items must NOT be freed; only these base pointers
+    ** free the entire contiguous pool allocation. */
+    UFSREQ         *req_pool_base;
+    UFSBUF         *buf_pool_base;
+
+    /* AP-1c: SSI router module loaded into CSA */
+    void           *ssir_lpa;       /* UFSDSSIR load module base (freemain) */
+    unsigned        ssir_size;      /* UFSDSSIR module size in bytes         */
+
+    /* AP-1c: CS mutex serialising concurrent enqueue producers */
+    unsigned        req_lock;       /* 0=unlocked, 1=locked (CS spin)        */
+
+    /* AP-1c: STC ASCB pointer (for __xmpost from client address space) */
+    void           *server_ascb;    /* STC ASCB, set at startup              */
 };
 
 /* ============================================================
@@ -98,6 +121,12 @@ struct ufsd_anchor {
 ** Allocated by SSI router in client address space from the
 ** free pool in the CSA anchor. Chain pointer (next) used for
 ** both the free pool and the active request queue.
+**
+** client_ecb_ptr points to a LOCAL ECB variable on the ufsdssir
+** stack (key-8 storage in the client address space).  WAIT SVC 1
+** on a key-0 CSA ECB from problem state causes X'201'; using a
+** key-8 local ECB avoids this.  The STC posts it via __xmpost
+** (CVT0PT01) which handles cross-AS key-8 writes.
 ** ============================================================ */
 
 /* Function codes */
@@ -133,7 +162,8 @@ struct ufsd_anchor {
 struct ufsreq {
     char            eye[8];         /* "UFSREQ__"                  */
     UFSREQ         *next;           /* free pool or queue chain    */
-    ECB             client_ecb;     /* posted by server on done    */
+    ECB            *client_ecb_ptr; /* -> local ECB in client AS   */
+    void           *client_ascb;    /* client ASCB (for cleanup)   */
     unsigned        func;           /* function code (UFSREQ_*)   */
     unsigned        session_token;  /* client session ID           */
     unsigned        client_asid;    /* caller ASID (for cleanup)   */
@@ -142,7 +172,7 @@ struct ufsreq {
     unsigned        data_len;       /* bytes used in data[]        */
     UFSBUF         *buf;            /* 4K pool buffer (or NULL)    */
     char            data[UFSREQ_MAX_INLINE]; /* inline parm/result */
-}; /* ~304 bytes */
+}; /* ~308 bytes */
 
 /* ============================================================
 ** AP-1b: 4K Data Buffer  (pre-allocated in CSA pool)
@@ -189,6 +219,11 @@ struct ufsd_trace {
 
 #define UFSD_MAX_FD         64   /* max open files per session     */
 #define UFSD_MAX_SESSIONS   64   /* max concurrent sessions        */
+
+/* AP-1b: CSA pool sizes */
+#define UFSD_REQ_POOL_COUNT  32  /* pre-allocated request blocks   */
+#define UFSD_BUF_POOL_COUNT  16  /* pre-allocated 4K buffers       */
+#define UFSD_TRACE_SIZE     256  /* trace ring buffer entries      */
 
 /* Per-session file descriptor flags */
 #define UFSD_FD_UNUSED      0xFFFFFFFFU  /* slot is free            */
@@ -237,6 +272,35 @@ struct ufsd_gfile {
 };
 
 /* ============================================================
+** AP-1c: SSOB extension for UFSD requests
+**
+** Pointed to by SSOB.SSOBINDV.  The client fills func, token,
+** data_len, and data[] before calling iefssreq().  The router
+** fills rc, errno_val, and data[] (result) before returning.
+** ============================================================ */
+
+#define UFSSSOB_EYE     "UFSS"
+#define UFSD_SSOBFUNC   128U    /* SSOB function code for all UFSD ops */
+#define UFSD_SSVT_ROUTER  1U   /* SSVT index of the thin router        */
+
+typedef struct ufsssob  UFSSSOB;
+struct ufsssob {
+    char            eye[4];         /* "UFSS"                           */
+    unsigned        func;           /* UFSREQ_* function code           */
+    unsigned        token;          /* session token (0 = no session)   */
+    int             rc;             /* return code (output)    off=+12  */
+    int             errno_val;      /* errno (output)                   */
+    unsigned        data_len;       /* bytes used in data[]             */
+    char            data[UFSREQ_MAX_INLINE]; /* parameters / result    */
+    ECB            *client_ecb;     /* ptr to client-private ECB (input)
+                                    ** MUST stay after data[]: iefssreq
+                                    ** reads SSOBINDV+12 as R1 for the
+                                    ** SSVT call; putting client_ecb at
+                                    ** offset 12 passes &ECB instead of
+                                    ** the SSOB address → S0C4.        */
+};
+
+/* ============================================================
 ** Function Prototypes
 ** ============================================================ */
 
@@ -245,5 +309,30 @@ int  ufsd_process_cib(UFSD_STC *ufsd, CIB *cib);
 
 /* ufsd.c (AP-1a) */
 void ufsd_shutdown(UFSD_STC *ufsd);
+
+/* ufsd#csa.c (AP-1b) */
+UFSD_ANCHOR *ufsd_anchor_alloc(void)                                 asm("UFSD@ANA");
+void         ufsd_anchor_free(UFSD_ANCHOR *anchor)                   asm("UFSD@ANF");
+int          ufsd_csa_init(UFSD_ANCHOR *anchor)                      asm("UFSD@CAI");
+void         ufsd_csa_free(UFSD_ANCHOR *anchor)                      asm("UFSD@CAF");
+UFSREQ      *ufsd_req_alloc(UFSD_ANCHOR *anchor)                     asm("UFSD@RQA");
+void         ufsd_req_free(UFSD_ANCHOR *anchor, UFSREQ *req)         asm("UFSD@RQF");
+
+/* ufsd#sct.c (AP-1b) */
+int  ufsd_ssct_init(UFSD_ANCHOR *anchor)                             asm("UFSD@SSI");
+void ufsd_ssct_free(UFSD_ANCHOR *anchor)                             asm("UFSD@SSF");
+
+/* ufsd#sct.c (AP-1c) */
+int  ufsd_ssi_load(UFSD_ANCHOR *anchor)                              asm("UFSD@SLA");
+void ufsd_ssi_unload(UFSD_ANCHOR *anchor)                            asm("UFSD@SLF");
+
+/* ufsd#trc.c (AP-1b) */
+void ufsd_trace(UFSD_ANCHOR *anchor, unsigned short func,
+                unsigned token, unsigned short rc)                   asm("UFSD@TRC");
+
+/* ufsd#que.c (AP-1c) */
+UFSREQ *ufsd_dequeue(UFSD_ANCHOR *anchor)                            asm("UFSD@DEQ");
+void    ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)              asm("UFSD@DSP");
+void    ufsd_server_ecb_reset(UFSD_ANCHOR *anchor)                   asm("UFSD@ECR");
 
 #endif /* UFSD_H */

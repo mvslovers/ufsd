@@ -66,17 +66,22 @@ ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
 static void
 cmd_stats(UFSD_STC *ufsd)
 {
+    UFSD_ANCHOR *anchor;
+
+    anchor = ufsd->anchor;
+
     wtof("UFSD010I STATUS: %s",
          (ufsd->flags & UFSD_ACTIVE) ? "ACTIVE" : "INACTIVE");
-    /*
-    ** AP-1b will add:
-    **   UFSD011I CSA FREE REQS:  xx/32
-    **   UFSD012I CSA FREE BUFS:  xx/16
-    **   UFSD013I TRACE ENTRIES:  256
-    ** AP-1d will add:
-    **   UFSD014I REQUESTS SERVED: xxx
-    **   UFSD015I ERRORS:          xxx
-    */
+
+    if (anchor) {
+        wtof("UFSD011I CSA FREE REQS:  %u/%u",
+             anchor->free_count, anchor->total_reqs);
+        wtof("UFSD012I CSA FREE BUFS:  %u/%u",
+             anchor->buf_count, anchor->buf_total);
+        wtof("UFSD013I TRACE ENTRIES:  %u", anchor->trace_size);
+        wtof("UFSD014I REQUESTS SERVED: %u", anchor->stat_requests);
+        wtof("UFSD015I ERRORS:          %u", anchor->stat_errors);
+    }
 }
 
 static void

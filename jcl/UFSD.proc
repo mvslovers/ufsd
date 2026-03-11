@@ -3,7 +3,7 @@
 //* UFSD - Filesystem Server STC Procedure
 //*
 //* Installation:
-//*   Copy to SYS1.PROCLIB(UFSD)
+//*   Copy to SYS2.PROCLIB(UFSD)
 //*
 //* Starting:    /S UFSD
 //* Commands:    /F UFSD,STATS

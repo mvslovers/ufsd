@@ -4,10 +4,7 @@ version = "1.0.0-dev"
 type = "application"
 
 [build]
-cflags = [
-    "-O0",
-    "-I./include",
-]
+cflags = ["-std=gnu99", "-I./include"]
 
 [build.sources]
 c_dirs = ["src/", "client/"]
@@ -42,40 +39,48 @@ dsorg = "PO"
 recfm = "U"
 lrecl = 0
 blksize = 15040
-space = ["TRK", 5, 2, 5]
+space = ["TRK", 20, 10, 10]
 
 [dependencies]
 "mvslovers/crent370" = ">=1.0.4"
 
 # ---------------------------------------------------------------
-# AP-1a: STC Skeleton
+# AP-1c: CSA Infrastructure + SSCT + SSI Router
 # ---------------------------------------------------------------
 
 [[link.module]]
 name = "UFSD"
 entry = "@@CRT0"
 options = ["LIST", "MAP", "XREF", "RENT"]
-include = ["@@CRT1", "UFSD", "UFSD#CMD"]
+setcode = "AC(1)"
+include = [
+  "@@CRT1",
+  "UFSD",
+  "UFSD#CMD",
+  "UFSD#CSA",
+  "UFSD#SCT",
+  "UFSD#TRC",
+  "UFSD#QUE",
+]
 
 # ---------------------------------------------------------------
-# AP-1c: SSI Thin Router (loaded into CSA, no CRT)
-# Uncomment when src/ufsd#ssi.c and src/ufsd#que.c exist.
+# AP-1c: SSI Thin Router (loaded into CSA via __loadhi, no CRT)
+# Self-contained: all needed crent370 routines are linked in.
 # ---------------------------------------------------------------
-# [[link.module]]
-# name = "UFSDSSIR"
-# entry = "UFSDSSIR"
-# options = ["LIST", "MAP", "XREF", "RENT"]
-# include = ["UFSD#SSI", "UFSD#QUE"]
+[[link.module]]
+name = "UFSDSSIR"
+entry = "UFSDSSIR"
+options = ["LIST", "MAP", "XREF", "RENT"]
+include = ["UFSD#SSI"]
 
 # ---------------------------------------------------------------
 # AP-1c: Ping/Pong test client
-# Uncomment when client/ufsdping.c exists.
 # ---------------------------------------------------------------
-# [[link.module]]
-# name = "UFSDPING"
-# entry = "@@CRT0"
-# options = ["LIST", "MAP", "XREF", "RENT"]
-# include = ["@@CRT1", "UFSDPING"]
+[[link.module]]
+name = "UFSDPING"
+entry = "@@CRT0"
+options = ["LIST", "MAP", "XREF", "RENT"]
+include = ["@@CRT1", "UFSDPING"]
 
 # ---------------------------------------------------------------
 # AP-1e: Integration test client
