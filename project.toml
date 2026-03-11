@@ -1,0 +1,94 @@
+[project]
+name = "ufsd"
+version = "1.0.0-dev"
+type = "application"
+
+[build]
+cflags = [
+    "-O0",
+    "-I./include",
+]
+
+[build.sources]
+c_dirs = ["src/", "client/"]
+
+[mvs.build.datasets.source]
+suffix = "SOURCE"
+dsorg = "PO"
+recfm = "FB"
+lrecl = 80
+blksize = 19040
+space = ["TRK", 50, 20, 30]
+
+[mvs.build.datasets.punch]
+suffix = "OBJECT"
+dsorg = "PO"
+recfm = "FB"
+lrecl = 80
+blksize = 19040
+space = ["TRK", 30, 10, 30]
+
+[mvs.build.datasets.ncalib]
+suffix = "NCALIB"
+dsorg = "PO"
+recfm = "U"
+lrecl = 0
+blksize = 19069
+space = ["TRK", 30, 10, 30]
+
+[mvs.build.datasets.syslmod]
+suffix = "LOAD"
+dsorg = "PO"
+recfm = "U"
+lrecl = 0
+blksize = 15040
+space = ["TRK", 5, 2, 5]
+
+[dependencies]
+"mvslovers/crent370" = ">=1.0.4"
+
+# ---------------------------------------------------------------
+# AP-1a: STC Skeleton
+# ---------------------------------------------------------------
+
+[[link.module]]
+name = "UFSD"
+entry = "@@CRT0"
+options = ["LIST", "MAP", "XREF", "RENT"]
+include = ["@@CRT1", "UFSD", "UFSD#CMD"]
+
+# ---------------------------------------------------------------
+# AP-1c: SSI Thin Router (loaded into CSA, no CRT)
+# Uncomment when src/ufsd#ssi.c and src/ufsd#que.c exist.
+# ---------------------------------------------------------------
+# [[link.module]]
+# name = "UFSDSSIR"
+# entry = "UFSDSSIR"
+# options = ["LIST", "MAP", "XREF", "RENT"]
+# include = ["UFSD#SSI", "UFSD#QUE"]
+
+# ---------------------------------------------------------------
+# AP-1c: Ping/Pong test client
+# Uncomment when client/ufsdping.c exists.
+# ---------------------------------------------------------------
+# [[link.module]]
+# name = "UFSDPING"
+# entry = "@@CRT0"
+# options = ["LIST", "MAP", "XREF", "RENT"]
+# include = ["@@CRT1", "UFSDPING"]
+
+# ---------------------------------------------------------------
+# AP-1e: Integration test client
+# Uncomment when client/ufsdtst.c exists.
+# ---------------------------------------------------------------
+# [[link.module]]
+# name = "UFSDTEST"
+# entry = "@@CRT0"
+# options = ["LIST", "MAP", "XREF", "RENT"]
+# include = ["@@CRT1", "UFSDTST"]
+
+[release]
+version_files = ["VERSION"]
+
+[artifacts]
+mvs = true

@@ -1,0 +1,65 @@
+# Generated ASM sources
+*.s
+
+# Prerequisites
+*.d
+
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Linker output
+*.ilk
+*.map
+*.exp
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Claude Code
+CLAUDE.md
+
+# Build system
+.env
+*.jcl
+.build-warnings
+.mbt/
+contrib/
+dist/
+compile_commands.json
+*.xmit
+
+# macOS
+.DS_Store
+
+# clangd cache
+.cache/
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
