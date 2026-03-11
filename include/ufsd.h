@@ -39,12 +39,53 @@ typedef struct ufsd_session UFSD_SESSION;
 typedef struct ufsd_fd      UFSD_FD;
 typedef struct ufsd_gfile   UFSD_GFILE;
 typedef struct ufsd_trace   UFSD_TRACE;
+typedef struct ufsd_disk    UFSD_DISK;
+typedef struct ufsd_ufs     UFSD_UFS;
+
+/* ============================================================
+** AP-1d: Physical Disk Handle  (STC heap)
+**
+** One per UFSDISK0-9 DD card.  Opened via BDAM at STC startup.
+** Closed and freed at STC shutdown.
+** ============================================================ */
+
+/* Disk flags */
+#define UFSD_DISK_OPEN    0x80000000U
+#define UFSD_DISK_RDONLY  0x40000000U  /* DISP=SHR allocation      */
+#define UFSD_DISK_ROOT    0x20000000U  /* first disk = root (/)    */
+
+#define UFSD_MAX_DISKS    10           /* UFSDISK0 ... UFSDISK9 */
+
+struct ufsd_disk {
+    char           ddname[9];       /* DD name + NUL ("UFSDISK0")    */
+    char           dsn[45];         /* dataset name from JFCB + NUL  */
+    void          *dcb;             /* BDAM DCB (opaque: see osio.h) */
+    unsigned       flags;           /* UFSD_DISK_*                   */
+    unsigned short blksize;         /* physical block size from DCB  */
+};
+
+/* ============================================================
+** AP-1d: Per-Session UFS Handle  (STC heap)
+**
+** Allocated on SESS_OPEN, freed on SESS_CLOSE.
+** Holds per-session state: current working directory path,
+** root disk index.  Extended with inode handles in AP-1e.
+** ============================================================ */
+
+struct ufsd_ufs {
+    char        eye[8];             /* "UFSD_UFS"                    */
+    unsigned    flags;
+    char        cwd[256];           /* current working directory path */
+};
 
 struct ufsd_stc {
-    char            eye[8];     /* "**UFSD**"                   */
-    unsigned        flags;      /* UFSD_ACTIVE / UFSD_QUIESCE   */
-    ECB             wait_ecb;   /* reserved                     */
-    UFSD_ANCHOR    *anchor;     /* AP-1b: CSA anchor, or NULL   */
+    char            eye[8];         /* "**UFSD**"                   */
+    unsigned        flags;          /* UFSD_ACTIVE / UFSD_QUIESCE   */
+    ECB             wait_ecb;       /* reserved                     */
+    UFSD_ANCHOR    *anchor;         /* AP-1b: CSA anchor, or NULL   */
+    /* AP-1d: open disk array (STC-local, not CSA) */
+    UFSD_DISK      *disks[UFSD_MAX_DISKS];
+    unsigned        ndisks;
 };
 
 /* ============================================================
@@ -343,5 +384,9 @@ int           ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req,
 int           ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)      asm("UFSD@SCL");
 void          ufsd_sess_list(UFSD_ANCHOR *anchor)                    asm("UFSD@SLS");
 UFSD_SESSION *ufsd_sess_find(UFSD_ANCHOR *anchor, unsigned token)    asm("UFSD@SFN");
+
+/* ufsd#ini.c (AP-1d Step 2) */
+int           ufsd_ufs_init(UFSD_STC *stc)                          asm("UFSD@UNI");
+void          ufsd_ufs_term(UFSD_STC *stc)                          asm("UFSD@UNT");
 
 #endif /* UFSD_H */

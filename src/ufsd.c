@@ -35,6 +35,9 @@ ufsd_shutdown(UFSD_STC *ufsd)
 
     anchor = ufsd->anchor;
 
+    /* AP-1d Step 2: close disk datasets (STC-local, before CSA free) */
+    ufsd_ufs_term(ufsd);
+
     if (anchor) {
         /* AP-1c: deregister + unload SSI router first */
         if (anchor->ssir_lpa) {
@@ -163,6 +166,9 @@ main(int argc, char **argv)
         return 8;
     }
     wtof("UFSD045I Session table: %u slots", (unsigned)UFSD_MAX_SESSIONS);
+
+    /* --- UFS disk init (AP-1d Step 2) ----------------------------- */
+    ufsd_ufs_init(&ufsd); /* returns 0 even with zero disks */
 
     wtof("UFSD000I UFSD Filesystem Server %s starting", VERSION);
     wtof("UFSD001I UFSD ready");

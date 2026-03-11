@@ -93,6 +93,7 @@ ufsd_sess_free(UFSD_ANCHOR *anchor)
 {
     UFSD_SESSION   *sessions;
     unsigned char   savekey;
+    unsigned        i;
 
     if (!anchor) return;
 
@@ -103,7 +104,16 @@ ufsd_sess_free(UFSD_ANCHOR *anchor)
     anchor->max_sessions = 0;
     __prob(savekey, NULL);
 
-    if (sessions) free(sessions);
+    if (sessions) {
+        /* Release any UFS handles left on active sessions */
+        for (i = 0; i < UFSD_MAX_SESSIONS; i++) {
+            if ((sessions[i].flags & UFSD_SESS_ACTIVE) && sessions[i].ufs) {
+                free(sessions[i].ufs);
+                sessions[i].ufs = NULL;
+            }
+        }
+        free(sessions);
+    }
 }
 
 /* ============================================================
@@ -150,6 +160,7 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
     unsigned      slot;
     UFSD_SESSION *sess;
     unsigned      token;
+    UFSD_UFS     *ufs;
     int           j;
 
     if (!anchor || !anchor->sessions || !out_token) return UFSD_RC_CORRUPT;
@@ -170,12 +181,23 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
     s_sess_serial++;
     token = ((slot + 1U) << 16) | (s_sess_serial & 0xFFFFU);
 
+    /* Allocate per-session UFS handle */
+    ufs = (UFSD_UFS *)calloc(1, sizeof(UFSD_UFS));
+    if (!ufs) {
+        wtof("UFSD070E Cannot allocate UFS handle");
+        return UFSD_RC_NOREQ;
+    }
+    memcpy(ufs->eye, "UFSD_UFS", 8);
+    ufs->flags  = 0;
+    ufs->cwd[0] = '/';
+    ufs->cwd[1] = '\0';
+
     sess = &anchor->sessions[slot];
     memcpy(sess->eye, "UFSDSESS", 8);
     sess->token        = token;
     sess->client_asid  = req ? req->client_asid : 0;
     sess->flags        = UFSD_SESS_ACTIVE;
-    sess->ufs          = NULL;    /* AP-1d Step 2: filled with ufsnew() */
+    sess->ufs          = (void *)ufs;
 
     /* Initialise fd_table */
     for (j = 0; j < UFSD_MAX_FD; j++) {
@@ -204,8 +226,11 @@ ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)
     sess = ufsd_sess_find(anchor, req->session_token);
     if (!sess) return UFSD_RC_BADSESS;
 
-    /* AP-1d Step 2: call ufsfree(&sess->ufs) here */
-    sess->ufs   = NULL;
+    /* Free per-session UFS handle */
+    if (sess->ufs) {
+        free(sess->ufs);
+        sess->ufs = NULL;
+    }
     sess->flags = 0;
     sess->token = 0;
 
