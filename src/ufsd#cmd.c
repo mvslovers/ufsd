@@ -15,6 +15,7 @@
 static void cmd_stats(UFSD_STC *ufsd);
 static void cmd_help(UFSD_STC *ufsd);
 static void cmd_shutdown(UFSD_STC *ufsd);
+static void cmd_sessions(UFSD_STC *ufsd);
 
 int
 ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
@@ -41,13 +42,15 @@ ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
 
         if (strcmp(buf, "STATS") == 0) {
             cmd_stats(ufsd);
+        } else if (strcmp(buf, "SESSIONS") == 0) {
+            cmd_sessions(ufsd);
         } else if (strcmp(buf, "HELP") == 0) {
             cmd_help(ufsd);
         } else if (strcmp(buf, "SHUTDOWN") == 0) {
             cmd_shutdown(ufsd);
         } else {
             wtof("UFSD021E Unknown command: %s", buf);
-            wtof("UFSD020I Commands: STATS, HELP, SHUTDOWN");
+            wtof("UFSD020I Commands: STATS, SESSIONS, HELP, SHUTDOWN");
         }
         break;
 
@@ -85,10 +88,16 @@ cmd_stats(UFSD_STC *ufsd)
 }
 
 static void
+cmd_sessions(UFSD_STC *ufsd)
+{
+    ufsd_sess_list(ufsd->anchor);
+}
+
+static void
 cmd_help(UFSD_STC *ufsd)
 {
     (void)ufsd;
-    wtof("UFSD020I Commands: STATS, HELP, SHUTDOWN");
+    wtof("UFSD020I Commands: STATS, SESSIONS, HELP, SHUTDOWN");
 }
 
 static void

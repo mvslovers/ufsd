@@ -498,11 +498,29 @@ normal shutdown path is NOT called. The SSCT entry remains registered. The next
 `ufsd_shutdown()` unconditionally on any abend. This ensures SSCT is always
 deregistered before the address space terminates.
 
-### AP-1d through AP-1f — Not started
+### AP-1d — Step 1 DONE ✓
 
-**Open items from AP-1c before AP-1d:**
-- ESTAE in `ufsd.c` to ensure SSCT is always deregistered on abend (see "Known Behavior" below)
-- APF auth in client (ufsdping) is temporary PoC workaround — revisit in AP-1d+
+**Milestone achieved:** `UFSTST01I Session opened, token=0x00010001` +
+`UFSTST02I Session closed` — CC 0000, REQUESTS SERVED: 2, ERRORS: 0.
+
+Session infrastructure implemented without UFS disk:
+- `ufsd#ses.c`: session table (64 slots, STC heap via `calloc`), token generation,
+  `ufsd_sess_open/close/find/list` functions
+- Token scheme: `((slot+1) << 16) | (serial & 0xFFFF)` — encoded, non-zero
+- `ufsd#que.c`: UFSREQ_SESS_OPEN + UFSREQ_SESS_CLOSE added to dispatch switch
+- `ufsd#cmd.c`: SESSIONS command added (`/F UFSD,SESSIONS`)
+- `ufsd.c`: `ufsd_sess_init()` / `ufsd_sess_free()` in startup/shutdown
+- `client/ufsdtst.c`: UFSDTEST test client (SESS_OPEN → SESS_CLOSE)
+- `session->ufs = NULL` in Step 1
+
+**AP-1d Step 2 (next):** UFS disk integration — copy needed files from ufs370,
+call `ufs_sys_new()` at STC startup, `ufsnew()` on SESS_OPEN, `ufsfree()` on SESS_CLOSE.
+
+**Open items:**
+- ESTAE in `ufsd.c` to ensure SSCT is always deregistered on abend
+- APF auth in clients (ufsdping, ufsdtst) is temporary PoC workaround
+
+### AP-1e through AP-1f — Not started
 
 ---
 

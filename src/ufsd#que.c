@@ -92,8 +92,10 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
 {
     unsigned char   savekey;
     int             rc;
+    unsigned        out_token;  /* SESS_OPEN response token */
 
     if (!anchor || !req) return;
+    out_token = 0;
 
     /* --- Eye-catcher check --- */
     if (memcmp(req->eye, "UFSREQ__", 8) != 0) {
@@ -134,6 +136,18 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
         rc = UFSD_RC_OK;
         break;
 
+    case UFSREQ_SESS_OPEN:
+        rc = ufsd_sess_open(anchor, req, &out_token);
+        if (rc == UFSD_RC_OK)
+            ufsd_trace(anchor, UFSD_T_SESS_OPEN, out_token, 0);
+        break;
+
+    case UFSREQ_SESS_CLOSE:
+        rc = ufsd_sess_close(anchor, req);
+        if (rc == UFSD_RC_OK)
+            ufsd_trace(anchor, UFSD_T_SESS_CLOSE, req->session_token, 0);
+        break;
+
     default:
         rc = UFSD_RC_NOTIMPL;
         break;
@@ -149,6 +163,12 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
         req->rc        = rc;
         req->errno_val = 0;
         req->data_len  = 0;
+
+        /* SESS_OPEN: return the new token in data[0..3] */
+        if (req->func == UFSREQ_SESS_OPEN && rc == UFSD_RC_OK) {
+            req->data_len          = (unsigned)sizeof(unsigned);
+            *(unsigned *)req->data = out_token;
+        }
 
         if (rc == UFSD_RC_OK) {
             anchor->stat_requests++;

@@ -45,6 +45,11 @@ ufsd_shutdown(UFSD_STC *ufsd)
             ufsd_ssct_free(anchor);
             wtof("UFSD095I SSCT deregistered");
         }
+        /* AP-1d: release session table before freeing CSA */
+        if (anchor->sessions) {
+            ufsd_sess_free(anchor);
+            wtof("UFSD046I Session table freed");
+        }
         ufsd_csa_free(anchor);
         wtof("UFSD096I CSA freed");
         ufsd_anchor_free(anchor);
@@ -146,6 +151,18 @@ main(int argc, char **argv)
         return 8;
     }
     wtof("UFSD035I SSI router loaded at %08X", (unsigned)anchor->ssir_lpa);
+
+    /* --- Session table (AP-1d) ----------------------------------- */
+    rc = ufsd_sess_init(anchor);
+    if (rc) {
+        ufsd_ssi_unload(anchor);
+        ufsd_ssct_free(anchor);
+        ufsd_csa_free(anchor);
+        ufsd_anchor_free(anchor);
+        ufsd.anchor = NULL;
+        return 8;
+    }
+    wtof("UFSD045I Session table: %u slots", (unsigned)UFSD_MAX_SESSIONS);
 
     wtof("UFSD000I UFSD Filesystem Server %s starting", VERSION);
     wtof("UFSD001I UFSD ready");

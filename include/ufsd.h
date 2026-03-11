@@ -335,4 +335,13 @@ UFSREQ *ufsd_dequeue(UFSD_ANCHOR *anchor)                            asm("UFSD@D
 void    ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)              asm("UFSD@DSP");
 void    ufsd_server_ecb_reset(UFSD_ANCHOR *anchor)                   asm("UFSD@ECR");
 
+/* ufsd#ses.c (AP-1d) */
+int           ufsd_sess_init(UFSD_ANCHOR *anchor)                    asm("UFSD@SIN");
+void          ufsd_sess_free(UFSD_ANCHOR *anchor)                    asm("UFSD@SFR");
+int           ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req,
+                             unsigned *out_token)                     asm("UFSD@SOP");
+int           ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)      asm("UFSD@SCL");
+void          ufsd_sess_list(UFSD_ANCHOR *anchor)                    asm("UFSD@SLS");
+UFSD_SESSION *ufsd_sess_find(UFSD_ANCHOR *anchor, unsigned token)    asm("UFSD@SFN");
+
 #endif /* UFSD_H */

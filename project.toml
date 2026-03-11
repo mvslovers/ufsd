@@ -61,6 +61,7 @@ include = [
   "UFSD#SCT",
   "UFSD#TRC",
   "UFSD#QUE",
+  "UFSD#SES",
 ]
 
 # ---------------------------------------------------------------
@@ -83,14 +84,13 @@ options = ["LIST", "MAP", "XREF", "RENT"]
 include = ["@@CRT1", "UFSDPING"]
 
 # ---------------------------------------------------------------
-# AP-1e: Integration test client
-# Uncomment when client/ufsdtst.c exists.
+# AP-1d: Session lifecycle test client
 # ---------------------------------------------------------------
-# [[link.module]]
-# name = "UFSDTEST"
-# entry = "@@CRT0"
-# options = ["LIST", "MAP", "XREF", "RENT"]
-# include = ["@@CRT1", "UFSDTST"]
+[[link.module]]
+name = "UFSDTEST"
+entry = "@@CRT0"
+options = ["LIST", "MAP", "XREF", "RENT"]
+include = ["@@CRT1", "UFSDTST"]
 
 [release]
 version_files = ["VERSION"]
