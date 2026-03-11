@@ -50,13 +50,16 @@ main(int argc, char **argv)
     wtof("UFSD001I UFSD ready");
 
     while (ufsd.flags & UFSD_ACTIVE) {
-        /* Check if console ECB was posted (MODIFY or STOP arrived) */
-        if (*com->comecbpt & 0x40000000U) {
-            cib = __cibget();
-            if (cib) {
-                ufsd_process_cib(&ufsd, cib);
-                __cibdel(cib);
-            }
+        /* Drain all pending CIBs unconditionally.
+        ** We do NOT gate this on the ECB: at startup MVS may queue a
+        ** CIBSTART without posting the ECB, which would otherwise hold
+        ** the single CIB slot and cause every subsequent MODIFY to be
+        ** rejected with IEE342I TASK BUSY.
+        */
+        while ((cib = __cibget()) != NULL) {
+            ufsd_process_cib(&ufsd, cib);
+            __cibdel(cib);
+            if (!(ufsd.flags & UFSD_ACTIVE)) break;
         }
 
         if (!(ufsd.flags & UFSD_ACTIVE)) break;

@@ -4,7 +4,6 @@
 //*
 //* Installation:
 //*   Copy to SYS1.PROCLIB(UFSD)
-//*   Set STEPLIB DSN to the actual load library
 //*
 //* Starting:    /S UFSD
 //* Commands:    /F UFSD,STATS
@@ -13,7 +12,7 @@
 //* Stopping:    /P UFSD
 //*
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
-//STEPLIB  DD  DSN=IBMUSER.UFSD.LOAD,DISP=SHR
+//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
 //SYSUDUMP DD  SYSOUT=*
 //*
 //* ---------------------------------------------------------------
