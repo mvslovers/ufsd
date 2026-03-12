@@ -99,8 +99,21 @@ entry = "@@CRT0"
 options = ["LIST", "MAP", "XREF", "RENT"]
 include = ["@@CRT1", "UFSDTST"]
 
+# ---------------------------------------------------------------
+# AP-1f: libufs API integration test client
+# ---------------------------------------------------------------
+[[link.module]]
+name = "LIBUFTST"
+entry = "@@CRT0"
+options = ["LIST", "MAP", "XREF", "RENT"]
+include = ["@@CRT1", "LIBUFSTS", "LIBUFS"]
+
 [release]
 version_files = ["VERSION"]
 
 [artifacts]
-mvs = true
+headers        = true
+header_files   = ["libufs.h"]
+modules        = true
+module_members = ["LIBUFS"]
+loads          = true

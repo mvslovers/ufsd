@@ -3,16 +3,32 @@
 ** AP-1d Step 2: Open UFSDISK0-9 BDAM datasets at STC startup.
 ** Close and free all disk handles at shutdown.
 **
-** ufsd_ufs_init(stc)  scan TIOT, open each UFSDISK[0-9] found
-** ufsd_ufs_term(stc)  close and free all open disk handles
+** AP-1f: Dynamic mount/unmount via ufsd_disk_mount/ufsd_disk_umount.
+**
+** ufsd_ufs_init(stc)           scan TIOT, open each UFSDISK[0-9] found
+** ufsd_ufs_term(stc)           close and free all open disk handles
+** ufsd_disk_mount(stc,dd,path) open one BDAM dataset at runtime
+** ufsd_disk_umount(stc,path)   close and remove one disk at runtime
 **
 ** WTO messages:
-**   UFSD040I N disk(s) mounted
+**   UFSD040I N disk(s) mounted at startup
 **   UFSD041I   UFSDISK0 DSN=name (root)
 **   UFSD041I   UFSDISK0 DSN=name (READ-ONLY)
 **   UFSD042E   Cannot allocate disk handle for UFSDISK0
 **   UFSD043E   Cannot open UFSDISK0
 **   UFSD044W   UFSDISK0: not a valid UFS disk (type=0000)
+**
+** Note: only UFSDISK0 is auto-mounted at startup (as root "/").
+** Additional disks (UFSDISK1-9) must be mounted explicitly via
+** MODIFY MOUNT.  This avoids opening disks with no mountpath.
+**   UFSD060I   Mounted DDname on /path
+**   UFSD061E   DD DDname not found in TIOT
+**   UFSD062E   Cannot unmount root filesystem
+**   UFSD063E   No filesystem mounted on /path
+**   UFSD064I   Unmounting DDname from /path
+**   UFSD065E   MOUNT: path must be absolute
+**   UFSD066E   MOUNT: DDname already mounted on /path
+**   UFSD067E   MOUNT: /path already has a filesystem mounted
 **
 ** Missing UFSDISK DDs are not an error; UFSD runs without any
 ** physical disk at AP-1d (file operations come in AP-1e).
@@ -194,22 +210,20 @@ ufsd_ufs_init(UFSD_STC *stc)
 
     stc->ndisks = 0;
 
-    for (i = 0; i < (unsigned)UFSD_MAX_DISKS; i++) {
-        sprintf(ddname, "UFSDISK%u", i);
-        if (!find_dd(ddname)) continue;
-
+    /* Only UFSDISK0 is auto-mounted at startup as the root filesystem.
+    ** UFSDISK1-9 require an explicit /F UFSD,MOUNT command. */
+    memcpy(ddname, "UFSDISK0", 9);
+    if (find_dd(ddname)) {
         disk = open_disk(ddname);
-        if (!disk) continue;   /* error already issued */
-
-        stc->disks[stc->ndisks++] = disk;
-
-        /* AP-1e: read superblock into disk->sb */
-        ufsd_sb_read(disk);
+        if (disk) {
+            disk->flags    |= UFSD_DISK_ROOT;
+            disk->mountpath[0] = '/';
+            disk->mountpath[1] = '\0';
+            stc->disks[stc->ndisks++] = disk;
+            ufsd_sb_read(disk);
+        }
     }
 
-    /* First disk mounted becomes the root filesystem */
-    if (stc->ndisks > 0)
-        stc->disks[0]->flags |= UFSD_DISK_ROOT;
 
     wtof("UFSD040I %u disk(s) mounted", stc->ndisks);
 
@@ -247,4 +261,133 @@ ufsd_ufs_term(UFSD_STC *stc)
         stc->disks[i] = NULL;
     }
     stc->ndisks = 0;
+}
+
+/* ============================================================
+** ufsd_disk_mount
+**
+** AP-1f: Dynamically mount a BDAM dataset as a filesystem.
+** Scans the TIOT for ddname (blank-padded to 8 chars), opens
+** the disk, reads the superblock, and appends to stc->disks[].
+**
+** Returns 0 on success, 8 on failure.
+** ============================================================ */
+int
+ufsd_disk_mount(UFSD_STC *stc, const char *ddname, const char *mountpath)
+{
+    UFSD_DISK *disk;
+    unsigned   pathlen;
+    unsigned   namelen;
+    unsigned   i;
+    char       ddpad[9];
+
+    if (!stc || !ddname || !mountpath) return 8;
+
+    /* Mount path must be absolute */
+    if (mountpath[0] != '/') {
+        wtof("UFSD065E MOUNT: path must be absolute (must start with '/')");
+        return 8;
+    }
+
+    if (stc->ndisks >= (unsigned)UFSD_MAX_DISKS) {
+        wtof("UFSD061E MOUNT: disk table full (%u slots)", UFSD_MAX_DISKS);
+        return 8;
+    }
+
+    /* Blank-pad DD name to 8 chars for TIOT comparison */
+    memset(ddpad, ' ', 8);
+    ddpad[8] = '\0';
+    namelen = strlen(ddname);
+    if (namelen > 8) namelen = 8;
+    memcpy(ddpad, ddname, namelen);
+
+    /* Check for duplicate DD or duplicate mount path */
+    for (i = 0; i < stc->ndisks; i++) {
+        if (memcmp(stc->disks[i]->ddname, ddpad, 8) == 0) {
+            wtof("UFSD066E MOUNT: %.8s already mounted on %s",
+                 ddpad, stc->disks[i]->mountpath);
+            return 8;
+        }
+        if (strcmp(stc->disks[i]->mountpath, mountpath) == 0) {
+            wtof("UFSD067E MOUNT: %s already has a filesystem mounted",
+                 mountpath);
+            return 8;
+        }
+    }
+
+    if (!find_dd(ddpad)) {
+        wtof("UFSD061E MOUNT: DD %.8s not found in TIOT", ddpad);
+        return 8;
+    }
+
+    disk = open_disk(ddpad);
+    if (!disk) return 8;
+
+    /* Read superblock */
+    ufsd_sb_read(disk);
+
+    /* Store mount path */
+    pathlen = strlen(mountpath);
+    if (pathlen >= sizeof(disk->mountpath))
+        pathlen = sizeof(disk->mountpath) - 1U;
+    memcpy(disk->mountpath, mountpath, pathlen);
+    disk->mountpath[pathlen] = '\0';
+
+    stc->disks[stc->ndisks++] = disk;
+
+    wtof("UFSD060I Mounted %.8s on %s (DSN=%s)",
+         disk->ddname, disk->mountpath, disk->dsn);
+    return 0;
+}
+
+/* ============================================================
+** ufsd_disk_umount
+**
+** AP-1f: Dynamically unmount a filesystem by mount path.
+** Finds the disk matching mountpath, closes it, and compacts
+** the stc->disks[] array.
+**
+** The root filesystem ("/") cannot be unmounted.
+** Returns 0 on success, 8 on failure.
+** ============================================================ */
+int
+ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
+{
+    UFSD_DISK *disk;
+    unsigned   i;
+    int        found;
+
+    if (!stc || !mountpath) return 8;
+
+    /* Refuse to unmount root */
+    if (mountpath[0] == '/' && mountpath[1] == '\0') {
+        wtof("UFSD062E UNMOUNT: cannot unmount root filesystem");
+        return 8;
+    }
+
+    found = -1;
+    for (i = 0; i < stc->ndisks; i++) {
+        if (stc->disks[i] &&
+            strcmp(stc->disks[i]->mountpath, mountpath) == 0) {
+            found = (int)i;
+            break;
+        }
+    }
+
+    if (found < 0) {
+        wtof("UFSD063E UNMOUNT: no filesystem mounted on %s", mountpath);
+        return 8;
+    }
+
+    disk = stc->disks[found];
+    wtof("UFSD064I Unmounting %.8s from %s", disk->ddname, disk->mountpath);
+
+    close_disk(disk);
+
+    /* Compact the array */
+    for (i = (unsigned)found; i < stc->ndisks - 1U; i++)
+        stc->disks[i] = stc->disks[i + 1U];
+    stc->disks[--stc->ndisks] = NULL;
+
+    return 0;
 }

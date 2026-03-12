@@ -1,6 +1,9 @@
 /* UFSD#TRC.C - Trace Ring Buffer
 **
 ** AP-1b: Write one entry to the trace ring buffer in CSA.
+** AP-1f: ufsd_trace_dump - output all ring entries to console.
+**        Trace is gated by UFSD_ANCHOR_TRACE_ON flag; set at
+**        startup and toggled by MODIFY TRACE ON/OFF.
 **
 ** The ring is located in CSA (key 0); writes require supervisor
 ** state.  The TOD clock (STCK) also requires supervisor state
@@ -12,6 +15,7 @@
 
 #include "ufsd.h"
 #include <clibos.h>
+#include <clibwto.h>
 
 /* ============================================================
 ** ufsd_trace
@@ -36,6 +40,7 @@ ufsd_trace(UFSD_ANCHOR *anchor, unsigned short func,
     unsigned        idx;
 
     if (!anchor || !anchor->trace_buf) return;
+    if (!(anchor->flags & UFSD_ANCHOR_TRACE_ON)) return;
 
     if (__super(PSWKEY0, &savekey)) return;
 
@@ -56,4 +61,49 @@ ufsd_trace(UFSD_ANCHOR *anchor, unsigned short func,
     anchor->trace_next = (idx + 1 < anchor->trace_size) ? idx + 1 : 0;
 
     __prob(savekey, NULL);
+}
+
+/* ============================================================
+** ufsd_trace_dump
+**
+** AP-1f: Output all trace ring entries to the operator console.
+** Iterates from oldest to newest (from trace_next forward).
+** Entries with timestamp == 0 were never written and are skipped.
+** ============================================================ */
+void
+ufsd_trace_dump(UFSD_ANCHOR *anchor)
+{
+    UFSD_TRACE *entry;
+    unsigned    i;
+    unsigned    idx;
+    unsigned    count;
+
+    if (!anchor || !anchor->trace_buf) {
+        wtof("UFSD080W TRACE DUMP: trace buffer not available");
+        return;
+    }
+
+    count = 0;
+    for (i = 0; i < anchor->trace_size; i++) {
+        idx   = (anchor->trace_next + i) % anchor->trace_size;
+        entry = &anchor->trace_buf[idx];
+        if (entry->timestamp == 0) continue;
+        count++;
+    }
+
+    wtof("UFSD080I TRACE DUMP: %u entr%s", count,
+         count == 1 ? "y" : "ies");
+
+    count = 0;
+    for (i = 0; i < anchor->trace_size; i++) {
+        idx   = (anchor->trace_next + i) % anchor->trace_size;
+        entry = &anchor->trace_buf[idx];
+        if (entry->timestamp == 0) continue;
+        wtof("UFSD081I   %3u: T=%08X F=%04X RC=%04X SESS=%08X",
+             ++count,
+             entry->timestamp,
+             (unsigned)entry->func,
+             (unsigned)entry->rc,
+             entry->session_token);
+    }
 }

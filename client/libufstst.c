@@ -1,0 +1,228 @@
+/* LIBUFSTST.C - libufs API Integration Test
+**
+** AP-1f: End-to-end test of the libufs client stub library.
+** Exercises the same operations as UFSDTEST but via the libufs
+** UFS-compatible API instead of raw UFSSSOB calls.
+**
+** Test sequence:
+**   1. ufsnew()             -- open UFSD session, get UFS *
+**   2. ufs_mkdir()          -- create /libufstest
+**   3. ufs_fopen() write    -- create /libufstest/hello.txt
+**   4. ufs_fwrite()         -- write "Hello from libufs!"
+**   5. ufs_fclose() write
+**   6. ufs_fopen() read     -- open for reading
+**   7. ufs_fread()          -- read and verify content
+**   8. ufs_fclose() read
+**   9. ufs_fgets()          -- open again, read one line
+**  10. ufs_fclose()
+**  11. ufs_remove()         -- remove file
+**  12. ufs_rmdir()          -- remove directory
+**  13. ufs_get_cwd()        -- verify CWD is "/"
+**  14. ufsfree()            -- close session
+**
+** Expected output:
+**   LUFTST01I Session opened, token=0x00010001
+**   LUFTST02I MKDIR /LIBUFSTEST: OK
+**   LUFTST03I FOPEN write: OK
+**   LUFTST04I FWRITE 19 bytes: items=19
+**   LUFTST05I FCLOSE write: OK
+**   LUFTST06I FOPEN read: OK
+**   LUFTST07I FREAD 19 bytes: items=19
+**   LUFTST08I FREAD data: Hello from libufs!
+**   LUFTST09I FCLOSE read: OK
+**   LUFTST10I FGETS line: Hello from libufs!
+**   LUFTST11I FCLOSE fgets: OK
+**   LUFTST12I REMOVE /LIBUFSTEST/HELLO.TXT: OK
+**   LUFTST13I RMDIR /LIBUFSTEST: OK
+**   LUFTST14I CWD: /
+**   LUFTST15I Session closed
+*/
+
+#include <string.h>
+#include <clibos.h>
+#include <clibwto.h>
+#include "libufs.h"
+
+#define TESTDIR  "/LIBUFSTEST"
+#define TESTFILE "/LIBUFSTEST/HELLO.TXT"
+
+static const char testdata[] = "Hello from libufs!";
+#define TESTLEN  18U  /* strlen("Hello from libufs!") */
+
+int
+main(int argc, char **argv)
+{
+    UFS      *ufs;
+    UFSFILE  *fp;
+    UFSCWD   *cwd;
+    UFSDDESC *ddesc;
+    char      rdbuf[64];
+    char      linebuf[64];
+    UINT32    items;
+    int       rc;
+
+    (void)argc;
+
+    /* APF authorization required for IEFSSREQ */
+    rc = clib_apf_setup(argv[0]);
+    if (rc) {
+        wtof("LUFTST09E APF setup failed RC=%d", rc);
+        return 8;
+    }
+
+    /* ============================================================
+    ** Step 1: Open session
+    ** ============================================================ */
+    ufs = ufsnew();
+    if (!ufs) {
+        wtof("LUFTST09E ufsnew() failed -- UFSD STC running?");
+        return 8;
+    }
+    wtof("LUFTST01I Session opened, token=0x%08X", ufs->token);
+
+    /* ============================================================
+    ** Step 2: MKDIR /LIBUFSTEST
+    ** ============================================================ */
+    rc = ufs_mkdir(ufs, TESTDIR);
+    if (rc != 0) {
+        wtof("LUFTST09E MKDIR %s failed: RC=%d", TESTDIR, rc);
+        goto close_sess;
+    }
+    wtof("LUFTST02I MKDIR %s: OK", TESTDIR);
+
+    /* ============================================================
+    ** Step 3: FOPEN for writing
+    ** ============================================================ */
+    fp = ufs_fopen(ufs, TESTFILE, "w");
+    if (!fp) {
+        wtof("LUFTST09E ufs_fopen write failed");
+        goto rmdir_test;
+    }
+    wtof("LUFTST03I FOPEN write: OK");
+
+    /* ============================================================
+    ** Step 4: FWRITE
+    ** ============================================================ */
+    items = ufs_fwrite((void *)testdata, 1, TESTLEN, fp);
+    if (items != TESTLEN) {
+        wtof("LUFTST09E ufs_fwrite: expected %u items, got %u",
+             TESTLEN, items);
+        ufs_fclose(&fp);
+        goto remove_file;
+    }
+    wtof("LUFTST04I FWRITE %u bytes: items=%u", TESTLEN, items);
+
+    /* ============================================================
+    ** Step 5: FCLOSE write
+    ** ============================================================ */
+    ufs_fclose(&fp);
+    wtof("LUFTST05I FCLOSE write: OK");
+
+    /* ============================================================
+    ** Step 5a: DIROPEN + DIRREAD -- list /LIBUFSTEST
+    ** ============================================================ */
+    ddesc = ufs_diropen(ufs, TESTDIR, NULL);
+    if (ddesc) {
+        UFSDLIST *dl;
+        while ((dl = ufs_dirread(ddesc)) != NULL) {
+            wtof("LUFTSTLSI   %c %s (ino=%u, size=%u)",
+                 dl->attr[0], dl->name,
+                 dl->inode_number, dl->filesize);
+        }
+        ufs_dirclose(&ddesc);
+        wtof("LUFTSTLSI LS %s: OK", TESTDIR);
+    } else {
+        wtof("LUFTSTLSE diropen %s failed", TESTDIR);
+    }
+
+    /* ============================================================
+    ** Step 6: FOPEN for reading
+    ** ============================================================ */
+    fp = ufs_fopen(ufs, TESTFILE, "r");
+    if (!fp) {
+        wtof("LUFTST09E ufs_fopen read failed");
+        goto remove_file;
+    }
+    wtof("LUFTST06I FOPEN read: OK");
+
+    /* ============================================================
+    ** Step 7: FREAD
+    ** ============================================================ */
+    memset(rdbuf, 0, sizeof(rdbuf));
+    items = ufs_fread(rdbuf, 1, TESTLEN, fp);
+    if (items != TESTLEN) {
+        wtof("LUFTST09E ufs_fread: expected %u items, got %u",
+             TESTLEN, items);
+        ufs_fclose(&fp);
+        goto remove_file;
+    }
+    wtof("LUFTST07I FREAD %u bytes: items=%u", TESTLEN, items);
+
+    rdbuf[TESTLEN] = '\0';
+    wtof("LUFTST08I FREAD data: %s", rdbuf);
+
+    if (memcmp(rdbuf, testdata, TESTLEN) != 0)
+        wtof("LUFTST09E VERIFY FAILED: data mismatch");
+
+    /* ============================================================
+    ** Step 8: FCLOSE read
+    ** ============================================================ */
+    ufs_fclose(&fp);
+    wtof("LUFTST09I FCLOSE read: OK");
+
+    /* ============================================================
+    ** Step 9: FGETS test -- open again, read one line
+    ** ============================================================ */
+    fp = ufs_fopen(ufs, TESTFILE, "r");
+    if (fp) {
+        memset(linebuf, 0, sizeof(linebuf));
+        if (ufs_fgets(linebuf, (int)sizeof(linebuf), fp)) {
+            /* Strip any trailing newline */
+            rc = strlen(linebuf);
+            if (rc > 0 && linebuf[rc - 1] == '\n')
+                linebuf[rc - 1] = '\0';
+            wtof("LUFTST10I FGETS line: %s", linebuf);
+        } else {
+            wtof("LUFTST09E ufs_fgets returned NULL");
+        }
+        ufs_fclose(&fp);
+        wtof("LUFTST11I FCLOSE fgets: OK");
+    }
+
+    /* ============================================================
+    ** Step 10: REMOVE
+    ** ============================================================ */
+remove_file:
+    rc = ufs_remove(ufs, TESTFILE);
+    if (rc != 0)
+        wtof("LUFTST09E REMOVE %s failed: RC=%d", TESTFILE, rc);
+    else
+        wtof("LUFTST12I REMOVE %s: OK", TESTFILE);
+
+    /* ============================================================
+    ** Step 11: RMDIR
+    ** ============================================================ */
+rmdir_test:
+    rc = ufs_rmdir(ufs, TESTDIR);
+    if (rc != 0)
+        wtof("LUFTST09E RMDIR %s failed: RC=%d", TESTDIR, rc);
+    else
+        wtof("LUFTST13I RMDIR %s: OK", TESTDIR);
+
+    /* ============================================================
+    ** Step 12: Verify CWD
+    ** ============================================================ */
+    cwd = ufs_get_cwd(ufs);
+    if (cwd)
+        wtof("LUFTST14I CWD: %s", cwd->path);
+    else
+        wtof("LUFTST09E ufs_get_cwd returned NULL");
+
+    /* ============================================================
+    ** Step 13: Close session
+    ** ============================================================ */
+close_sess:
+    ufsfree(&ufs);
+    wtof("LUFTST15I Session closed");
+    return 0;
+}

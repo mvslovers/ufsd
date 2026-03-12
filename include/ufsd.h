@@ -139,6 +139,7 @@ struct ufsd_dirent {
 ** Closed and freed at STC shutdown.
 **
 ** AP-1e: sb field added (read from disk sector 1 at open time).
+** AP-1f: mountpath added (set by ufsd_ufs_init and ufsd_disk_mount).
 ** ============================================================ */
 
 /* Disk flags */
@@ -156,6 +157,7 @@ struct ufsd_disk {
     unsigned short blksize;         /* physical block size from DCB  */
     unsigned short pad;             /* alignment                     */
     UFSD_SB        sb;              /* superblock (read at open)     */
+    char           mountpath[128];  /* mount point path (AP-1f)      */
 };
 
 /* ============================================================
@@ -192,6 +194,7 @@ struct ufsd_stc {
 /* Anchor flags (same bit positions as STC flags for consistency) */
 #define UFSD_ANCHOR_ACTIVE   0x80000000U
 #define UFSD_ANCHOR_QUIESCE  0x40000000U
+#define UFSD_ANCHOR_TRACE_ON 0x20000000U  /* AP-1f: trace ring enabled */
 
 struct ufsd_anchor {
     char            eye[8];         /* "UFSDANCR"                  */
@@ -282,9 +285,10 @@ struct ufsd_anchor {
 #define UFSREQ_CHGDIR       0x0031U  /* AP-1e: change directory      */
 #define UFSREQ_RMDIR        0x0032U  /* AP-1e: remove directory      */
 #define UFSREQ_REMOVE       0x0033U  /* AP-1e: remove file           */
-#define UFSREQ_DIROPEN      0x0040U  /* AP-1e: open dir (deferred)   */
-#define UFSREQ_DIRREAD      0x0041U  /* AP-1e: read dir (deferred)   */
-#define UFSREQ_DIRCLOSE     0x0042U  /* AP-1e: close dir (deferred)  */
+#define UFSREQ_DIROPEN      0x0040U  /* AP-1f: open directory            */
+#define UFSREQ_DIRREAD      0x0041U  /* AP-1f: read directory entry      */
+#define UFSREQ_DIRCLOSE     0x0042U  /* AP-1f: close directory handle    */
+#define UFSREQ_GETCWD       0x0050U  /* AP-1f: get current work dir  */
 #define UFSREQ_MAX          0x00FFU
 
 /* Return codes */
@@ -407,8 +411,18 @@ struct ufsd_session {
 
 #define UFSD_MAX_GFILES     256  /* max global open files          */
 
+/* DIRREAD response layout in req->data[] / resp_data[]:
+**   [0..3]  = ino (unsigned, 0 = end of directory)
+**   [4..7]  = filesize (unsigned)
+**   [8..9]  = mode (unsigned short)
+**   [10..11]= reserved
+**   [12..71]= name (60 bytes, NUL-terminated)
+** Total: 72 bytes */
+#define UFSD_DIRREAD_RLEN   72U
+
 /* Global file flags */
 #define UFSD_GF_USED        0x80000000U
+#define UFSD_GF_DIR         0x20000000U  /* AP-1f: directory handle */
 
 struct ufsd_gfile {
     char            eye[8];         /* "UFSDGFIL"                  */
@@ -479,6 +493,9 @@ void ufsd_ssi_unload(UFSD_ANCHOR *anchor)                            asm("UFSD@S
 void ufsd_trace(UFSD_ANCHOR *anchor, unsigned short func,
                 unsigned token, unsigned short rc)                   asm("UFSD@TRC");
 
+/* ufsd#trc.c (AP-1f) */
+void ufsd_trace_dump(UFSD_ANCHOR *anchor)                            asm("UFSD@TRD");
+
 /* ufsd#que.c (AP-1c) */
 UFSREQ *ufsd_dequeue(UFSD_ANCHOR *anchor)                            asm("UFSD@DEQ");
 void    ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)              asm("UFSD@DSP");
@@ -496,6 +513,12 @@ UFSD_SESSION *ufsd_sess_find(UFSD_ANCHOR *anchor, unsigned token)    asm("UFSD@S
 /* ufsd#ini.c (AP-1d Step 2) */
 int           ufsd_ufs_init(UFSD_STC *stc)                          asm("UFSD@UNI");
 void          ufsd_ufs_term(UFSD_STC *stc)                          asm("UFSD@UNT");
+
+/* ufsd#ini.c (AP-1f) -- dynamic mount/unmount */
+int           ufsd_disk_mount(UFSD_STC *stc, const char *ddname,
+                              const char *mountpath)                 asm("UFSD@DMT");
+int           ufsd_disk_umount(UFSD_STC *stc,
+                               const char *mountpath)                asm("UFSD@DUT");
 
 /* ufsd#blk.c (AP-1e) -- BDAM block I/O */
 int  ufsd_blk_read(UFSD_DISK *disk, unsigned sector, void *buf)      asm("UFSD@BRD");

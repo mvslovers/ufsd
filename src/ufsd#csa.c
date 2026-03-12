@@ -29,7 +29,7 @@ ufsd_anchor_alloc(void)
         memset(anchor, 0, sizeof(UFSD_ANCHOR));
         memcpy(anchor->eye, "UFSDANCR", 8);
         anchor->version = 1;
-        anchor->flags   = UFSD_ANCHOR_ACTIVE;
+        anchor->flags   = UFSD_ANCHOR_ACTIVE | UFSD_ANCHOR_TRACE_ON;
     }
     __prob(savekey, NULL);
     return anchor;

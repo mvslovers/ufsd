@@ -3,13 +3,17 @@
 ** AP-1e: Server-side implementation of all file operations.
 ** Called from ufsd_dispatch (ufsd#que.c) after session lookup.
 **
+** AP-1f: Added UFSREQ_GETCWD handler (do_getcwd).
+**
+** AP-1f: Added UFSREQ_GETCWD handler (do_getcwd) and
+**        UFSREQ_DIROPEN/DIRREAD/DIRCLOSE handlers.
+**
 ** AP-1e Simplifications (all intentional for Phase 1 PoC):
 **   - Direct blocks only (addr[0..15]); indirect blocks deferred
 **   - No permission/ACEE checks
 **   - Timestamps written as 0
 **   - Superblock freeblock cache refill deferred
 **   - No inode caching (direct BDAM reads every time)
-**   - diropen/dirread/dirclose deferred
 **   - fseek deferred
 **
 ** Request/response data marshalling in req->data[] / resp_data[]:
@@ -23,6 +27,11 @@
 **   MKDIR/RMDIR/CHGDIR/REMOVE
 **           req: [0..]=path(NUL-terminated)
 **           rsp: (none; rc in UFSSSOB.rc)
+**   DIROPEN req: [0..]=path(NUL-term)
+**           rsp: [0..3]=dir_fd(int)
+**   DIRREAD req: [0..3]=dir_fd(int)
+**           rsp: see UFSD_DIRREAD_RLEN (72 bytes), ino=0 means end
+**   DIRCLOSE req: [0..3]=dir_fd(int)
 **
 ** ufsd_fil_dispatch(UFSD@FDS)  main dispatch switch
 */
@@ -700,6 +709,237 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 }
 
 /* ============================================================
+** do_getcwd
+**
+** AP-1f: Return the session's current working directory as a
+** NUL-terminated string in resp_data[].
+** ============================================================ */
+static int
+do_getcwd(UFSD_STC *stc, UFSD_SESSION *sess,
+          UFSREQ *req, char *resp_data, unsigned *resp_data_len)
+{
+    UFSD_UFS *ufs;
+    unsigned  pathlen;
+
+    (void)stc;
+    (void)req;
+
+    ufs = (UFSD_UFS *)sess->ufs;
+    if (!ufs) return UFSD_RC_BADSESS;
+
+    pathlen = strlen(ufs->cwd);
+    if (pathlen >= (unsigned)UFSREQ_MAX_INLINE)
+        pathlen = (unsigned)UFSREQ_MAX_INLINE - 1U;
+
+    memcpy(resp_data, ufs->cwd, pathlen + 1U);
+    *resp_data_len = pathlen + 1U;
+
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
+** do_diropen
+**
+** AP-1f: Open a directory for listing.  Resolves path to inode,
+** verifies it is a directory, allocates a GFT entry with the
+** UFSD_GF_DIR flag, and assigns a session fd slot.
+**
+** Response: resp_data[0..3] = dir_fd (int).
+** ============================================================ */
+static int
+do_diropen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
+           UFSREQ *req, char *resp_data, unsigned *resp_data_len)
+{
+    UFSD_UFS    *ufs;
+    UFSD_DISK   *disk;
+    UFSD_DINODE  dino;
+    UFSD_GFILE  *gfile;
+    const char  *path;
+    unsigned     dir_ino;
+    unsigned     gidx;
+    unsigned     fd;
+    int          j;
+
+    ufs = (UFSD_UFS *)sess->ufs;
+    if (!ufs) return UFSD_RC_BADSESS;
+    disk = stc->disks[ufs->disk_idx];
+    if (!disk) return UFSD_RC_IO;
+
+    path = req->data;
+    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+
+    dir_ino = ufsd_path_lookup(disk,
+        (path[0] == '/') ? UFSD_ROOT_INO : ufs->cwd_ino,
+        path, NULL, NULL);
+    if (dir_ino == 0) return UFSD_RC_NOFILE;
+
+    if (ufsd_ino_read(disk, dir_ino, &dino) != UFSD_RC_OK)
+        return UFSD_RC_IO;
+    if ((dino.mode & UFSD_IFMT) != UFSD_IFDIR) return UFSD_RC_NOTDIR;
+
+    if (ufsd_gft_alloc(anchor, &gidx) != UFSD_RC_OK) return UFSD_RC_NOREQ;
+
+    gfile            = &anchor->gfiles[gidx];
+    gfile->flags     = UFSD_GF_USED | UFSD_GF_DIR;
+    gfile->disk_idx  = ufs->disk_idx;
+    gfile->ino       = dir_ino;
+    gfile->position  = 0;
+    gfile->open_mode = UFSD_OPEN_READ;
+    gfile->refcount  = 1;
+
+    fd = (unsigned)UFSD_MAX_FD;
+    for (j = 0; j < UFSD_MAX_FD; j++) {
+        if (sess->fd_table[j].gfile_idx == UFSD_FD_UNUSED) {
+            fd = (unsigned)j;
+            break;
+        }
+    }
+    if (fd >= (unsigned)UFSD_MAX_FD) {
+        ufsd_gft_release(anchor, gidx);
+        return UFSD_RC_NOREQ;
+    }
+
+    sess->fd_table[fd].gfile_idx = gidx;
+    sess->fd_table[fd].flags     = UFSD_FD_READ;
+
+    *(int *)resp_data = (int)fd;
+    *resp_data_len    = sizeof(int);
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
+** do_dirread
+**
+** AP-1f: Return the next non-deleted directory entry.
+** gfile->position tracks which entry index to start from
+** (counting ALL slots including deleted ones).
+**
+** Response when entry found: UFSD_DIRREAD_RLEN bytes.
+** Response at end of dir: 4 bytes, ino field = 0.
+** ============================================================ */
+static int
+do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
+           UFSREQ *req, char *resp_data, unsigned *resp_data_len)
+{
+    UFSD_UFS    *ufs;
+    UFSD_DISK   *disk;
+    UFSD_GFILE  *gfile;
+    UFSD_DINODE  dino;
+    UFSD_DINODE  edino;
+    UFSD_DIRENT *de;
+    char        *blk;
+    int          fd;
+    unsigned     gidx;
+    unsigned     blk_size;
+    unsigned     nde;
+    unsigned     n_blocks;
+    unsigned     entry_pos;
+    unsigned     found_ino;
+    unsigned     i;
+    unsigned     j;
+
+    ufs = (UFSD_UFS *)sess->ufs;
+    if (!ufs) return UFSD_RC_BADSESS;
+    disk = stc->disks[ufs->disk_idx];
+    if (!disk) return UFSD_RC_IO;
+
+    if (req->data_len < 4U) return UFSD_RC_INVALID;
+    fd = (int)*(unsigned *)req->data;
+
+    if (fd < 0 || fd >= UFSD_MAX_FD) return UFSD_RC_BADFD;
+    if (sess->fd_table[fd].gfile_idx == UFSD_FD_UNUSED) return UFSD_RC_BADFD;
+
+    gidx  = sess->fd_table[fd].gfile_idx;
+    gfile = &anchor->gfiles[gidx];
+    if (!(gfile->flags & UFSD_GF_USED)) return UFSD_RC_BADFD;
+    if (!(gfile->flags & UFSD_GF_DIR))  return UFSD_RC_BADFD;
+
+    if (ufsd_ino_read(disk, gfile->ino, &dino) != UFSD_RC_OK)
+        return UFSD_RC_IO;
+
+    blk_size = (unsigned)disk->blksize;
+    nde      = blk_size / UFSD_DIRENT_SIZE;
+    n_blocks = (dino.filesize + blk_size - 1U) / blk_size;
+
+    blk = (char *)malloc(blk_size);
+    if (!blk) return UFSD_RC_IO;
+
+    found_ino = 0;
+    entry_pos = 0;
+
+    for (i = 0; i < UFSD_NADDR_DIRECT && i < n_blocks && found_ino == 0; i++) {
+        if (dino.addr[i] == 0) {
+            entry_pos += nde;
+            continue;
+        }
+        if (ufsd_blk_read(disk, dino.addr[i], blk) != UFSD_RC_OK) {
+            entry_pos += nde;
+            continue;
+        }
+        de = (UFSD_DIRENT *)blk;
+        for (j = 0; j < nde && found_ino == 0; j++, de++, entry_pos++) {
+            if (entry_pos < gfile->position) continue;
+            if (de->ino == 0) continue;
+
+            found_ino       = de->ino;
+            gfile->position = entry_pos + 1U;
+
+            memset(resp_data, 0, UFSD_DIRREAD_RLEN);
+            *(unsigned *)resp_data = found_ino;
+
+            if (ufsd_ino_read(disk, found_ino, &edino) == UFSD_RC_OK) {
+                *(unsigned *)(resp_data + 4)       = edino.filesize;
+                *(unsigned short *)(resp_data + 8) = edino.mode;
+            }
+            memcpy(resp_data + 12, de->name, UFSD_NAME_MAX);
+            resp_data[12 + UFSD_NAME_MAX] = '\0';
+        }
+    }
+
+    free(blk);
+
+    if (found_ino == 0) {
+        *(unsigned *)resp_data = 0U;
+        *resp_data_len         = 4U;
+    } else {
+        *resp_data_len = UFSD_DIRREAD_RLEN;
+    }
+
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
+** do_dirclose
+**
+** AP-1f: Release a directory handle (GFT entry + fd slot).
+** ============================================================ */
+static int
+do_dirclose(UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
+            UFSREQ *req, char *resp_data, unsigned *resp_data_len)
+{
+    int      fd;
+    unsigned gidx;
+
+    (void)resp_data;
+    (void)resp_data_len;
+
+    if (req->data_len < 4U) return UFSD_RC_INVALID;
+    fd = (int)*(unsigned *)req->data;
+
+    if (fd < 0 || fd >= UFSD_MAX_FD) return UFSD_RC_BADFD;
+    if (sess->fd_table[fd].gfile_idx == UFSD_FD_UNUSED) return UFSD_RC_BADFD;
+
+    gidx = sess->fd_table[fd].gfile_idx;
+    if (!(anchor->gfiles[gidx].flags & UFSD_GF_DIR)) return UFSD_RC_BADFD;
+
+    ufsd_gft_release(anchor, gidx);
+    sess->fd_table[fd].gfile_idx = UFSD_FD_UNUSED;
+    sess->fd_table[fd].flags     = 0;
+
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
 ** ufsd_fil_dispatch
 **
 ** Top-level dispatch for AP-1e file operations.
@@ -750,6 +990,18 @@ ufsd_fil_dispatch(UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
     case UFSREQ_FWRITE:
         return do_fwrite(stc, anchor, sess, req, resp_data, resp_data_len);
+
+    case UFSREQ_GETCWD:
+        return do_getcwd(stc, sess, req, resp_data, resp_data_len);
+
+    case UFSREQ_DIROPEN:
+        return do_diropen(stc, anchor, sess, req, resp_data, resp_data_len);
+
+    case UFSREQ_DIRREAD:
+        return do_dirread(stc, anchor, sess, req, resp_data, resp_data_len);
+
+    case UFSREQ_DIRCLOSE:
+        return do_dirclose(anchor, sess, req, resp_data, resp_data_len);
 
     default:
         return UFSD_RC_NOTIMPL;
