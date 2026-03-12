@@ -17,6 +17,13 @@
 **   - SSVT entry registered for UFSD_SSOBFUNC
 **   - Main loop drains request queue + dispatches
 **   - WAIT on both console ECB and server_ecb
+**
+** ESTAE recovery (AP-1d+):
+**   - ufsd_recover() registered immediately after APF setup
+**   - Any abend triggers emergency shutdown (SSCT deregistered,
+**     SSI router unloaded) then percolates for normal MVS dump
+**   - ufsd_shutdown() deletes the ESTAE as its first action to
+**     prevent re-entrant recovery on clean or emergency shutdown
 */
 
 #ifndef VERSION
@@ -27,11 +34,55 @@
 #include <string.h>
 #include <clibos.h>
 #include <clibwto.h>
+#include <clibstae.h>
+
+/* ============================================================
+** ufsd_recover
+**
+** ESTAE recovery routine.  Called by MVS on any unhandled abend
+** in the UFSD STC address space.
+**
+** Goals:
+**   1. Deregister the SSCT + unload UFSDSSIR so that MVS can
+**      route future SSI calls to another handler (or reject them
+**      cleanly) rather than crashing in a dangling SSVT entry.
+**   2. Percolate (SDWACWT = 0): MVS produces the SVC dump and
+**      terminates the address space normally.
+**
+** SDWAPARM holds &ufsd (the STC block on main's stack), set via
+** __estae(ESTAE_CREATE, ufsd_recover, &ufsd).
+**
+** ufsd_shutdown() deletes the ESTAE as its first action, so
+** this routine is never called re-entrantly.
+** ============================================================ */
+static void
+ufsd_recover(SDWA *sdwa)
+{
+    UFSD_STC *ufsd;
+
+    if (!sdwa) return;
+
+    ufsd = (UFSD_STC *)sdwa->SDWAPARM;
+
+    wtof("UFSD098E UFSD abend intercepted -- emergency shutdown");
+
+    if (ufsd) {
+        ufsd->flags &= ~UFSD_ACTIVE;
+        ufsd_shutdown(ufsd);
+    }
+
+    /* Percolate: let MVS produce the abend dump and terminate */
+    sdwa->SDWARCDE = SDWACWT;
+}
 
 void
 ufsd_shutdown(UFSD_STC *ufsd)
 {
     UFSD_ANCHOR *anchor;
+
+    /* Delete ESTAE first: prevents re-entrant recovery if shutdown
+    ** itself encounters an error (clean path or emergency path). */
+    __estae(ESTAE_DELETE, NULL, NULL);
 
     anchor = ufsd->anchor;
 
@@ -47,6 +98,11 @@ ufsd_shutdown(UFSD_STC *ufsd)
         if (anchor->ssct) {
             ufsd_ssct_free(anchor);
             wtof("UFSD095I SSCT deregistered");
+        }
+        /* AP-1e: release GFT before session table */
+        if (anchor->gfiles) {
+            ufsd_gft_free(anchor);
+            wtof("UFSD048I Global file table freed");
         }
         /* AP-1d: release session table before freeing CSA */
         if (anchor->sessions) {
@@ -98,6 +154,9 @@ main(int argc, char **argv)
         return 8;
     }
 
+    /* --- ESTAE recovery ------------------------------------------ */
+    __estae(ESTAE_CREATE, ufsd_recover, &ufsd);
+
     /* --- CSA anchor ---------------------------------------------- */
     anchor = ufsd_anchor_alloc();
     if (!anchor) {
@@ -114,11 +173,12 @@ main(int argc, char **argv)
         return 8;
     }
 
-    /* Record STC ASCB in anchor so ufsdssir can use __xmpost to wake us */
+    /* Record STC ASCB and STC pointer in anchor */
     {
         unsigned char savekey;
         if (!__super(PSWKEY0, &savekey)) {
             anchor->server_ascb = __ascb(0);
+            anchor->server_stc  = (void *)&ufsd;
             __prob(savekey, NULL);
         }
     }
@@ -166,6 +226,19 @@ main(int argc, char **argv)
         return 8;
     }
     wtof("UFSD045I Session table: %u slots", (unsigned)UFSD_MAX_SESSIONS);
+
+    /* --- Global file table (AP-1e) --------------------------------- */
+    rc = ufsd_gft_init(anchor);
+    if (rc) {
+        ufsd_sess_free(anchor);
+        ufsd_ssi_unload(anchor);
+        ufsd_ssct_free(anchor);
+        ufsd_csa_free(anchor);
+        ufsd_anchor_free(anchor);
+        ufsd.anchor = NULL;
+        return 8;
+    }
+    wtof("UFSD047I Global file table: %u slots", (unsigned)UFSD_MAX_GFILES);
 
     /* --- UFS disk init (AP-1d Step 2) ----------------------------- */
     ufsd_ufs_init(&ufsd); /* returns 0 even with zero disks */
