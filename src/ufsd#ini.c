@@ -202,6 +202,9 @@ ufsd_ufs_init(UFSD_STC *stc)
         if (!disk) continue;   /* error already issued */
 
         stc->disks[stc->ndisks++] = disk;
+
+        /* AP-1e: read superblock into disk->sb */
+        ufsd_sb_read(disk);
     }
 
     /* First disk mounted becomes the root filesystem */

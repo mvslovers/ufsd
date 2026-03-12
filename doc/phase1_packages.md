@@ -281,13 +281,63 @@ UFSD051I   #1 TOKEN=00010041 ASID=0023 FDs=0/64
 - **MODIFY STATS extended:** Shows open files, fd usage
 - **Client UFSDTEST extended:** Session open, mkdir, create file, write, read, verify, delete, session close
 
+### AP-1e Simplifications (PoC Scope — intentional deferrals)
+
+These items are deliberately out of scope for the Phase 1 PoC. They are listed here
+so they are not forgotten. Each will be addressed in a follow-up phase or AP-1f.
+
+| # | Item | Deferred to | Reason |
+|---|------|-------------|--------|
+| 1 | **Indirect blocks** (addr[16] single, addr[17] double, addr[18] triple) | post-AP-1f | Test file is 13 bytes; direct blocks (addr[0..15]) cover 64 KB per file, which is sufficient for the entire PoC. |
+| 2 | **Permission / ACEE checking** | post-AP-1f | No RACF integration in Phase 1. All clients are trusted (APF-auth). |
+| 3 | **Timestamps** (atime, mtime, ctime) | post-AP-1f | Written as 0 on create/modify. UFS inode fields are present; we just do not fill them. |
+| 4 | **Superblock freeblock cache refill** | post-AP-1f | On a freshly formatted UFS disk the freeblock cache is pre-populated by `ufs370/tools/mkufs`. If `sb->nfreeblock == 0`, return `UFSD_RC_NOSPACE` — no cache-refill walk needed for the PoC test. |
+| 5 | **Inode cache / pager layer** | post-AP-1f | Every inode read/write goes directly to BDAM. No in-memory inode table. Acceptable for single-client PoC; revisit for Phase 3 (multi-worker). |
+| 6 | **diropen / dirread / dirclose** | post-AP-1f | Not exercised in the AP-1e test cycle. Directory listing is deferred. |
+| 7 | **fseek** | post-AP-1f | Not used in the AP-1e test cycle (sequential write then sequential read). |
+
+### On-disk Structure Constants (AP-1e)
+
+Derived from `ufs370/include/ufs/disk.h`:
+
+| Constant | Value | Notes |
+|----------|-------|-------|
+| `UFSD_ROOT_INO` | 2 | Inode 1 = BALBLK (reserved by UFS format); root dir = inode 2 |
+| `UFSD_INODE_SIZE` | 128 | bytes per on-disk inode |
+| `UFSD_INODES_PER_BLK` | 32 | for 4096-byte block: 4096/128 |
+| `UFSD_DIRENT_SIZE` | 64 | bytes per directory entry |
+| `UFSD_DIRENTS_PER_BLK` | 64 | for 4096-byte block: 4096/64 |
+| `UFSD_SB_OFFSET` | 512 | superblock starts at byte 512 within sector 1 |
+| `UFSD_SB_SIZE` | 512 | superblock is 512 bytes |
+
+Inode-to-sector mapping (ilist starts at sector given by `sb->ilist_start`):
+
+```
+sector = sb->ilist_start + (ino - 1) / UFSD_INODES_PER_BLK
+offset = ((ino - 1) % UFSD_INODES_PER_BLK) * UFSD_INODE_SIZE
+```
+
+### New Source Modules (AP-1e)
+
+| Module | Source File | Description |
+|--------|-------------|-------------|
+| `UFSD#BLK` | `src/ufsd#blk.c` | BDAM block read/write (sector-addressed, uses `disk->dcb`) |
+| `UFSD#SBL` | `src/ufsd#sbl.c` | Superblock I/O, freeblock alloc/free, freeinode alloc/free |
+| `UFSD#INO` | `src/ufsd#ino.c` | Inode I/O + block address resolution (direct blocks only) |
+| `UFSD#DIR` | `src/ufsd#dir.c` | Directory lookup/add/remove, path resolution (`/a/b/c`) |
+| `UFSD#FIL` | `src/ufsd#fil.c` | FOPEN/FCLOSE/FREAD/FWRITE/MKDIR/RMDIR/CHGDIR/REMOVE dispatch |
+| `UFSD#GFT` | `src/ufsd#gft.c` | Global File Table init/alloc/free |
+
 ### Deliverables
 
 | Artifact          | Description                                            |
 |-------------------|--------------------------------------------------------|
-| `ufsd_file.c`     | Dispatch functions for all file operations             |
-| `ufsd_gfile.c`    | Global Open File Table management                      |
-| `ufsd_marshal.c`  | Request/response serialization                         |
+| `ufsd#blk.c`      | BDAM block read/write                                  |
+| `ufsd#sbl.c`      | Superblock management + block/inode allocation         |
+| `ufsd#ino.c`      | Inode read/write + direct block address resolution     |
+| `ufsd#dir.c`      | Directory lookup, path walk, entry add/remove          |
+| `ufsd#fil.c`      | File operation dispatch (FOPEN .. REMOVE)              |
+| `ufsd#gft.c`      | Global Open File Table (256 entries, STC heap)         |
 | `UFSDTEST`        | Extended integration test (create/write/read/delete)   |
 
 ### Test Criteria
@@ -532,7 +582,38 @@ Implemented in two steps:
 - ESTAE in `ufsd.c` to ensure SSCT is always deregistered on abend
 - APF auth in clients (ufsdping, ufsdtst) is temporary PoC workaround
 
-### AP-1e through AP-1f — Not started
+### AP-1e — DONE ✓
+
+**Milestone achieved (MVS/CE):**
+
+```
+UFSD047I Global file table: 256 slots
+UFSD040I 2 disk(s) mounted
+UFSTST01I Session opened, token=0x00010001
+UFSTST10I MKDIR /test: OK
+UFSTST11I FOPEN /test/hello.txt (write): fd=0
+UFSTST12I FWRITE 13 bytes: written=13
+UFSTST13I FCLOSE write handle: OK
+UFSTST14I FOPEN /test/hello.txt (read): fd=0
+UFSTST15I FREAD 13 bytes: read=13
+UFSTST16I FREAD data: Hello, World!
+UFSTST17I FCLOSE read handle: OK
+UFSTST18I REMOVE /test/hello.txt: OK
+UFSTST19I RMDIR /test: OK
+UFSTST02I Session closed
+```
+
+Note: The `!` character in "Hello, World!" renders as `Ü` on the MVS/CE console
+due to CP273 (German EBCDIC) display — the on-disk data is correct.
+
+New source modules implemented: `ufsd#blk.c`, `ufsd#sbl.c`, `ufsd#ino.c`,
+`ufsd#dir.c`, `ufsd#gft.c`, `ufsd#fil.c`. All linked into the UFSD load module.
+
+All seven AP-1e simplifications (indirect blocks, permissions, timestamps,
+sb cache refill, inode cache, diropen/dirread/dirclose, fseek) remain deferred
+as planned.
+
+### AP-1f — Not started
 
 ---
 

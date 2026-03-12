@@ -93,9 +93,14 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
     unsigned char   savekey;
     int             rc;
     unsigned        out_token;  /* SESS_OPEN response token */
+    char            resp_data[UFSREQ_MAX_INLINE];
+    unsigned        resp_data_len;
+    UFSD_SESSION   *sess;
 
     if (!anchor || !req) return;
-    out_token = 0;
+    out_token     = 0;
+    resp_data_len = 0;
+    sess          = NULL;
 
     /* --- Eye-catcher check --- */
     if (memcmp(req->eye, "UFSREQ__", 8) != 0) {
@@ -148,6 +153,24 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
             ufsd_trace(anchor, UFSD_T_SESS_CLOSE, req->session_token, 0);
         break;
 
+    case UFSREQ_FOPEN:
+    case UFSREQ_FCLOSE:
+    case UFSREQ_FREAD:
+    case UFSREQ_FWRITE:
+    case UFSREQ_MKDIR:
+    case UFSREQ_RMDIR:
+    case UFSREQ_CHGDIR:
+    case UFSREQ_REMOVE:
+        sess = ufsd_sess_find(anchor, req->session_token);
+        if (!sess) {
+            rc = UFSD_RC_BADSESS;
+            ufsd_trace(anchor, UFSD_T_BADSESS, req->session_token,
+                       (unsigned short)UFSD_RC_BADSESS);
+            break;
+        }
+        rc = ufsd_fil_dispatch(anchor, sess, req, resp_data, &resp_data_len);
+        break;
+
     default:
         rc = UFSD_RC_NOTIMPL;
         break;
@@ -168,6 +191,10 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
         if (req->func == UFSREQ_SESS_OPEN && rc == UFSD_RC_OK) {
             req->data_len          = (unsigned)sizeof(unsigned);
             *(unsigned *)req->data = out_token;
+        } else if (resp_data_len > 0) {
+            /* AP-1e: copy file op response from STC stack to CSA block */
+            req->data_len = resp_data_len;
+            memcpy(req->data, resp_data, resp_data_len);
         }
 
         if (rc == UFSD_RC_OK) {

@@ -5,6 +5,8 @@
 ** AP-1b: UFSD_ANCHOR, UFSREQ, UFSBUF   CSA structures
 ** AP-1b: UFSD_TRACE  diagnostic trace ring buffer
 ** AP-1d: UFSD_SESSION, UFSD_FD         session table (STC-local)
+** AP-1d: UFSD_DISK, UFSD_UFS           disk handles + per-session UFS state
+** AP-1e: UFSD_SB, UFSD_DINODE, UFSD_DIRENT   on-disk structures
 ** AP-1e: UFSD_GFILE  global open file table (STC-local)
 */
 
@@ -24,13 +26,9 @@
 #define UFSD_QUIESCE   0x40000000U
 
 /* ============================================================
-** AP-1a: Local STC State
-**
-** Stack-allocated in main(). No CSA. Used for AP-1a only.
-** Replaced by UFSD_ANCHOR in CSA from AP-1b onward.
+** Forward declarations for all control blocks
 ** ============================================================ */
 
-/* Forward declarations for all control blocks */
 typedef struct ufsd_stc     UFSD_STC;
 typedef struct ufsd_anchor  UFSD_ANCHOR;
 typedef struct ufsreq       UFSREQ;
@@ -41,12 +39,106 @@ typedef struct ufsd_gfile   UFSD_GFILE;
 typedef struct ufsd_trace   UFSD_TRACE;
 typedef struct ufsd_disk    UFSD_DISK;
 typedef struct ufsd_ufs     UFSD_UFS;
+typedef struct ufsd_sb      UFSD_SB;
+typedef struct ufsd_dinode  UFSD_DINODE;
+typedef struct ufsd_dirent  UFSD_DIRENT;
+
+/* ============================================================
+** AP-1e: On-disk UFS constants
+**
+** Derived from ufs370/include/ufs/disk.h and inode.h.
+** ============================================================ */
+
+#define UFSD_ROOT_INO           2U   /* root dir inode (inode 1 = BALBLK)     */
+#define UFSD_ILIST_SECTOR       2U   /* ilist starts at disk sector 2          */
+#define UFSD_INODE_SIZE         128U /* on-disk inode size in bytes            */
+#define UFSD_DIRENT_SIZE        64U  /* on-disk directory entry size in bytes  */
+#define UFSD_NAME_MAX           59U  /* max filename chars (excl. NUL)         */
+#define UFSD_NADDR              19U  /* total address slots in inode           */
+#define UFSD_NADDR_DIRECT       16U  /* direct data block slots (addr[0..15])  */
+
+#define UFSD_SB_MAX_FREEBLOCK   51U  /* free block cache size in superblock    */
+#define UFSD_SB_MAX_FREEINODE   64U  /* free inode cache size in superblock    */
+
+/* Inode type flags (V7 Unix, matches ufs370 disk.h) */
+#define UFSD_IFMT   0xF000U  /* file type mask  */
+#define UFSD_IFDIR  0x4000U  /* directory       */
+#define UFSD_IFREG  0x8000U  /* regular file    */
+
+/* File open mode flags (AP-1e) */
+#define UFSD_OPEN_READ   0x01U  /* open for reading                           */
+#define UFSD_OPEN_WRITE  0x02U  /* open for writing (create + truncate)       */
+
+/* ============================================================
+** AP-1e: On-disk Superblock  (512 bytes at sector 1, offset 0)
+**
+** Layout exactly matches struct ufs_superblock in
+** ufs370/include/ufs/disk.h (time_t = unsigned on MVS 3.8j).
+** ============================================================ */
+
+struct ufsd_sb {
+    unsigned        datablock_start;        /* 000 first data sector            */
+    unsigned        volume_size;            /* 004 total disk sectors           */
+    unsigned char   lock_freeblock;         /* 008 freeblock lock byte          */
+    unsigned char   lock_freeinode;         /* 009 freeinode lock byte          */
+    unsigned char   modified;               /* 00A modified flag                */
+    unsigned char   rdonly;                 /* 00B read-only flag               */
+    unsigned        update_time;            /* 00C update timestamp (time_t=4)  */
+    unsigned        total_freeblock;        /* 010 total free block count       */
+    unsigned        total_freeinode;        /* 014 total free inode count       */
+    unsigned        create_time;            /* 018 create timestamp (time_t=4)  */
+    unsigned        nfreeblock;             /* 01C entries in freeblock[]       */
+    unsigned        freeblock[51];          /* 020 free block cache  (204 bytes)*/
+    unsigned        nfreeinode;             /* 0EC entries in freeinode[]       */
+    unsigned        freeinode[64];          /* 0F0 free inode cache  (256 bytes)*/
+    unsigned        inodes_per_block;       /* 1F0 inodes per physical block    */
+    unsigned        blksize_shift;          /* 1F4 block size in shift bits     */
+    unsigned        ilist_sector;           /* 1F8 sector where ilist begins    */
+    unsigned        unused3;               /* 1FC reserved                     */
+};                                          /* 200 = 512 bytes                  */
+
+/* ============================================================
+** AP-1e: On-disk Inode  (128 bytes per inode)
+**
+** Layout exactly matches struct ufs_dinode in
+** ufs370/include/ufs/inode.h (UFSTIMEV = two UINT32 = 8 bytes).
+** ============================================================ */
+
+struct ufsd_dinode {
+    unsigned short  mode;        /* 000 file type + permissions               */
+    unsigned short  nlink;       /* 002 link count                            */
+    unsigned        filesize;    /* 004 file size in bytes                    */
+    unsigned        ctime_sec;   /* 008 creation time (seconds)               */
+    unsigned        ctime_usec;  /* 00C creation time (microseconds)          */
+    unsigned        mtime_sec;   /* 010 modified time (seconds)               */
+    unsigned        mtime_usec;  /* 014 modified time (microseconds)          */
+    unsigned        atime_sec;   /* 018 access time (seconds)                 */
+    unsigned        atime_usec;  /* 01C access time (microseconds)            */
+    char            owner[9];    /* 020 owner user id + NUL                   */
+    char            group[9];    /* 029 group name + NUL                      */
+    unsigned short  codepage;    /* 032 code page (0 = default)               */
+    unsigned        addr[19];    /* 034 block address list (direct+indirect)  */
+};                               /* 080 = 128 bytes                           */
+
+/* ============================================================
+** AP-1e: On-disk Directory Entry  (64 bytes per entry)
+**
+** Layout exactly matches struct ufs_dirent in
+** ufs370/include/ufs/dir.h (UFS_NAME_MAX=59, name[60]).
+** ============================================================ */
+
+struct ufsd_dirent {
+    unsigned        ino;         /* 00 inode number (0 = free entry)         */
+    char            name[60];    /* 04 filename: max 59 chars + NUL          */
+};                               /* 40 = 64 bytes                            */
 
 /* ============================================================
 ** AP-1d: Physical Disk Handle  (STC heap)
 **
 ** One per UFSDISK0-9 DD card.  Opened via BDAM at STC startup.
 ** Closed and freed at STC shutdown.
+**
+** AP-1e: sb field added (read from disk sector 1 at open time).
 ** ============================================================ */
 
 /* Disk flags */
@@ -62,20 +154,23 @@ struct ufsd_disk {
     void          *dcb;             /* BDAM DCB (opaque: see osio.h) */
     unsigned       flags;           /* UFSD_DISK_*                   */
     unsigned short blksize;         /* physical block size from DCB  */
+    unsigned short pad;             /* alignment                     */
+    UFSD_SB        sb;              /* superblock (read at open)     */
 };
 
 /* ============================================================
 ** AP-1d: Per-Session UFS Handle  (STC heap)
 **
 ** Allocated on SESS_OPEN, freed on SESS_CLOSE.
-** Holds per-session state: current working directory path,
-** root disk index.  Extended with inode handles in AP-1e.
+** AP-1e: cwd_ino and disk_idx added.
 ** ============================================================ */
 
 struct ufsd_ufs {
     char        eye[8];             /* "UFSD_UFS"                    */
     unsigned    flags;
     char        cwd[256];           /* current working directory path */
+    unsigned    cwd_ino;            /* inode number of cwd           */
+    int         disk_idx;           /* index into stc->disks[] (0)   */
 };
 
 struct ufsd_stc {
@@ -154,6 +249,9 @@ struct ufsd_anchor {
 
     /* AP-1c: STC ASCB pointer (for __xmpost from client address space) */
     void           *server_ascb;    /* STC ASCB, set at startup              */
+
+    /* AP-1e: STC pointer (for file dispatch access to stc->disks[]) */
+    void           *server_stc;     /* UFSD_STC *, set at startup            */
 };
 
 /* ============================================================
@@ -179,26 +277,36 @@ struct ufsd_anchor {
 #define UFSREQ_FCLOSE       0x0021U  /* AP-1e: close file            */
 #define UFSREQ_FREAD        0x0022U  /* AP-1e: read file             */
 #define UFSREQ_FWRITE       0x0023U  /* AP-1e: write file            */
-#define UFSREQ_FSEEK        0x0024U  /* AP-1e: seek file             */
+#define UFSREQ_FSEEK        0x0024U  /* AP-1e: seek (deferred)       */
 #define UFSREQ_MKDIR        0x0030U  /* AP-1e: make directory        */
 #define UFSREQ_CHGDIR       0x0031U  /* AP-1e: change directory      */
 #define UFSREQ_RMDIR        0x0032U  /* AP-1e: remove directory      */
 #define UFSREQ_REMOVE       0x0033U  /* AP-1e: remove file           */
-#define UFSREQ_DIROPEN      0x0040U  /* AP-1e: open directory        */
-#define UFSREQ_DIRREAD      0x0041U  /* AP-1e: read directory entry  */
-#define UFSREQ_DIRCLOSE     0x0042U  /* AP-1e: close directory       */
+#define UFSREQ_DIROPEN      0x0040U  /* AP-1e: open dir (deferred)   */
+#define UFSREQ_DIRREAD      0x0041U  /* AP-1e: read dir (deferred)   */
+#define UFSREQ_DIRCLOSE     0x0042U  /* AP-1e: close dir (deferred)  */
 #define UFSREQ_MAX          0x00FFU
 
 /* Return codes */
-#define UFSD_RC_OK          0   /* success                          */
-#define UFSD_RC_NOREQ       4   /* no free request block available  */
-#define UFSD_RC_CORRUPT     8   /* corrupt request block (eye fail) */
-#define UFSD_RC_BADFUNC     12  /* invalid function code            */
-#define UFSD_RC_BADSESS     16  /* invalid session token            */
-#define UFSD_RC_INVALID     20  /* validation failed                */
-#define UFSD_RC_NOTIMPL     24  /* not yet implemented              */
+#define UFSD_RC_OK          0    /* success                          */
+#define UFSD_RC_NOREQ       4    /* no free request block available  */
+#define UFSD_RC_CORRUPT     8    /* corrupt request block (eye fail) */
+#define UFSD_RC_BADFUNC     12   /* invalid function code            */
+#define UFSD_RC_BADSESS     16   /* invalid session token            */
+#define UFSD_RC_INVALID     20   /* validation failed                */
+#define UFSD_RC_NOTIMPL     24   /* not yet implemented              */
+#define UFSD_RC_NOFILE      28   /* file or path not found           */
+#define UFSD_RC_EXIST       32   /* file/dir already exists          */
+#define UFSD_RC_NOTDIR      36   /* not a directory                  */
+#define UFSD_RC_ISDIR       40   /* is a directory (not a file)      */
+#define UFSD_RC_NOSPACE     44   /* no free disk blocks              */
+#define UFSD_RC_NOINODES    48   /* no free inodes                   */
+#define UFSD_RC_IO          52   /* I/O error                        */
+#define UFSD_RC_BADFD       56   /* bad file descriptor              */
+#define UFSD_RC_NOTEMPTY    60   /* directory not empty              */
+#define UFSD_RC_NAMETOOLONG 64   /* filename exceeds UFSD_NAME_MAX   */
 
-#define UFSREQ_MAX_INLINE   256 /* max bytes in data[] field        */
+#define UFSREQ_MAX_INLINE   256  /* max bytes in data[] field        */
 
 struct ufsreq {
     char            eye[8];         /* "UFSREQ__"                  */
@@ -305,11 +413,11 @@ struct ufsd_session {
 struct ufsd_gfile {
     char            eye[8];         /* "UFSDGFIL"                  */
     unsigned        flags;          /* UFSD_GF_*                   */
-    void           *minode;         /* memory inode (UFSMIN *)     */
-    void           *vdisk;          /* virtual disk (UFSVDISK *)   */
-    unsigned        position;       /* current file offset         */
-    unsigned        open_mode;      /* mode flags from fopen       */
-    unsigned        refcount;       /* sessions referencing this   */
+    int             disk_idx;       /* index into stc->disks[]     */
+    unsigned        ino;            /* UFS inode number            */
+    unsigned        position;       /* current file offset (bytes) */
+    unsigned        open_mode;      /* UFSD_OPEN_* flags           */
+    unsigned        refcount;       /* always 1 in Phase 1         */
 };
 
 /* ============================================================
@@ -338,7 +446,7 @@ struct ufsssob {
                                     ** reads SSOBINDV+12 as R1 for the
                                     ** SSVT call; putting client_ecb at
                                     ** offset 12 passes &ECB instead of
-                                    ** the SSOB address → S0C4.        */
+                                    ** the SSOB address -> S0C4.        */
 };
 
 /* ============================================================
@@ -388,5 +496,44 @@ UFSD_SESSION *ufsd_sess_find(UFSD_ANCHOR *anchor, unsigned token)    asm("UFSD@S
 /* ufsd#ini.c (AP-1d Step 2) */
 int           ufsd_ufs_init(UFSD_STC *stc)                          asm("UFSD@UNI");
 void          ufsd_ufs_term(UFSD_STC *stc)                          asm("UFSD@UNT");
+
+/* ufsd#blk.c (AP-1e) -- BDAM block I/O */
+int  ufsd_blk_read(UFSD_DISK *disk, unsigned sector, void *buf)      asm("UFSD@BRD");
+int  ufsd_blk_write(UFSD_DISK *disk, unsigned sector, void *buf)     asm("UFSD@BWR");
+
+/* ufsd#sbl.c (AP-1e) -- superblock management */
+int  ufsd_sb_read(UFSD_DISK *disk)                                   asm("UFSD@SBR");
+int  ufsd_sb_write(UFSD_DISK *disk)                                  asm("UFSD@SBW");
+int  ufsd_sb_alloc_block(UFSD_DISK *disk, unsigned *out_sector)      asm("UFSD@SAB");
+void ufsd_sb_free_block(UFSD_DISK *disk, unsigned sector)            asm("UFSD@SFB");
+int  ufsd_sb_alloc_inode(UFSD_DISK *disk, unsigned *out_ino)         asm("UFSD@SAI");
+void ufsd_sb_free_inode(UFSD_DISK *disk, unsigned ino)               asm("UFSD@SFI");
+
+/* ufsd#ino.c (AP-1e) -- inode I/O */
+int  ufsd_ino_read(UFSD_DISK *disk, unsigned ino, UFSD_DINODE *out)           asm("UFSD@INR");
+int  ufsd_ino_write(UFSD_DISK *disk, unsigned ino, const UFSD_DINODE *in)     asm("UFSD@INW");
+
+/* ufsd#dir.c (AP-1e) -- directory and path operations */
+unsigned ufsd_dir_lookup(UFSD_DISK *disk, unsigned dir_ino,
+                         const char *name)                            asm("UFSD@DLU");
+int      ufsd_dir_add(UFSD_DISK *disk, unsigned dir_ino,
+                      const char *name, unsigned ino)                 asm("UFSD@DAD");
+int      ufsd_dir_remove(UFSD_DISK *disk, unsigned dir_ino,
+                         const char *name)                            asm("UFSD@DRM");
+unsigned ufsd_path_lookup(UFSD_DISK *disk, unsigned start_ino,
+                          const char *path,
+                          unsigned *out_parent_ino,
+                          char *out_name)                             asm("UFSD@PLU");
+
+/* ufsd#gft.c (AP-1e) -- global file table */
+int  ufsd_gft_init(UFSD_ANCHOR *anchor)                              asm("UFSD@GTI");
+void ufsd_gft_free(UFSD_ANCHOR *anchor)                              asm("UFSD@GTF");
+int  ufsd_gft_alloc(UFSD_ANCHOR *anchor, unsigned *out_idx)          asm("UFSD@GTA");
+void ufsd_gft_release(UFSD_ANCHOR *anchor, unsigned idx)             asm("UFSD@GTR");
+
+/* ufsd#fil.c (AP-1e) -- file operation dispatch */
+int  ufsd_fil_dispatch(UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
+                       UFSREQ *req,
+                       char *resp_data, unsigned *resp_data_len)      asm("UFSD@FDS");
 
 #endif /* UFSD_H */

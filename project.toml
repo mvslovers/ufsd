@@ -63,6 +63,12 @@ include = [
   "UFSD#QUE",
   "UFSD#SES",
   "UFSD#INI",
+  "UFSD#BLK",
+  "UFSD#SBL",
+  "UFSD#INO",
+  "UFSD#DIR",
+  "UFSD#GFT",
+  "UFSD#FIL",
 ]
 
 # ---------------------------------------------------------------

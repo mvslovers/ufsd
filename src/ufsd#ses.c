@@ -107,9 +107,20 @@ ufsd_sess_free(UFSD_ANCHOR *anchor)
     if (sessions) {
         /* Release any UFS handles left on active sessions */
         for (i = 0; i < UFSD_MAX_SESSIONS; i++) {
-            if ((sessions[i].flags & UFSD_SESS_ACTIVE) && sessions[i].ufs) {
-                free(sessions[i].ufs);
-                sessions[i].ufs = NULL;
+            if (sessions[i].flags & UFSD_SESS_ACTIVE) {
+                int j;
+                /* Release open file descriptors */
+                for (j = 0; j < UFSD_MAX_FD; j++) {
+                    if (sessions[i].fd_table[j].gfile_idx != UFSD_FD_UNUSED) {
+                        ufsd_gft_release(anchor, sessions[i].fd_table[j].gfile_idx);
+                        sessions[i].fd_table[j].gfile_idx = UFSD_FD_UNUSED;
+                        sessions[i].fd_table[j].flags     = 0;
+                    }
+                }
+                if (sessions[i].ufs) {
+                    free(sessions[i].ufs);
+                    sessions[i].ufs = NULL;
+                }
             }
         }
         free(sessions);
@@ -188,9 +199,11 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
         return UFSD_RC_NOREQ;
     }
     memcpy(ufs->eye, "UFSD_UFS", 8);
-    ufs->flags  = 0;
-    ufs->cwd[0] = '/';
-    ufs->cwd[1] = '\0';
+    ufs->flags    = 0;
+    ufs->cwd[0]   = '/';
+    ufs->cwd[1]   = '\0';
+    ufs->cwd_ino  = UFSD_ROOT_INO;
+    ufs->disk_idx = 0;
 
     sess = &anchor->sessions[slot];
     memcpy(sess->eye, "UFSDSESS", 8);
@@ -220,11 +233,21 @@ int
 ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)
 {
     UFSD_SESSION *sess;
+    int           j;
 
     if (!anchor || !req) return UFSD_RC_CORRUPT;
 
     sess = ufsd_sess_find(anchor, req->session_token);
     if (!sess) return UFSD_RC_BADSESS;
+
+    /* Release any still-open file descriptors */
+    for (j = 0; j < UFSD_MAX_FD; j++) {
+        if (sess->fd_table[j].gfile_idx != UFSD_FD_UNUSED) {
+            ufsd_gft_release(anchor, sess->fd_table[j].gfile_idx);
+            sess->fd_table[j].gfile_idx = UFSD_FD_UNUSED;
+            sess->fd_table[j].flags     = 0;
+        }
+    }
 
     /* Free per-session UFS handle */
     if (sess->ufs) {
