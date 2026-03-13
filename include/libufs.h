@@ -106,8 +106,10 @@ struct libufs_ufs {
 ** ============================================================ */
 
 /* Read-ahead buffer size for ufs_fgetc / ufs_fgets.
-** Must equal LIBUFS_READ_CHUNK (libufs.c): one refill = one SSI request. */
-#define LIBUFS_GETC_BUFSZ  252
+** When the 4K CSA pool path is available, one refill transfers up to 4096
+** bytes in a single SSI round-trip.  Falls back to 252 bytes (inline) if
+** the pool is exhausted -- ufs_fread handles the difference transparently. */
+#define LIBUFS_GETC_BUFSZ  4096
 
 typedef struct libufs_file  UFSFILE;
 struct libufs_file {
@@ -118,7 +120,7 @@ struct libufs_file {
     int      error;         /* last error code (UFSD_RC_*)   */
     unsigned rbuf_pos;      /* next byte to consume in rbuf  */
     unsigned rbuf_len;      /* valid bytes in rbuf           */
-    char     rbuf[LIBUFS_GETC_BUFSZ]; /* read-ahead buffer  */
+    char     rbuf[LIBUFS_GETC_BUFSZ]; /* read-ahead buffer (4K or inline fallback) */
 };
 
 /* ============================================================

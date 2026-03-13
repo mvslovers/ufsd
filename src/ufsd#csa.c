@@ -216,3 +216,40 @@ ufsd_req_free(UFSD_ANCHOR *anchor, UFSREQ *req)
 
     __prob(savekey, NULL);
 }
+
+/* ============================================================
+** ufsd_buf_alloc
+**
+** Pop one 4K buffer from the CSA buffer pool.
+** Returns NULL if the pool is exhausted (caller must fall back
+** to the 252-byte inline path).
+** Must be called from supervisor state (PSW key 0).
+** ============================================================ */
+UFSBUF *
+ufsd_buf_alloc(UFSD_ANCHOR *anchor)
+{
+    UFSBUF *buf;
+
+    buf = anchor->buf_free;
+    if (buf) {
+        anchor->buf_free = buf->next;
+        anchor->buf_count--;
+        buf->next = NULL;
+    }
+    return buf;
+}
+
+/* ============================================================
+** ufsd_buf_free
+**
+** Push one 4K buffer back onto the CSA buffer pool.
+** Must be called from supervisor state (PSW key 0).
+** ============================================================ */
+void
+ufsd_buf_free(UFSD_ANCHOR *anchor, UFSBUF *buf)
+{
+    if (!buf) return;
+    buf->next        = anchor->buf_free;
+    anchor->buf_free = buf;
+    anchor->buf_count++;
+}

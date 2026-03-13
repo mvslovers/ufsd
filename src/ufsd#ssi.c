@@ -269,6 +269,26 @@ ufsdssir(void)
     */
     if (!__super(PSWKEY0, &savekey)) {
 
+        /*
+        ** 4K buffer path: if the server filled a CSA buffer (req->buf != NULL),
+        ** copy from it directly into the client's destination buffer (buf_ptr),
+        ** then return the buffer to the pool.  bytes_read is in req->data[0..3].
+        ** The router is in key 0 and in the client's address space, so writing
+        ** to buf_ptr (key-8 client storage) is permitted.
+        ** If buf_ptr is NULL the client did not provide a destination -- fall
+        ** back silently (the bytes_read count is still returned in data[0..3]).
+        */
+        if (req->buf != NULL) {
+            if (ufsssob->buf_ptr != NULL) {
+                unsigned n = *(unsigned *)req->data; /* bytes_read */
+                if (n > ufsssob->buf_len) n = ufsssob->buf_len;
+                if (n > 0)
+                    memcpy(ufsssob->buf_ptr, req->buf->data, n);
+            }
+            ufsd_buf_free(anchor, req->buf);
+            req->buf = NULL;
+        }
+
         /* Copy result back to SSOB extension */
         ufsssob->rc        = req->rc;
         ufsssob->errno_val = req->errno_val;

@@ -537,14 +537,33 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     if (fd < 0 || fd >= UFSD_MAX_FD) return UFSD_RC_BADFD;
     if (sess->fd_table[fd].gfile_idx == UFSD_FD_UNUSED) return UFSD_RC_BADFD;
 
-    /* Clamp count: 4 bytes for bytes_read + data */
-    if (count > UFSREQ_MAX_INLINE - 4U)
-        count = UFSREQ_MAX_INLINE - 4U;
-
     gidx  = sess->fd_table[fd].gfile_idx;
     gfile = &anchor->gfiles[gidx];
     if (!(gfile->flags & UFSD_GF_USED)) return UFSD_RC_BADFD;
     if (!(gfile->open_mode & UFSD_OPEN_READ)) return UFSD_RC_INVALID;
+
+    /*
+    ** Buffer selection: use a 4K CSA pool buffer when count > inline max
+    ** AND a pool buffer is available.  If the pool is exhausted, fall back
+    ** to the inline path (clamped to 252 bytes) — slower but always works.
+    ** req->buf is set only when the 4K path is taken; the SSI router checks
+    ** req->buf after WAIT and copies to the client's buf_ptr.
+    */
+    if (count > UFSREQ_MAX_INLINE - 4U && req->buf == NULL) {
+        req->buf = ufsd_buf_alloc(anchor);  /* NULL = pool empty */
+    }
+
+    if (req->buf != NULL) {
+        /* 4K path: clamp to 4K, destination is the CSA buffer */
+        if (count > (unsigned)sizeof(req->buf->data))
+            count = (unsigned)sizeof(req->buf->data);
+        dst = req->buf->data;
+    } else {
+        /* Inline path: clamp to 252 bytes, destination is resp_data+4 */
+        if (count > UFSREQ_MAX_INLINE - 4U)
+            count = UFSREQ_MAX_INLINE - 4U;
+        dst = resp_data + 4;
+    }
 
     rc = ufsd_ino_read(disk, gfile->ino, &dino);
     if (rc != UFSD_RC_OK) return rc;
@@ -554,7 +573,6 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
     bytes_read = 0;
     rc         = UFSD_RC_OK;
-    dst        = resp_data + 4; /* first 4 bytes for bytes_read */
 
     while (bytes_read < count && gfile->position < dino.filesize) {
         blk_idx = gfile->position / (unsigned)disk->blksize;
@@ -581,7 +599,13 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     free(blk);
 
     *(unsigned *)resp_data = bytes_read;
-    *resp_data_len         = 4U + bytes_read;
+    if (req->buf != NULL) {
+        /* 4K path: bytes_read is in resp_data[0..3]; data is in req->buf */
+        *resp_data_len = 4U;
+    } else {
+        /* Inline path: bytes_read + data both in resp_data */
+        *resp_data_len = 4U + bytes_read;
+    }
     return rc;
 }
 

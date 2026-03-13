@@ -462,6 +462,11 @@ struct ufsssob {
                                     ** SSVT call; putting client_ecb at
                                     ** offset 12 passes &ECB instead of
                                     ** the SSOB address -> S0C4.        */
+    void           *buf_ptr;        /* client buffer for 4K transfers:
+                                    ** FREAD: destination in caller AS
+                                    ** FWRITE: source in caller AS
+                                    ** NULL = use inline data[] path    */
+    unsigned        buf_len;        /* capacity of buf_ptr in bytes     */
 };
 
 /* ============================================================
@@ -481,6 +486,8 @@ int          ufsd_csa_init(UFSD_ANCHOR *anchor)                      asm("UFSD@C
 void         ufsd_csa_free(UFSD_ANCHOR *anchor)                      asm("UFSD@CAF");
 UFSREQ      *ufsd_req_alloc(UFSD_ANCHOR *anchor)                     asm("UFSD@RQA");
 void         ufsd_req_free(UFSD_ANCHOR *anchor, UFSREQ *req)         asm("UFSD@RQF");
+UFSBUF      *ufsd_buf_alloc(UFSD_ANCHOR *anchor)                     asm("UFSD@BFA");
+void         ufsd_buf_free(UFSD_ANCHOR *anchor, UFSBUF *buf)         asm("UFSD@BFF");
 
 /* ufsd#sct.c (AP-1b) */
 int  ufsd_ssct_init(UFSD_ANCHOR *anchor)                             asm("UFSD@SSI");

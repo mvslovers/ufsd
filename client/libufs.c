@@ -521,8 +521,13 @@ ufs_sync(UFS *ufs)
 ** Chunked automatically for larger transfers.
 ** ============================================================ */
 
-#define LIBUFS_READ_CHUNK  252U
-#define LIBUFS_WRITE_CHUNK 248U
+/* Max bytes per SSI call for inline path (UFSREQ_MAX_INLINE - overhead) */
+#define LIBUFS_READ_INLINE  252U    /* FREAD inline: 256 - 4 (bytes_read)  */
+#define LIBUFS_WRITE_INLINE 248U    /* FWRITE inline: 256 - 8 (fd + count) */
+
+/* Max bytes per SSI call for 4K pool path */
+#define LIBUFS_READ_CHUNK   4096U
+#define LIBUFS_WRITE_CHUNK  248U    /* FWRITE 4K path: post-AP-2x */
 
 UINT32
 ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
@@ -553,7 +558,18 @@ ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
         ufsssob.token                   = fp->token;
         *(unsigned *)ufsssob.data       = (unsigned)fp->fd;
         *(unsigned *)(ufsssob.data + 4) = want;
-        ufsssob.data_len = 8U;
+        ufsssob.data_len                = 8U;
+
+        if (want > LIBUFS_READ_INLINE) {
+            /*
+            ** 4K path: provide client buffer as destination.
+            ** The SSI router copies from the CSA UFSBUF directly here.
+            ** If the server falls back to inline (pool exhausted) it
+            ** returns data in ufsssob.data[4..] -- handled below.
+            */
+            ufsssob.buf_ptr = dst + done;
+            ufsssob.buf_len = want;
+        }
 
         if (libufs_issue(&ufsssob) != SSRTOK || ufsssob.rc != UFSD_RC_OK) {
             fp->flags |= LIBUFS_F_ERR;
@@ -568,7 +584,16 @@ ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
         }
         if (got > want) got = want; /* clamp: should never happen */
 
-        memcpy(dst + done, ufsssob.data + 4, got);
+        if (ufsssob.buf_ptr != NULL && ufsssob.buf_ptr == (void *)(dst + done)) {
+            /*
+            ** 4K path taken: SSI router already wrote data to dst+done.
+            ** No memcpy needed here.
+            */
+        } else {
+            /* Inline path (want <= 252, or pool exhausted fallback):
+            ** data is in ufsssob.data[4..got+3]. */
+            memcpy(dst + done, ufsssob.data + 4, got);
+        }
         done += got;
 
         if (got < want) {
@@ -603,7 +628,7 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
 
     while (done < total) {
         want = total - done;
-        if (want > LIBUFS_WRITE_CHUNK) want = LIBUFS_WRITE_CHUNK;
+        if (want > LIBUFS_WRITE_INLINE) want = LIBUFS_WRITE_INLINE;
 
         memset(&ufsssob, 0, sizeof(ufsssob));
         memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
