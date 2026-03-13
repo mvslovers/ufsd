@@ -203,8 +203,19 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
 
         if (rc == UFSD_RC_OK) {
             anchor->stat_requests++;
-        } else {
+        } else if (rc == UFSD_RC_IO      ||
+                   rc == UFSD_RC_NOSPACE ||
+                   rc == UFSD_RC_NOINODES||
+                   rc == UFSD_RC_CORRUPT ||
+                   rc == UFSD_RC_BADFUNC ||
+                   rc == UFSD_RC_BADSESS ||
+                   rc == UFSD_RC_INVALID) {
+            /* Hard errors only: I/O failures and protocol violations.
+            ** Soft filesystem responses (NOFILE, ISDIR, EXIST, etc.)
+            ** are normal outcomes and do not increment the error counter. */
             anchor->stat_errors++;
+        } else {
+            anchor->stat_requests++;
         }
 
         __xmpost(req->client_ascb, req->client_ecb_ptr, 0);
