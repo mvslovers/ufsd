@@ -516,6 +516,7 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     UFSD_DINODE  dino;
     char        *blk;
     char        *dst;
+    char        *staging;
     int          fd;
     unsigned     count;
     unsigned     gidx;
@@ -543,25 +544,25 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     if (!(gfile->open_mode & UFSD_OPEN_READ)) return UFSD_RC_INVALID;
 
     /*
-    ** Buffer selection: use a 4K CSA pool buffer when count > inline max
-    ** AND a pool buffer is available.  If the pool is exhausted, fall back
-    ** to the inline path (clamped to 252 bytes) — slower but always works.
-    ** req->buf is set only when the 4K path is taken; the SSI router checks
-    ** req->buf after WAIT and copies to the client's buf_ptr.
+    ** Buffer selection: when count > inline max, allocate a heap staging
+    ** buffer and read into it.  ufsd_dispatch will copy to a CSA pool
+    ** buffer in its key-0 window.  If malloc fails, fall back to the
+    ** inline path (clamped to 252 bytes).
+    **
+    ** do_fread never touches CSA directly -- all CSA writes happen in
+    ** ufsd_dispatch's existing key-0 block.
     */
-    if (count > UFSREQ_MAX_INLINE - 4U && req->buf == NULL) {
-        req->buf = ufsd_buf_alloc(anchor);  /* NULL = pool empty */
-    }
-
-    if (req->buf != NULL) {
-        /* 4K path: clamp to 4K, destination is the CSA buffer */
-        if (count > (unsigned)sizeof(req->buf->data))
-            count = (unsigned)sizeof(req->buf->data);
-        dst = req->buf->data;
-    } else {
-        /* Inline path: clamp to 252 bytes, destination is resp_data+4 */
-        if (count > UFSREQ_MAX_INLINE - 4U)
+    staging = NULL;
+    if (count > UFSREQ_MAX_INLINE - 4U) {
+        if (count > 4096U) count = 4096U;
+        staging = (char *)malloc(count);
+        if (staging) {
+            dst = staging;
+        } else {
             count = UFSREQ_MAX_INLINE - 4U;
+            dst = resp_data + 4;
+        }
+    } else {
         dst = resp_data + 4;
     }
 
@@ -599,8 +600,10 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     free(blk);
 
     *(unsigned *)resp_data = bytes_read;
-    if (req->buf != NULL) {
-        /* 4K path: bytes_read is in resp_data[0..3]; data is in req->buf */
+    if (staging != NULL) {
+        /* 4K path: pass staging pointer in resp_data[4..7].
+        ** ufsd_dispatch copies to CSA buffer in key-0 and frees staging. */
+        *(char **)(resp_data + 4) = staging;
         *resp_data_len = 4U;
     } else {
         /* Inline path: bytes_read + data both in resp_data */

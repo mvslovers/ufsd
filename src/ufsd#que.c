@@ -22,6 +22,7 @@
 
 #include "ufsd.h"
 #include <string.h>
+#include <stdlib.h>
 #include <clibos.h>
 #include <clibecb.h>
 #include <clibwto.h>
@@ -195,6 +196,23 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
         if (req->func == UFSREQ_SESS_OPEN && rc == UFSD_RC_OK) {
             req->data_len          = (unsigned)sizeof(unsigned);
             *(unsigned *)req->data = out_token;
+        } else if (req->func == UFSREQ_FREAD && rc == UFSD_RC_OK
+                   && resp_data_len == 4U) {
+            /* 4K FREAD path: staging buffer pointer in resp_data[4..7].
+            ** Allocate CSA pool buffer, copy from heap staging, free it. */
+            unsigned bread;
+            char    *stg;
+
+            bread = *(unsigned *)resp_data;
+            stg   = *(char **)(resp_data + 4);
+            req->data_len = resp_data_len;
+            memcpy(req->data, resp_data, 4U);  /* bytes_read count */
+            if (stg && bread > 0) {
+                req->buf = ufsd_buf_alloc(anchor);
+                if (req->buf)
+                    memcpy(req->buf->data, stg, bread);
+                free(stg);
+            }
         } else if (resp_data_len > 0) {
             /* AP-1e: copy file op response from STC stack to CSA block */
             req->data_len = resp_data_len;

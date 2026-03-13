@@ -486,6 +486,8 @@ int          ufsd_csa_init(UFSD_ANCHOR *anchor)                      asm("UFSD@C
 void         ufsd_csa_free(UFSD_ANCHOR *anchor)                      asm("UFSD@CAF");
 UFSREQ      *ufsd_req_alloc(UFSD_ANCHOR *anchor)                     asm("UFSD@RQA");
 void         ufsd_req_free(UFSD_ANCHOR *anchor, UFSREQ *req)         asm("UFSD@RQF");
+
+/* ufsd#buf.c — buffer pool alloc/free (split from ufsd#csa.c) */
 UFSBUF      *ufsd_buf_alloc(UFSD_ANCHOR *anchor)                     asm("UFSD@BFA");
 void         ufsd_buf_free(UFSD_ANCHOR *anchor, UFSBUF *buf)         asm("UFSD@BFF");
 

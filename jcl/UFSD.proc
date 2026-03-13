@@ -22,5 +22,5 @@
 //* Additional disks are mounted via /etc/fstab in the root fs.
 //* ---------------------------------------------------------------
 //UFSDISK0 DD  DSN=IBMUSER.UFSD.UFSDISK0,DISP=OLD
-//UFSDISK1 DD  DSN=IBMUSER.UFSD.UFSDISK1,DISP=OLD
+//*UFSDISK1 DD  DSN=IBMUSER.UFSD.UFSDISK1,DISP=OLD
 //*UFSDISK2 DD  DSN=your.ufs.extra,DISP=SHR

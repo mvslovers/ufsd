@@ -72,6 +72,7 @@ include = [
   "UFSD#DIR",
   "UFSD#GFT",
   "UFSD#FIL",
+  "UFSD#BUF",
 ]
 
 # ---------------------------------------------------------------
@@ -82,7 +83,7 @@ include = [
 name = "UFSDSSIR"
 entry = "UFSDSSIR"
 options = ["LIST", "MAP", "XREF", "RENT"]
-include = ["UFSD#SSI"]
+include = ["UFSD#SSI", "UFSD#BUF"]
 
 # ---------------------------------------------------------------
 # AP-1c: Ping/Pong test client
