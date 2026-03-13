@@ -105,6 +105,10 @@ struct libufs_ufs {
 ** fd holds the UFSD per-session file descriptor index.
 ** ============================================================ */
 
+/* Read-ahead buffer size for ufs_fgetc / ufs_fgets.
+** Must equal LIBUFS_READ_CHUNK (libufs.c): one refill = one SSI request. */
+#define LIBUFS_GETC_BUFSZ  252
+
 typedef struct libufs_file  UFSFILE;
 struct libufs_file {
     char     eye[8];        /* "LIBUFSFP"                    */
@@ -112,6 +116,9 @@ struct libufs_file {
     int      fd;            /* UFSD file descriptor index    */
     unsigned flags;         /* LIBUFS_F_*                    */
     int      error;         /* last error code (UFSD_RC_*)   */
+    unsigned rbuf_pos;      /* next byte to consume in rbuf  */
+    unsigned rbuf_len;      /* valid bytes in rbuf           */
+    char     rbuf[LIBUFS_GETC_BUFSZ]; /* read-ahead buffer  */
 };
 
 /* ============================================================

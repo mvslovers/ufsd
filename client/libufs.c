@@ -637,11 +637,24 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
 INT32
 ufs_fgetc(UFSFILE *file)
 {
-    unsigned char c;
+    UINT32 n;
 
-    if (ufs_fread(&c, 1, 1, file) == 1)
-        return (INT32)(unsigned)c;
-    return UFS_EOF;
+    if (!file || file->fd < 0) return UFS_EOF;
+
+    /* Drain read-ahead buffer before issuing a new SSI request */
+    if (file->rbuf_pos < file->rbuf_len)
+        return (INT32)(unsigned char)file->rbuf[file->rbuf_pos++];
+
+    /* Buffer empty -- bail out if EOF or error already flagged */
+    if (file->flags & (LIBUFS_F_ERR | LIBUFS_F_EOF)) return UFS_EOF;
+
+    /* Refill: one ufs_fread call = one SSI request = LIBUFS_GETC_BUFSZ bytes */
+    n = ufs_fread(file->rbuf, 1, (UINT32)LIBUFS_GETC_BUFSZ, file);
+    if (n == 0) return UFS_EOF;
+    file->rbuf_len = n;
+    file->rbuf_pos = 0;
+
+    return (INT32)(unsigned char)file->rbuf[file->rbuf_pos++];
 }
 
 INT32
