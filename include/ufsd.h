@@ -415,10 +415,11 @@ struct ufsd_session {
 **   [0..3]  = ino (unsigned, 0 = end of directory)
 **   [4..7]  = filesize (unsigned)
 **   [8..9]  = mode (unsigned short)
-**   [10..11]= reserved
+**   [10..11]= nlink (unsigned short)
 **   [12..71]= name (60 bytes, NUL-terminated)
-** Total: 72 bytes */
-#define UFSD_DIRREAD_RLEN   72U
+**   [72..75]= mtime_sec (unsigned)
+** Total: 76 bytes */
+#define UFSD_DIRREAD_RLEN   76U
 
 /* Global file flags */
 #define UFSD_GF_USED        0x80000000U

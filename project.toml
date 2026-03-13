@@ -44,6 +44,9 @@ space = ["TRK", 20, 10, 10]
 [dependencies]
 "mvslovers/crent370" = ">=1.0.4"
 
+[link]
+autocall = false
+
 # ---------------------------------------------------------------
 # AP-1c: CSA Infrastructure + SSCT + SSI Router
 # ---------------------------------------------------------------
@@ -112,8 +115,8 @@ include = ["@@CRT1", "LIBUFSTS", "LIBUFS"]
 version_files = ["VERSION"]
 
 [artifacts]
-headers        = true
-header_files   = ["libufs.h"]
-modules        = true
+headers = true
+header_files = ["libufs.h"]
+modules = true
 module_members = ["LIBUFS"]
-loads          = true
+loads = true
