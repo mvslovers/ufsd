@@ -888,8 +888,10 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             *(unsigned *)resp_data = found_ino;
 
             if (ufsd_ino_read(disk, found_ino, &edino) == UFSD_RC_OK) {
-                *(unsigned *)(resp_data + 4)       = edino.filesize;
-                *(unsigned short *)(resp_data + 8) = edino.mode;
+                *(unsigned *)(resp_data + 4)        = edino.filesize;
+                *(unsigned short *)(resp_data + 8)  = edino.mode;
+                *(unsigned short *)(resp_data + 10) = edino.nlink;
+                *(unsigned *)(resp_data + 72)       = edino.mtime_sec;
             }
             memcpy(resp_data + 12, de->name, UFSD_NAME_MAX);
             resp_data[12 + UFSD_NAME_MAX] = '\0';

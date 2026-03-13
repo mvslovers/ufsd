@@ -13,6 +13,9 @@
 #ifndef LIBUFS_H
 #define LIBUFS_H
 
+#include "time64.h"     /* mtime64_t, mlocaltime64() */
+#include "clib64.h"     /* __64_from_u32, __64_mul_u32 */
+
 /* ============================================================
 ** Atomic types  (mirror ufs/types.h)
 ** ============================================================ */
@@ -36,6 +39,9 @@ typedef unsigned int    UINT32;
 #define TYPE_UINT16
 typedef unsigned short  UINT16;
 #endif
+
+/* UFS_PATH_MAX: maximum path length */
+#define UFS_PATH_MAX    256
 
 /* UFS_EOF: returned on end-of-file by character I/O functions */
 #define UFS_EOF     (-1)
@@ -114,13 +120,15 @@ struct libufs_file {
 
 typedef struct libufs_dirlist  UFSDLIST;
 struct libufs_dirlist {
-    unsigned inode_number;
-    unsigned filesize;
-    char     name[60];      /* filename + NUL                */
-    char     attr[11];      /* "drwxrwxrwx" + NUL            */
-    char     owner[9];      /* owner name + NUL              */
-    char     group[9];      /* group name + NUL              */
-    unsigned unused;
+    unsigned       inode_number;
+    unsigned       filesize;
+    char           name[60];      /* filename + NUL                */
+    char           attr[11];      /* "drwxrwxrwx" + NUL            */
+    char           owner[9];      /* owner name + NUL              */
+    char           group[9];      /* group name + NUL              */
+    unsigned short nlink;         /* hard link count               */
+    unsigned short unused;
+    mtime64_t      mtime;         /* modification time (milliseconds, mtime64_t) */
 };
 
 /* ============================================================

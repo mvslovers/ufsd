@@ -391,6 +391,14 @@ ufs_dirread(UFSDDESC *ddesc)
     memcpy(ddesc->result.name, ufsssob.data + 12, 59);
     ddesc->result.name[59] = '\0';
 
+    if (ufsssob.data_len >= 76U) {
+        unsigned mtime_sec;
+        ddesc->result.nlink = *(unsigned short *)(ufsssob.data + 10);
+        mtime_sec = *(unsigned *)(ufsssob.data + 72);
+        __64_from_u32(&ddesc->result.mtime, mtime_sec);
+        __64_mul_u32(&ddesc->result.mtime, 1000U, &ddesc->result.mtime);
+    }
+
     return &ddesc->result;
 }
 
