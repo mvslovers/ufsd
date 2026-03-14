@@ -221,6 +221,12 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
             memcpy(req->data, resp_data, resp_data_len);
         }
 
+        /* FWRITE 4K path: free the CSA buffer after dispatch consumed it */
+        if (req->func == UFSREQ_FWRITE && req->buf != NULL) {
+            ufsd_buf_free(anchor, req->buf);
+            req->buf = NULL;
+        }
+
         if (rc == UFSD_RC_OK) {
             anchor->stat_requests++;
         } else if (rc == UFSD_RC_IO      ||

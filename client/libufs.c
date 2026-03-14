@@ -33,6 +33,9 @@
 #include <iefssobh.h>
 #include <iefjssib.h>
 
+/* Forward declarations */
+static int libufs_wbuf_flush(UFSFILE *fp);
+
 /* ============================================================
 ** libufs_issue
 **
@@ -550,6 +553,10 @@ ufs_fclose(UFSFILE **fpp)
     fp = *fpp;
     if (memcmp(fp->eye, "LIBUFSFP", 8) != 0) return;
 
+    /* Flush write-behind buffer before closing */
+    if (fp->wbuf_len > 0)
+        libufs_wbuf_flush(fp);
+
     memset(&ufsssob, 0, sizeof(ufsssob));
     memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
     ufsssob.func              = UFSREQ_FCLOSE;
@@ -567,8 +574,8 @@ ufs_fclose(UFSFILE **fpp)
 void
 ufs_fsync(UFSFILE *file)
 {
-    (void)file;
-    /* no-op in Phase 1 */
+    if (file && file->wbuf_len > 0)
+        libufs_wbuf_flush(file);
 }
 
 void
@@ -592,7 +599,7 @@ ufs_sync(UFS *ufs)
 
 /* Max bytes per SSI call for 4K pool path */
 #define LIBUFS_READ_CHUNK   4096U
-#define LIBUFS_WRITE_CHUNK  248U    /* FWRITE 4K path: post-AP-2x */
+#define LIBUFS_WRITE_CHUNK  4096U   /* FWRITE 4K path via CSA buffer pool */
 
 UINT32
 ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
@@ -693,7 +700,7 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
 
     while (done < total) {
         want = total - done;
-        if (want > LIBUFS_WRITE_INLINE) want = LIBUFS_WRITE_INLINE;
+        if (want > LIBUFS_WRITE_CHUNK) want = LIBUFS_WRITE_CHUNK;
 
         memset(&ufsssob, 0, sizeof(ufsssob));
         memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
@@ -701,8 +708,17 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
         ufsssob.token                   = fp->token;
         *(unsigned *)ufsssob.data       = (unsigned)fp->fd;
         *(unsigned *)(ufsssob.data + 4) = want;
-        memcpy(ufsssob.data + 8, src + done, want);
-        ufsssob.data_len = 8U + want;
+
+        if (want > LIBUFS_WRITE_INLINE) {
+            /* 4K path: pass client buffer pointer to SSI router */
+            ufsssob.buf_ptr  = (void *)(src + done);
+            ufsssob.buf_len  = want;
+            ufsssob.data_len = 8U;  /* fd + count only, data via buf */
+        } else {
+            /* Inline path: data in ufsssob.data[8..] */
+            memcpy(ufsssob.data + 8, src + done, want);
+            ufsssob.data_len = 8U + want;
+        }
 
         if (libufs_issue(&ufsssob) != SSRTOK || ufsssob.rc != UFSD_RC_OK) {
             fp->flags |= LIBUFS_F_ERR;
@@ -747,27 +763,47 @@ ufs_fgetc(UFSFILE *file)
     return (INT32)(unsigned char)file->rbuf[file->rbuf_pos++];
 }
 
+/* Flush the write-behind buffer to the server */
+static int
+libufs_wbuf_flush(UFSFILE *fp)
+{
+    UINT32 n;
+
+    if (!fp || fp->wbuf_len == 0) return 0;
+    n = ufs_fwrite(fp->wbuf, 1, fp->wbuf_len, fp);
+    fp->wbuf_len = 0;
+    return (n > 0) ? 0 : -1;
+}
+
 INT32
 ufs_fputc(INT32 c, UFSFILE *file)
 {
-    unsigned char uc;
+    if (!file || file->fd < 0) return UFS_EOF;
+    if (file->flags & LIBUFS_F_ERR) return UFS_EOF;
 
-    uc = (unsigned char)c;
-    if (ufs_fwrite(&uc, 1, 1, file) == 1)
-        return (INT32)(unsigned)uc;
-    return UFS_EOF;
+    file->wbuf[file->wbuf_len++] = (char)c;
+    if (file->wbuf_len >= LIBUFS_PUTC_BUFSZ) {
+        if (libufs_wbuf_flush(file) != 0)
+            return UFS_EOF;
+    }
+    return (INT32)(unsigned char)c;
 }
 
 INT32
 ufs_fputs(const char *str, UFSFILE *file)
 {
     unsigned len;
+    unsigned i;
 
     if (!str || !file) return UFS_EOF;
+    if (file->flags & LIBUFS_F_ERR) return UFS_EOF;
+
     len = strlen(str);
-    if (ufs_fwrite((void *)str, 1, len, file) == len)
-        return (INT32)len;
-    return UFS_EOF;
+    for (i = 0; i < len; i++) {
+        if (ufs_fputc((INT32)(unsigned char)str[i], file) == UFS_EOF)
+            return UFS_EOF;
+    }
+    return (INT32)len;
 }
 
 char *

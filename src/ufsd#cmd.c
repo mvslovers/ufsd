@@ -94,6 +94,7 @@ cmd_stats(UFSD_STC *ufsd)
         wtof("UFSD013I TRACE ENTRIES:  %u", anchor->trace_size);
         wtof("UFSD014I REQUESTS SERVED: %u", anchor->stat_requests);
         wtof("UFSD015I ERRORS:          %u", anchor->stat_errors);
+        wtof("UFSD017I POSTS SAVED:     %u", anchor->stat_posts_saved);
     }
 }
 

@@ -305,6 +305,14 @@ do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
     if (existing_ino != 0) return UFSD_RC_EXIST;
     if (parent_ino == 0 || dir_name[0] == '\0') return UFSD_RC_NOFILE;
 
+    /* Guard: intermediate directory missing (see do_fopen comment) */
+    {
+        const char *slash = strrchr(path, '/');
+        const char *base  = slash ? slash + 1 : path;
+        if (strcmp(dir_name, base) != 0)
+            return UFSD_RC_NOFILE;
+    }
+
     if (ufsd_sb_alloc_inode(disk, &new_ino) != UFSD_RC_OK)
         return UFSD_RC_NOINODES;
 
@@ -575,9 +583,17 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             if (ufsd_sb_write(disk) != UFSD_RC_OK) return UFSD_RC_IO;
             new_ino = file_ino;
         } else {
-            /* Create new file */
+            /* Create new file.
+            ** Guard: if path_lookup stopped at an intermediate component
+            ** (e.g. "/test/bar" where "test" doesn't exist), file_name
+            ** will be "test" — not the final component "bar".  Detect
+            ** this by comparing file_name with the basename of path. */
+            const char *slash = strrchr(path, '/');
+            const char *base  = slash ? slash + 1 : path;
             if (parent_ino == 0 || file_name[0] == '\0')
                 return UFSD_RC_NOFILE;
+            if (strcmp(file_name, base) != 0)
+                return UFSD_RC_NOFILE;  /* intermediate dir missing */
             if (ufsd_sb_alloc_inode(disk, &new_ino) != UFSD_RC_OK)
                 return UFSD_RC_NOINODES;
             memset(&dino, 0, sizeof(dino));
@@ -823,7 +839,12 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     if (req->data_len < 8U) return UFSD_RC_INVALID;
     fd    = (int)*(unsigned *)req->data;
     count = *(unsigned *)(req->data + 4);
-    src   = req->data + 8;
+
+    /* 4K path: data is in req->buf->data; inline path: data in req->data+8 */
+    if (req->buf != NULL)
+        src = req->buf->data;
+    else
+        src = req->data + 8;
 
     if (fd < 0 || fd >= UFSD_MAX_FD) return UFSD_RC_BADFD;
     if (sess->fd_table[fd].gfile_idx == UFSD_FD_UNUSED) return UFSD_RC_BADFD;
@@ -833,7 +854,7 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
         *resp_data_len         = 4U;
         return UFSD_RC_OK;
     }
-    if (req->data_len < 8U + count) return UFSD_RC_INVALID;
+    if (req->buf == NULL && req->data_len < 8U + count) return UFSD_RC_INVALID;
 
     gidx  = sess->fd_table[fd].gfile_idx;
     gfile = &anchor->gfiles[gidx];
