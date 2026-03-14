@@ -89,17 +89,166 @@ dir_is_empty(UFSD_DISK *disk, unsigned dir_ino)
 }
 
 /* ============================================================
-** ufsd_stamp
+** Indirect block helpers
 **
-** Set ctime/mtime/atime on a UFSD_DINODE to current wallclock.
-** Uses mtime64() from crent370's time64 package (milliseconds
-** since Unix epoch).  The inode stores sec + usec.
+** addr[0..15]  = direct block addresses
+** addr[16]     = single indirect (block of UINT32 addresses)
+** addr[17..18] = double/triple indirect (not implemented)
+**
+** With 4K blocks: 1024 entries per indirect block.
+** Max file size with single indirect: 16*4K + 1024*4K = 4.06 MB.
 ** ============================================================ */
+
+#define UFSD_NADDR_SINDIRECT  16U  /* index of single indirect pointer */
+
+/* Resolve logical block index to physical block number.
+** Returns physical block number, or 0 if not allocated. */
+static unsigned
+blk_resolve(UFSD_DISK *disk, UFSD_DINODE *dino, unsigned blk_idx)
+{
+    unsigned *ind;
+    char     *ibuf;
+    unsigned  phys;
+    unsigned  ind_off;
+
+    if (blk_idx < UFSD_NADDR_DIRECT)
+        return dino->addr[blk_idx];
+
+    /* Single indirect */
+    if (blk_idx < UFSD_NADDR_DIRECT + (unsigned)disk->blksize / 4U) {
+        if (dino->addr[UFSD_NADDR_SINDIRECT] == 0) return 0;
+
+        ibuf = (char *)malloc(disk->blksize);
+        if (!ibuf) return 0;
+        if (ufsd_blk_read(disk, dino->addr[UFSD_NADDR_SINDIRECT], ibuf)
+            != UFSD_RC_OK) {
+            free(ibuf);
+            return 0;
+        }
+        ind     = (unsigned *)ibuf;
+        ind_off = blk_idx - UFSD_NADDR_DIRECT;
+        phys    = ind[ind_off];
+        free(ibuf);
+        return phys;
+    }
+
+    return 0;  /* double/triple indirect not implemented */
+}
+
+/* Allocate a data block for logical index blk_idx.
+** Handles indirect block allocation if needed.
+** On success, stores the physical block number in *out_sector,
+** sets *sb_dirty = 1, and returns UFSD_RC_OK.
+** The caller must zero the data block if it is new. */
+static int
+blk_alloc_at(UFSD_DISK *disk, UFSD_DINODE *dino,
+             unsigned blk_idx, unsigned *out_sector, int *sb_dirty)
+{
+    unsigned  ind_blk;
+    unsigned  new_blk;
+    unsigned  ind_off;
+    unsigned *ind;
+    char     *ibuf;
+    int       rc;
+
+    if (blk_idx < UFSD_NADDR_DIRECT) {
+        /* Direct block */
+        if (ufsd_sb_alloc_block(disk, &new_blk) != UFSD_RC_OK)
+            return UFSD_RC_NOSPACE;
+        dino->addr[blk_idx] = new_blk;
+        *out_sector = new_blk;
+        *sb_dirty   = 1;
+        return UFSD_RC_OK;
+    }
+
+    /* Single indirect */
+    if (blk_idx >= UFSD_NADDR_DIRECT + (unsigned)disk->blksize / 4U)
+        return UFSD_RC_NOSPACE;  /* beyond single indirect range */
+
+    ind_off = blk_idx - UFSD_NADDR_DIRECT;
+
+    ibuf = (char *)malloc(disk->blksize);
+    if (!ibuf) return UFSD_RC_IO;
+
+    /* Allocate indirect block itself if it does not exist yet */
+    if (dino->addr[UFSD_NADDR_SINDIRECT] == 0) {
+        if (ufsd_sb_alloc_block(disk, &ind_blk) != UFSD_RC_OK) {
+            free(ibuf);
+            return UFSD_RC_NOSPACE;
+        }
+        memset(ibuf, 0, disk->blksize);
+        dino->addr[UFSD_NADDR_SINDIRECT] = ind_blk;
+        *sb_dirty = 1;
+    } else {
+        if (ufsd_blk_read(disk, dino->addr[UFSD_NADDR_SINDIRECT], ibuf)
+            != UFSD_RC_OK) {
+            free(ibuf);
+            return UFSD_RC_IO;
+        }
+    }
+
+    /* Allocate the data block */
+    if (ufsd_sb_alloc_block(disk, &new_blk) != UFSD_RC_OK) {
+        free(ibuf);
+        return UFSD_RC_NOSPACE;
+    }
+
+    ind = (unsigned *)ibuf;
+    ind[ind_off] = new_blk;
+
+    /* Write updated indirect block back */
+    rc = ufsd_blk_write(disk, dino->addr[UFSD_NADDR_SINDIRECT], ibuf);
+    free(ibuf);
+    if (rc != UFSD_RC_OK) return UFSD_RC_IO;
+
+    *out_sector = new_blk;
+    *sb_dirty   = 1;
+    return UFSD_RC_OK;
+}
+
+/* Free all data blocks of an inode, including indirect blocks.
+** Does NOT free the inode itself. */
+static void
+blk_free_all(UFSD_DISK *disk, UFSD_DINODE *dino)
+{
+    unsigned  i;
+    unsigned  nind;
+    unsigned *ind;
+    char     *ibuf;
+
+    /* Free direct blocks */
+    for (i = 0; i < UFSD_NADDR_DIRECT; i++) {
+        if (dino->addr[i] != 0) {
+            ufsd_sb_free_block(disk, dino->addr[i]);
+            dino->addr[i] = 0;
+        }
+    }
+
+    /* Free single indirect block and its data blocks */
+    if (dino->addr[UFSD_NADDR_SINDIRECT] != 0) {
+        ibuf = (char *)malloc(disk->blksize);
+        if (ibuf) {
+            if (ufsd_blk_read(disk, dino->addr[UFSD_NADDR_SINDIRECT], ibuf)
+                == UFSD_RC_OK) {
+                ind  = (unsigned *)ibuf;
+                nind = (unsigned)disk->blksize / 4U;
+                for (i = 0; i < nind; i++) {
+                    if (ind[i] != 0)
+                        ufsd_sb_free_block(disk, ind[i]);
+                }
+            }
+            free(ibuf);
+        }
+        ufsd_sb_free_block(disk, dino->addr[UFSD_NADDR_SINDIRECT]);
+        dino->addr[UFSD_NADDR_SINDIRECT] = 0;
+    }
+}
+
 /* ============================================================
 ** ufsd_stamp
 **
 ** Set ctime/mtime/atime on a UFSD_DINODE to current wallclock.
-** Stores in v2 format (raw mtime64_t across both 32-bit fields)
+** Stores in v2 format (mtime64_t = milliseconds since epoch)
 ** to match ufs370's storage convention.
 ** ============================================================ */
 static void
@@ -108,9 +257,9 @@ ufsd_stamp(UFSD_DINODE *dino)
     mtime64_t now;
 
     mtime64(&now);
-    memcpy(&dino->ctime_sec, &now, 8);
-    memcpy(&dino->mtime_sec, &now, 8);
-    memcpy(&dino->atime_sec, &now, 8);
+    dino->ctime.v2 = now;
+    dino->mtime.v2 = now;
+    dino->atime.v2 = now;
 }
 
 /* ============================================================
@@ -231,7 +380,6 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
     char         dir_name[UFSD_NAME_MAX + 1];
     unsigned     parent_ino;
     unsigned     dir_ino;
-    unsigned     i;
     int          rc;
 
     (void)resp_data;
@@ -262,10 +410,7 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
     rc = ufsd_dir_remove(disk, parent_ino, dir_name);
     if (rc != UFSD_RC_OK) return rc;
 
-    for (i = 0; i < UFSD_NADDR_DIRECT; i++) {
-        if (dino.addr[i] != 0)
-            ufsd_sb_free_block(disk, dino.addr[i]);
-    }
+    blk_free_all(disk, &dino);
     ufsd_sb_free_inode(disk, dir_ino);
 
     return ufsd_sb_write(disk);
@@ -332,7 +477,6 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
     char         file_name[UFSD_NAME_MAX + 1];
     unsigned     parent_ino;
     unsigned     file_ino;
-    unsigned     i;
     int          rc;
 
     (void)resp_data;
@@ -363,10 +507,7 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
 
     if (dino.nlink > 0) dino.nlink--;
     if (dino.nlink == 0) {
-        for (i = 0; i < UFSD_NADDR_DIRECT; i++) {
-            if (dino.addr[i] != 0)
-                ufsd_sb_free_block(disk, dino.addr[i]);
-        }
+        blk_free_all(disk, &dino);
         ufsd_sb_free_inode(disk, file_ino);
     } else {
         ufsd_ino_write(disk, file_ino, &dino);
@@ -399,7 +540,6 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     unsigned     new_ino;
     unsigned     gidx;
     unsigned     fd;
-    unsigned     i;
     int          j;
     int          rc;
 
@@ -427,12 +567,7 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             if (ufsd_ino_read(disk, file_ino, &dino) != UFSD_RC_OK)
                 return UFSD_RC_IO;
             if ((dino.mode & UFSD_IFMT) == UFSD_IFDIR) return UFSD_RC_ISDIR;
-            for (i = 0; i < UFSD_NADDR_DIRECT; i++) {
-                if (dino.addr[i] != 0) {
-                    ufsd_sb_free_block(disk, dino.addr[i]);
-                    dino.addr[i] = 0;
-                }
-            }
+            blk_free_all(disk, &dino);
             dino.filesize = 0;
             ufsd_stamp(&dino);
             if (ufsd_ino_write(disk, file_ino, &dino) != UFSD_RC_OK)
@@ -610,12 +745,15 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     rc         = UFSD_RC_OK;
 
     while (bytes_read < count && gfile->position < dino.filesize) {
+        unsigned phys;
+
         blk_idx = gfile->position / (unsigned)disk->blksize;
         blk_off = gfile->position % (unsigned)disk->blksize;
 
-        if (blk_idx >= UFSD_NADDR_DIRECT || dino.addr[blk_idx] == 0) break;
+        phys = blk_resolve(disk, &dino, blk_idx);
+        if (phys == 0) break;
 
-        if (ufsd_blk_read(disk, dino.addr[blk_idx], blk) != UFSD_RC_OK) {
+        if (ufsd_blk_read(disk, phys, blk) != UFSD_RC_OK) {
             rc = UFSD_RC_IO;
             break;
         }
@@ -716,22 +854,13 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
         blk_idx = gfile->position / (unsigned)disk->blksize;
         blk_off = gfile->position % (unsigned)disk->blksize;
 
-        if (blk_idx >= UFSD_NADDR_DIRECT) {
-            rc = UFSD_RC_NOSPACE;
-            break;
-        }
-
-        if (dino.addr[blk_idx] == 0) {
-            /* Allocate new data block */
-            if (ufsd_sb_alloc_block(disk, &sector) != UFSD_RC_OK) {
-                rc = UFSD_RC_NOSPACE;
-                break;
-            }
+        sector = blk_resolve(disk, &dino, blk_idx);
+        if (sector == 0) {
+            /* Allocate new data block (direct or indirect) */
+            rc = blk_alloc_at(disk, &dino, blk_idx, &sector, &sb_dirty);
+            if (rc != UFSD_RC_OK) break;
             memset(blk, 0, disk->blksize);
-            dino.addr[blk_idx] = sector;
-            sb_dirty = 1;
         } else {
-            sector = dino.addr[blk_idx];
             if (ufsd_blk_read(disk, sector, blk) != UFSD_RC_OK) {
                 rc = UFSD_RC_IO;
                 break;
@@ -957,14 +1086,16 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
                 *(unsigned short *)(resp_data + 10) = edino.nlink;
 
                 /* v1/v2 timestamp detection (matches ufs370):
-                ** v1: useconds < 1000000 → sec+usec pair
+                ** v1: useconds < 1000000 -> sec+usec pair
                 ** v2: raw mtime64_t across both fields */
-                if (edino.mtime_usec < 1000000U) {
-                    __64_from_u32(&mt, edino.mtime_sec);
+                if (edino.mtime.v1.useconds < 1000000U) {
+                    /* v1: convert seconds + usec to milliseconds */
+                    __64_from_u32(&mt, edino.mtime.v1.seconds);
                     __64_mul_u32(&mt, 1000U, &mt);
-                    __64_add_u32(&mt, edino.mtime_usec / 1000U, &mt);
+                    __64_add_u32(&mt, edino.mtime.v1.useconds / 1000U, &mt);
                 } else {
-                    memcpy(&mt, &edino.mtime_sec, 8);
+                    /* v2: already mtime64_t (milliseconds) */
+                    mt = edino.mtime.v2;
                 }
                 memcpy(resp_data + 72, &mt, 8);
 

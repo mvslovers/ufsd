@@ -17,6 +17,23 @@
 #include <clibcib.h>
 #include <clibssct.h>
 #include <clibssvt.h>
+#include <time64.h>
+#include <clib64.h>
+
+/* ============================================================
+** UFSTIMEV — Dual-format on-disk timestamp (8 bytes)
+**
+** Matches ufs370 UFSTIMEV.  On disk the 8 bytes are either:
+**   v1 (legacy): { seconds, useconds } — detected by usec < 1000000
+**   v2 (current): mtime64_t (__64)     — milliseconds since epoch
+**
+** ufs370 writes v2 exclusively.  UFSD also writes v2.
+** v1 inodes from pre-ufs370 filesystems are detected on read.
+** ============================================================ */
+typedef union ufstimev {
+    struct { unsigned seconds; unsigned useconds; } v1;
+    mtime64_t v2;
+} UFSTIMEV;
 
 /* ============================================================
 ** Common status flags
@@ -101,19 +118,16 @@ struct ufsd_sb {
 ** AP-1e: On-disk Inode  (128 bytes per inode)
 **
 ** Layout exactly matches struct ufs_dinode in
-** ufs370/include/ufs/inode.h (UFSTIMEV = two UINT32 = 8 bytes).
+** ufs370/include/ufs/inode.h.  Timestamps use UFSTIMEV (v1/v2).
 ** ============================================================ */
 
 struct ufsd_dinode {
     unsigned short  mode;        /* 000 file type + permissions               */
     unsigned short  nlink;       /* 002 link count                            */
     unsigned        filesize;    /* 004 file size in bytes                    */
-    unsigned        ctime_sec;   /* 008 creation time (seconds)               */
-    unsigned        ctime_usec;  /* 00C creation time (microseconds)          */
-    unsigned        mtime_sec;   /* 010 modified time (seconds)               */
-    unsigned        mtime_usec;  /* 014 modified time (microseconds)          */
-    unsigned        atime_sec;   /* 018 access time (seconds)                 */
-    unsigned        atime_usec;  /* 01C access time (microseconds)            */
+    UFSTIMEV        ctime;       /* 008 creation time (UFSTIMEV, 8 bytes)     */
+    UFSTIMEV        mtime;       /* 010 modification time (UFSTIMEV, 8 bytes) */
+    UFSTIMEV        atime;       /* 018 access time (UFSTIMEV, 8 bytes)      */
     char            owner[9];    /* 020 owner user id + NUL                   */
     char            group[9];    /* 029 group name + NUL                      */
     unsigned short  codepage;    /* 032 code page (0 = default)               */
