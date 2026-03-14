@@ -11,7 +11,7 @@
 ** AP-1e Simplifications (all intentional for Phase 1 PoC):
 **   - Direct blocks only (addr[0..15]); indirect blocks deferred
 **   - No permission/ACEE checks
-**   - Timestamps written as 0
+**   - Timestamps: mtime64() wallclock (AP-1g)
 **   - Superblock freeblock cache refill deferred
 **   - No inode caching (direct BDAM reads every time)
 **   - fseek deferred
@@ -39,6 +39,8 @@
 #include "ufsd.h"
 #include <string.h>
 #include <stdlib.h>
+#include "time64.h"
+#include "clib64.h"
 
 /* ============================================================
 ** Internal helpers (static)
@@ -84,6 +86,31 @@ dir_is_empty(UFSD_DISK *disk, unsigned dir_ino)
 
     free(buf);
     return empty;
+}
+
+/* ============================================================
+** ufsd_stamp
+**
+** Set ctime/mtime/atime on a UFSD_DINODE to current wallclock.
+** Uses mtime64() from crent370's time64 package (milliseconds
+** since Unix epoch).  The inode stores sec + usec.
+** ============================================================ */
+/* ============================================================
+** ufsd_stamp
+**
+** Set ctime/mtime/atime on a UFSD_DINODE to current wallclock.
+** Stores in v2 format (raw mtime64_t across both 32-bit fields)
+** to match ufs370's storage convention.
+** ============================================================ */
+static void
+ufsd_stamp(UFSD_DINODE *dino)
+{
+    mtime64_t now;
+
+    mtime64(&now);
+    memcpy(&dino->ctime_sec, &now, 8);
+    memcpy(&dino->mtime_sec, &now, 8);
+    memcpy(&dino->atime_sec, &now, 8);
 }
 
 /* ============================================================
@@ -168,6 +195,9 @@ do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
     dino.nlink    = 2;
     dino.filesize = 2U * UFSD_DIRENT_SIZE;
     dino.addr[0]  = new_blk;
+    ufsd_stamp(&dino);
+    memcpy(dino.owner, sess->owner, 9);
+    memcpy(dino.group, sess->group, 9);
 
     if (ufsd_ino_write(disk, new_ino, &dino) != UFSD_RC_OK) {
         ufsd_sb_free_block(disk, new_blk);
@@ -404,6 +434,7 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
                 }
             }
             dino.filesize = 0;
+            ufsd_stamp(&dino);
             if (ufsd_ino_write(disk, file_ino, &dino) != UFSD_RC_OK)
                 return UFSD_RC_IO;
             if (ufsd_sb_write(disk) != UFSD_RC_OK) return UFSD_RC_IO;
@@ -417,6 +448,9 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             memset(&dino, 0, sizeof(dino));
             dino.mode  = (unsigned short)(UFSD_IFREG | 0644U);
             dino.nlink = 1;
+            ufsd_stamp(&dino);
+            memcpy(dino.owner, sess->owner, 9);
+            memcpy(dino.group, sess->group, 9);
             if (ufsd_ino_write(disk, new_ino, &dino) != UFSD_RC_OK) {
                 ufsd_sb_free_inode(disk, new_ino);
                 return UFSD_RC_IO;
@@ -721,10 +755,11 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
     free(blk);
 
-    /* Update inode filesize if position advanced beyond EOF */
+    /* Update inode filesize and mtime after successful write */
     if (bytes_written > 0) {
         if (gfile->position > dino.filesize)
             dino.filesize = gfile->position;
+        ufsd_stamp(&dino);
         ufsd_ino_write(disk, gfile->ino, &dino);
         if (sb_dirty)
             ufsd_sb_write(disk);
@@ -915,10 +950,26 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             *(unsigned *)resp_data = found_ino;
 
             if (ufsd_ino_read(disk, found_ino, &edino) == UFSD_RC_OK) {
+                mtime64_t mt;
+
                 *(unsigned *)(resp_data + 4)        = edino.filesize;
                 *(unsigned short *)(resp_data + 8)  = edino.mode;
                 *(unsigned short *)(resp_data + 10) = edino.nlink;
-                *(unsigned *)(resp_data + 72)       = edino.mtime_sec;
+
+                /* v1/v2 timestamp detection (matches ufs370):
+                ** v1: useconds < 1000000 → sec+usec pair
+                ** v2: raw mtime64_t across both fields */
+                if (edino.mtime_usec < 1000000U) {
+                    __64_from_u32(&mt, edino.mtime_sec);
+                    __64_mul_u32(&mt, 1000U, &mt);
+                    __64_add_u32(&mt, edino.mtime_usec / 1000U, &mt);
+                } else {
+                    memcpy(&mt, &edino.mtime_sec, 8);
+                }
+                memcpy(resp_data + 72, &mt, 8);
+
+                memcpy(resp_data + 80, edino.owner, 9);
+                memcpy(resp_data + 89, edino.group, 9);
             }
             memcpy(resp_data + 12, de->name, UFSD_NAME_MAX);
             resp_data[12 + UFSD_NAME_MAX] = '\0';

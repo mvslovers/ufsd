@@ -399,6 +399,9 @@ struct ufsd_session {
     unsigned        client_asid;    /* client address space        */
     unsigned        flags;          /* UFSD_SESS_*                 */
     void           *ufs;            /* server-side UFS handle      */
+    char            owner[9];       /* client userid + NUL          */
+    char            group[9];       /* client group  + NUL          */
+    char            pad_ses[2];     /* alignment                   */
     UFSD_FD         fd_table[UFSD_MAX_FD];
 };
 
@@ -417,9 +420,11 @@ struct ufsd_session {
 **   [8..9]  = mode (unsigned short)
 **   [10..11]= nlink (unsigned short)
 **   [12..71]= name (60 bytes, NUL-terminated)
-**   [72..75]= mtime_sec (unsigned)
-** Total: 76 bytes */
-#define UFSD_DIRREAD_RLEN   76U
+**   [72..79]= mtime (mtime64_t, 8 bytes, ms since epoch)
+**   [80..88]= owner (9 bytes, NUL-terminated)
+**   [89..97]= group (9 bytes, NUL-terminated)
+** Total: 98 bytes */
+#define UFSD_DIRREAD_RLEN   98U
 
 /* Global file flags */
 #define UFSD_GF_USED        0x80000000U

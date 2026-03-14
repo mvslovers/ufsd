@@ -40,6 +40,7 @@
 #include <clibssct.h>
 #include <iefssobh.h>
 #include <iefjssib.h>
+#include <racf.h>
 
 /* ============================================================
 ** Internal helpers (static, inline in the CSA load module)
@@ -235,6 +236,26 @@ ufsdssir(void)
     if (dlen > UFSREQ_MAX_INLINE) dlen = UFSREQ_MAX_INLINE;
     req->data_len = dlen;
     if (dlen > 0) memcpy(req->data, ufsssob->data, dlen);
+
+    /* SESS_OPEN: capture client userid/group from ACEE.
+    ** We are in the client's address space in key-0, so
+    ** racf_get_acee() returns the client's ACEE.
+    ** aceeuser/aceegrp are length-prefixed: byte 0 = len,
+    ** bytes 1..8 = name.  We strip the length byte and
+    ** store a plain NUL-terminated string. */
+    if (ufsssob->func == UFSREQ_SESS_OPEN) {
+        ACEE *acee = racf_get_acee();
+        if (acee) {
+            unsigned char ulen = (unsigned char)acee->aceeuser[0];
+            unsigned char glen = (unsigned char)acee->aceegrp[0];
+            if (ulen > 8) ulen = 8;
+            if (glen > 8) glen = 8;
+            memset(req->data, 0, 18);
+            memcpy(req->data,     acee->aceeuser + 1, ulen);
+            memcpy(req->data + 9, acee->aceegrp  + 1, glen);
+            req->data_len = 18;
+        }
+    }
 
     /* Save ECB pointer in a local (stack) variable before leaving key 0,
     ** so WAIT below can use it without reading from CSA in problem state. */

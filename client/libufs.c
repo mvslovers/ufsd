@@ -309,13 +309,94 @@ ufs_remove(UFS *ufs, const char *path)
 ** Directory listing (AP-1f)
 ** ============================================================ */
 
+/* strcmp-style comparator for qsort: sort by name, "." and ".." first */
+static int
+dirlist_cmp(const void *a, const void *b)
+{
+    const UFSDLIST *ea = (const UFSDLIST *)a;
+    const UFSDLIST *eb = (const UFSDLIST *)b;
+    int da;
+    int db;
+
+    /* "." and ".." always sort first */
+    da = (ea->name[0] == '.' && (ea->name[1] == '\0' ||
+          (ea->name[1] == '.' && ea->name[2] == '\0')));
+    db = (eb->name[0] == '.' && (eb->name[1] == '\0' ||
+          (eb->name[1] == '.' && eb->name[2] == '\0')));
+    if (da != db) return db - da;  /* dot entries first */
+    if (da && db) return strcmp(ea->name, eb->name);  /* "." before ".." */
+
+    return strcmp(ea->name, eb->name);
+}
+
+/* Read one raw DIRREAD entry from the server, populate a UFSDLIST */
+static int
+dirread_one(UFSDDESC *ddesc, UFSDLIST *out)
+{
+    UFSSSOB        ufsssob;
+    unsigned       ino;
+    unsigned short mode;
+
+    memset(&ufsssob, 0, sizeof(ufsssob));
+    memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
+    ufsssob.func              = UFSREQ_DIRREAD;
+    ufsssob.token             = ddesc->token;
+    *(unsigned *)ufsssob.data = ddesc->rec;
+    ufsssob.data_len          = 4U;
+
+    if (libufs_issue(&ufsssob) != SSRTOK)    return -1;
+    if (ufsssob.rc != UFSD_RC_OK)            return -1;
+    if (ufsssob.data_len < 4U)               return -1;
+
+    ino = *(unsigned *)ufsssob.data;
+    if (ino == 0) return 0;  /* end of directory */
+
+    memset(out, 0, sizeof(*out));
+    out->inode_number = ino;
+    out->filesize     = *(unsigned *)(ufsssob.data + 4);
+
+    mode = *(unsigned short *)(ufsssob.data + 8);
+    out->attr[0]  = ((mode & 0xF000U) == 0x4000U) ? 'd' : '-';
+    out->attr[1]  = 'r';
+    out->attr[2]  = 'w';
+    out->attr[3]  = 'x';
+    out->attr[4]  = 'r';
+    out->attr[5]  = '-';
+    out->attr[6]  = 'x';
+    out->attr[7]  = 'r';
+    out->attr[8]  = '-';
+    out->attr[9]  = 'x';
+    out->attr[10] = '\0';
+
+    memcpy(out->name, ufsssob.data + 12, 59);
+    out->name[59] = '\0';
+
+    if (ufsssob.data_len >= 80U) {
+        out->nlink = *(unsigned short *)(ufsssob.data + 10);
+        memcpy(&out->mtime, ufsssob.data + 72, 8);
+    }
+    if (ufsssob.data_len >= 98U) {
+        memcpy(out->owner, ufsssob.data + 80, 9);
+        out->owner[8] = '\0';
+        memcpy(out->group, ufsssob.data + 89, 9);
+        out->group[8] = '\0';
+    }
+
+    return 1;  /* got an entry */
+}
+
 UFSDDESC *
 ufs_diropen(UFS *ufs, const char *path, const char *pattern)
 {
     UFSSSOB   ufsssob;
     UFSDDESC *ddesc;
+    UFSDLIST *entries;
+    UFSDLIST  entry;
     unsigned  pathlen;
+    unsigned  cap;
+    unsigned  n;
     int       fd;
+    int       rc;
 
     (void)pattern;  /* Phase 1: no pattern matching */
 
@@ -344,61 +425,44 @@ ufs_diropen(UFS *ufs, const char *path, const char *pattern)
     memcpy(ddesc->eye, "LIBUFSDD", 8);
     ddesc->token = ufs->token;
     ddesc->rec   = (unsigned)fd;
+
+    /* Read all entries and sort them */
+    cap     = 32;
+    n       = 0;
+    entries = (UFSDLIST *)malloc(cap * sizeof(UFSDLIST));
+    if (!entries) { free(ddesc); return NULL; }
+
+    for (;;) {
+        rc = dirread_one(ddesc, &entry);
+        if (rc <= 0) break;
+
+        if (n >= cap) {
+            UFSDLIST *tmp;
+            cap *= 2;
+            tmp = (UFSDLIST *)realloc(entries, cap * sizeof(UFSDLIST));
+            if (!tmp) break;
+            entries = tmp;
+        }
+        entries[n++] = entry;
+    }
+
+    if (n > 0) qsort(entries, n, sizeof(UFSDLIST), dirlist_cmp);
+
+    ddesc->entries  = entries;
+    ddesc->nentries = n;
+    ddesc->cur      = 0;
+
     return ddesc;
 }
 
 UFSDLIST *
 ufs_dirread(UFSDDESC *ddesc)
 {
-    UFSSSOB        ufsssob;
-    unsigned       ino;
-    unsigned short mode;
-
     if (!ddesc) return NULL;
     if (memcmp(ddesc->eye, "LIBUFSDD", 8) != 0) return NULL;
+    if (!ddesc->entries || ddesc->cur >= ddesc->nentries) return NULL;
 
-    memset(&ufsssob, 0, sizeof(ufsssob));
-    memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
-    ufsssob.func              = UFSREQ_DIRREAD;
-    ufsssob.token             = ddesc->token;
-    *(unsigned *)ufsssob.data = ddesc->rec;
-    ufsssob.data_len          = 4U;
-
-    if (libufs_issue(&ufsssob) != SSRTOK)    return NULL;
-    if (ufsssob.rc != UFSD_RC_OK)            return NULL;
-    if (ufsssob.data_len < 4U)               return NULL;
-
-    ino = *(unsigned *)ufsssob.data;
-    if (ino == 0) return NULL;  /* end of directory */
-
-    memset(&ddesc->result, 0, sizeof(ddesc->result));
-    ddesc->result.inode_number = ino;
-    ddesc->result.filesize     = *(unsigned *)(ufsssob.data + 4);
-
-    mode = *(unsigned short *)(ufsssob.data + 8);
-    ddesc->result.attr[0]  = ((mode & 0xF000U) == 0x4000U) ? 'd' : '-';
-    ddesc->result.attr[1]  = 'r';
-    ddesc->result.attr[2]  = 'w';
-    ddesc->result.attr[3]  = 'x';
-    ddesc->result.attr[4]  = 'r';
-    ddesc->result.attr[5]  = '-';
-    ddesc->result.attr[6]  = 'x';
-    ddesc->result.attr[7]  = 'r';
-    ddesc->result.attr[8]  = '-';
-    ddesc->result.attr[9]  = 'x';
-    ddesc->result.attr[10] = '\0';
-
-    memcpy(ddesc->result.name, ufsssob.data + 12, 59);
-    ddesc->result.name[59] = '\0';
-
-    if (ufsssob.data_len >= 76U) {
-        unsigned mtime_sec;
-        ddesc->result.nlink = *(unsigned short *)(ufsssob.data + 10);
-        mtime_sec = *(unsigned *)(ufsssob.data + 72);
-        __64_from_u32(&ddesc->result.mtime, mtime_sec);
-        __64_mul_u32(&ddesc->result.mtime, 1000U, &ddesc->result.mtime);
-    }
-
+    ddesc->result = ddesc->entries[ddesc->cur++];
     return &ddesc->result;
 }
 
@@ -422,6 +486,7 @@ ufs_dirclose(UFSDDESC **pddesc)
 
     libufs_issue(&ufsssob);  /* best-effort */
 
+    if (ddesc->entries) free(ddesc->entries);
     free(ddesc);
     *pddesc = NULL;
 }

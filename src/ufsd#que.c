@@ -97,11 +97,13 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
     char            resp_data[UFSREQ_MAX_INLINE];
     unsigned        resp_data_len;
     UFSD_SESSION   *sess;
+    char           *stg_free;   /* staging buffer to free after key-0 exit */
 
     if (!anchor || !req) return;
     out_token     = 0;
     resp_data_len = 0;
     sess          = NULL;
+    stg_free      = NULL;
 
     /* --- Eye-catcher check --- */
     if (memcmp(req->eye, "UFSREQ__", 8) != 0) {
@@ -211,7 +213,7 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
                 req->buf = ufsd_buf_alloc(anchor);
                 if (req->buf)
                     memcpy(req->buf->data, stg, bread);
-                free(stg);
+                stg_free = stg;  /* defer free() until after __prob */
             }
         } else if (resp_data_len > 0) {
             /* AP-1e: copy file op response from STC stack to CSA block */
@@ -239,6 +241,13 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
         __xmpost(req->client_ascb, req->client_ecb_ptr, 0);
         __prob(savekey, NULL);
     }
+
+    /* Free staging buffer in problem state (key 8).
+    ** free() issues FREEMAIN SVC which requires the caller's PSW key
+    ** to match the storage key.  The staging buffer was malloc'd in
+    ** do_fread (problem state, key 8), so it must be freed here,
+    ** NOT inside the key-0 block above (S378 abend). */
+    if (stg_free) free(stg_free);
 
     ufsd_trace(anchor, UFSD_T_COMPLETE, req->session_token,
                (unsigned short)rc);

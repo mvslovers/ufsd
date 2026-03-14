@@ -152,6 +152,9 @@ struct libufs_dirdesc {
     char     eye[8];        /* "LIBUFSDD"                    */
     unsigned token;         /* session token                 */
     unsigned rec;           /* directory fd (from DIROPEN)   */
+    UFSDLIST *entries;      /* sorted entry array (heap)     */
+    unsigned nentries;      /* number of entries in array    */
+    unsigned cur;           /* next entry index for dirread  */
     UFSDLIST result;        /* reused by ufs_dirread         */
 };
 

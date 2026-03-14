@@ -112,6 +112,16 @@ entry = "@@CRT0"
 options = ["LIST", "MAP", "XREF", "RENT"]
 include = ["@@CRT1", "LIBUFSTS", "LIBUFS"]
 
+
+# ---------------------------------------------------------------
+# AP-1f: cleanup routine
+# ---------------------------------------------------------------
+[[link.module]]
+name = "UFSDCLNP"
+entry = "@@CRT0"
+options = ["LIST", "MAP", "XREF", "RENT"]
+include = ["@@CRT1", "UFSDCLNP", "GETMAIN"]
+
 [release]
 version_files = ["VERSION"]
 

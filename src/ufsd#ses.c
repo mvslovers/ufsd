@@ -212,6 +212,16 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
     sess->flags        = UFSD_SESS_ACTIVE;
     sess->ufs          = (void *)ufs;
 
+    /* Copy client userid/group from SSI router (ACEE capture) */
+    memset(sess->owner, 0, sizeof(sess->owner));
+    memset(sess->group, 0, sizeof(sess->group));
+    if (req && req->data_len >= 18U) {
+        memcpy(sess->owner, req->data,     9);
+        sess->owner[8] = '\0';
+        memcpy(sess->group, req->data + 9, 9);
+        sess->group[8] = '\0';
+    }
+
     /* Initialise fd_table */
     for (j = 0; j < UFSD_MAX_FD; j++) {
         sess->fd_table[j].gfile_idx = UFSD_FD_UNUSED;
