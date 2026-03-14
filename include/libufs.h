@@ -110,6 +110,7 @@ struct libufs_ufs {
 ** bytes in a single SSI round-trip.  Falls back to 252 bytes (inline) if
 ** the pool is exhausted -- ufs_fread handles the difference transparently. */
 #define LIBUFS_GETC_BUFSZ  4096
+#define LIBUFS_PUTC_BUFSZ 4096
 
 typedef struct libufs_file  UFSFILE;
 struct libufs_file {
@@ -120,7 +121,9 @@ struct libufs_file {
     int      error;         /* last error code (UFSD_RC_*)   */
     unsigned rbuf_pos;      /* next byte to consume in rbuf  */
     unsigned rbuf_len;      /* valid bytes in rbuf           */
-    char     rbuf[LIBUFS_GETC_BUFSZ]; /* read-ahead buffer (4K or inline fallback) */
+    char     rbuf[LIBUFS_GETC_BUFSZ]; /* read-ahead buffer   */
+    unsigned wbuf_len;      /* pending bytes in wbuf         */
+    char     wbuf[LIBUFS_PUTC_BUFSZ]; /* write-behind buffer */
 };
 
 /* ============================================================

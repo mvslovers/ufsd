@@ -11,6 +11,8 @@
 //*              /F UFSD,SHUTDOWN
 //* Stopping:    /P UFSD
 //*
+//CLEANUP  EXEC PGM=UFSDCLNP                                                    
+//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR                           
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
 //STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
 //SYSUDUMP DD  SYSOUT=*

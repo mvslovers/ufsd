@@ -120,11 +120,15 @@ free_pop(UFSD_ANCHOR *anchor)
 ** clients.  The server dequeues from req_head without a lock
 ** (single consumer).
 */
-static void
+/* Returns 1 if queue was empty before this append, 0 otherwise */
+static int
 queue_append(UFSD_ANCHOR *anchor, UFSREQ *req)
 {
+    int was_empty;
+
     req->next = NULL;
     cs_lock_acquire(anchor);
+    was_empty = (anchor->req_head == NULL);
     if (anchor->req_tail) {
         anchor->req_tail->next = req;
     } else {
@@ -132,6 +136,7 @@ queue_append(UFSD_ANCHOR *anchor, UFSREQ *req)
     }
     anchor->req_tail = req;
     cs_lock_release(anchor);
+    return was_empty;
 }
 
 /* ============================================================
@@ -257,22 +262,40 @@ ufsdssir(void)
         }
     }
 
+    /* FWRITE 4K path: copy client buffer into CSA pool buffer.
+    ** We are in key-0 in the client's address space, so we can
+    ** read from ufsssob->buf_ptr (client heap, key-8). */
+    if (ufsssob->func == UFSREQ_FWRITE
+        && ufsssob->buf_ptr != NULL && ufsssob->buf_len > 0) {
+        req->buf = ufsd_buf_alloc(anchor);
+        if (req->buf) {
+            unsigned n = ufsssob->buf_len;
+            if (n > 4096U) n = 4096U;
+            memcpy(req->buf->data, ufsssob->buf_ptr, n);
+            *(unsigned *)(req->data + 4) = n;
+            req->data_len = 8U;  /* fd(4) + count(4), data in buf */
+        }
+        /* If pool exhausted, req->buf stays NULL and do_fwrite
+        ** falls back to inline data in req->data[8..]. */
+    }
+
     /* Save ECB pointer in a local (stack) variable before leaving key 0,
     ** so WAIT below can use it without reading from CSA in problem state. */
     {
         ECB *ecbp = req->client_ecb_ptr;
 
         /* --- Enqueue the request --- */
-        queue_append(anchor, req);
+        int was_empty = queue_append(anchor, req);
 
         /* --- Wake the STC via cross-AS POST (from supervisor state) ---
-        ** ecb_post (SVC 2) causes S102 for cross-address-space POST.
-        ** __xmpost uses CVT0PT01 (POST branch entry) which does not
-        ** issue SVC 2 and works correctly for cross-AS POST.
-        ** anchor->server_ascb is the STC's ASCB, set at startup.
-        ** We are still in key-0 supervisor state here.
+        ** Only POST if queue was previously empty; otherwise the STC
+        ** is already awake draining the queue.  Saves SVC overhead
+        ** under multi-client load.
         */
-        __xmpost(anchor->server_ascb, &anchor->server_ecb, 0);
+        if (was_empty)
+            __xmpost(anchor->server_ascb, &anchor->server_ecb, 0);
+        else
+            __uinc(&anchor->stat_posts_saved);
 
         /* --- Back to problem state before WAIT (SVC 1) ---
         ** WAIT SVC 1 must be issued from problem state on MVS 3.8j.
