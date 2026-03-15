@@ -560,6 +560,7 @@ int  ufsd_sb_alloc_block(UFSD_DISK *disk, unsigned *out_sector)      asm("UFSD@S
 void ufsd_sb_free_block(UFSD_DISK *disk, unsigned sector)            asm("UFSD@SFB");
 int  ufsd_sb_alloc_inode(UFSD_DISK *disk, unsigned *out_ino)         asm("UFSD@SAI");
 void ufsd_sb_free_inode(UFSD_DISK *disk, unsigned ino)               asm("UFSD@SFI");
+int  ufsd_sb_rebuild_free(UFSD_DISK *disk)                           asm("UFSD@SRF");
 
 /* ufsd#ino.c (AP-1e) -- inode I/O */
 int  ufsd_ino_read(UFSD_DISK *disk, unsigned ino, UFSD_DINODE *out)           asm("UFSD@INR");

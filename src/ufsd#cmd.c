@@ -20,6 +20,7 @@ static void cmd_sessions(UFSD_STC *ufsd);
 static void cmd_mount(UFSD_STC *ufsd, const char *args);
 static void cmd_unmount(UFSD_STC *ufsd, const char *args);
 static void cmd_trace(UFSD_STC *ufsd, const char *args);
+static void cmd_rebuild(UFSD_STC *ufsd);
 
 int
 ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
@@ -58,9 +59,11 @@ ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
             cmd_unmount(ufsd, buf + 8);
         } else if (strncmp(buf, "TRACE ", 6) == 0) {
             cmd_trace(ufsd, buf + 6);
+        } else if (strcmp(buf, "REBUILD") == 0) {
+            cmd_rebuild(ufsd);
         } else {
             wtof("UFSD021E Unknown command: %s", buf);
-            wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, HELP, SHUTDOWN");
+            wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
         }
         break;
 
@@ -80,6 +83,7 @@ static void
 cmd_stats(UFSD_STC *ufsd)
 {
     UFSD_ANCHOR *anchor;
+    unsigned     i;
 
     anchor = ufsd->anchor;
 
@@ -96,6 +100,15 @@ cmd_stats(UFSD_STC *ufsd)
         wtof("UFSD015I ERRORS:          %u", anchor->stat_errors);
         wtof("UFSD017I POSTS SAVED:     %u", anchor->stat_posts_saved);
     }
+
+    for (i = 0; i < ufsd->ndisks; i++) {
+        UFSD_DISK *d = ufsd->disks[i];  /* C89: top-of-block decl */
+        if (!d) continue;
+        wtof("UFSD018I DISK %u (%.8s): freeblk=%u/%u freeinode=%u/%u",
+             i, d->ddname,
+             d->sb.nfreeblock, d->sb.total_freeblock,
+             d->sb.nfreeinode, d->sb.total_freeinode);
+    }
 }
 
 static void
@@ -108,10 +121,11 @@ static void
 cmd_help(UFSD_STC *ufsd)
 {
     (void)ufsd;
-    wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, HELP, SHUTDOWN");
+    wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
     wtof("UFSD020I   MOUNT DD=ddname,PATH=/path  |  MOUNT LIST");
     wtof("UFSD020I   UNMOUNT PATH=/path");
     wtof("UFSD020I   TRACE ON|OFF|DUMP");
+    wtof("UFSD020I   REBUILD  -- scan inodes, rebuild free block cache");
 }
 
 static void
@@ -263,5 +277,40 @@ cmd_trace(UFSD_STC *ufsd, const char *args)
         ufsd_trace_dump(anchor);
     } else {
         wtof("UFSD021E TRACE: syntax: TRACE ON|OFF|DUMP");
+    }
+}
+
+/* ============================================================
+** cmd_rebuild
+**
+** Scan all inodes on all mounted disks and rebuild the free
+** block cache.  Recovers from a broken V7 chain.
+** ============================================================ */
+static void
+cmd_rebuild(UFSD_STC *ufsd)
+{
+    unsigned i;
+    int      rc;
+
+    if (ufsd->ndisks == 0) {
+        wtof("UFSD071W REBUILD: no disks mounted");
+        return;
+    }
+
+    for (i = 0; i < ufsd->ndisks; i++) {
+        UFSD_DISK *d = ufsd->disks[i];
+        if (!d) continue;
+        if (d->flags & UFSD_DISK_RDONLY) {
+            wtof("UFSD072I REBUILD: skipping %.8s (read-only)", d->ddname);
+            continue;
+        }
+        wtof("UFSD073I REBUILD: scanning %.8s ...", d->ddname);
+        rc = ufsd_sb_rebuild_free(d);
+        if (rc == UFSD_RC_OK)
+            wtof("UFSD074I REBUILD: %.8s done, freeblk=%u freeinode=%u",
+                 d->ddname, d->sb.nfreeblock, d->sb.nfreeinode);
+        else
+            wtof("UFSD075E REBUILD: %.8s failed RC=%d",
+                 d->ddname, rc);
     }
 }
