@@ -319,6 +319,7 @@ struct ufsd_anchor {
 #define UFSREQ_PING         0x0001U  /* AP-1c: round-trip test       */
 #define UFSREQ_SESS_OPEN    0x0010U  /* AP-1d: open session          */
 #define UFSREQ_SESS_CLOSE   0x0011U  /* AP-1d: close session         */
+#define UFSREQ_SETUSER      0x0012U  /* set session owner userid      */
 #define UFSREQ_FOPEN        0x0020U  /* AP-1e: open file             */
 #define UFSREQ_FCLOSE       0x0021U  /* AP-1e: close file            */
 #define UFSREQ_FREAD        0x0022U  /* AP-1e: read file             */
@@ -569,6 +570,7 @@ int           ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req,
 int           ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)      asm("UFSD@SCL");
 void          ufsd_sess_list(UFSD_ANCHOR *anchor)                    asm("UFSD@SLS");
 UFSD_SESSION *ufsd_sess_find(UFSD_ANCHOR *anchor, unsigned token)    asm("UFSD@SFN");
+int           ufsd_sess_setuser(UFSD_ANCHOR *anchor, UFSREQ *req)  asm("UFSD@SSU");
 
 /* ufsd#ini.c (AP-1d Step 2) */
 int           ufsd_ufs_init(UFSD_STC *stc)                          asm("UFSD@UNI");

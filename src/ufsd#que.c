@@ -156,6 +156,17 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
             ufsd_trace(anchor, UFSD_T_SESS_CLOSE, req->session_token, 0);
         break;
 
+    case UFSREQ_SETUSER:
+        sess = ufsd_sess_find(anchor, req->session_token);
+        if (!sess) {
+            rc = UFSD_RC_BADSESS;
+            ufsd_trace(anchor, UFSD_T_BADSESS, req->session_token,
+                       (unsigned short)UFSD_RC_BADSESS);
+        } else {
+            rc = ufsd_sess_setuser(anchor, req);
+        }
+        break;
+
     case UFSREQ_FOPEN:
     case UFSREQ_FCLOSE:
     case UFSREQ_FREAD:

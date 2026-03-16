@@ -271,6 +271,34 @@ ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)
 }
 
 /* ============================================================
+** ufsd_sess_setuser
+**
+** Update the session owner userid from the client request.
+** Wire: req->data[0..8] = userid (NUL-terminated, max 8 chars).
+** Returns UFSD_RC_OK or UFSD_RC_BADSESS.
+** ============================================================ */
+int
+ufsd_sess_setuser(UFSD_ANCHOR *anchor, UFSREQ *req)
+{
+    UFSD_SESSION *sess;
+
+    if (!anchor || !req) return UFSD_RC_CORRUPT;
+
+    sess = ufsd_sess_find(anchor, req->session_token);
+    if (!sess) return UFSD_RC_BADSESS;
+
+    if (req->data_len >= 1U && req->data_len <= 9U) {
+        memset(sess->owner, 0, sizeof(sess->owner));
+        memcpy(sess->owner, req->data, req->data_len);
+        sess->owner[8] = '\0';
+    } else {
+        return UFSD_RC_INVALID;
+    }
+
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
 ** ufsd_sess_list
 **
 ** Issue WTOs listing all active sessions.
@@ -305,10 +333,11 @@ ufsd_sess_list(UFSD_ANCHOR *anchor)
             if (sess->fd_table[j].gfile_idx != UFSD_FD_UNUSED) fd_count++;
         }
 
-        wtof("UFSD051I   #%u TOKEN=%08X ASID=%04X FDs=%u/%u",
+        wtof("UFSD051I   #%u TOKEN=%08X ASID=%04X OWNER=%-8.8s FDs=%u/%u",
              i + 1U,
              sess->token,
              sess->client_asid,
+             sess->owner[0] ? sess->owner : "(none)",
              fd_count,
              (unsigned)UFSD_MAX_FD);
     }

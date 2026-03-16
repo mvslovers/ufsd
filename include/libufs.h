@@ -95,6 +95,7 @@ struct libufs_ufs {
     UFSCWD   cwd;           /* local copy of current dir     */
     UFSSYS  *sys;           /* stub system pointer           */
     void    *acee;          /* ACEE pointer (Phase 1 unused) */
+    int      last_rc;       /* last UFSD_RC_* from failed op */
 };
 
 /* ============================================================
@@ -192,6 +193,12 @@ int     ufs_signon(UFS *ufs, const char *userid,
                    const char *password,
                    const char *group)                           asm("UFS#SON");
 void    ufs_signoff(UFS *ufs)                                   asm("UFS#SOFF");
+
+/* Set session owner userid (for per-user write permission) */
+int     ufs_setuser(UFS *ufs, const char *userid)              asm("UFS#SUSR");
+
+/* Last error code from a failed operation */
+int     ufs_last_rc(UFS *ufs)                                   asm("UFS#GLRC");
 
 /* Directory operations */
 int      ufs_chgdir(UFS *ufs, const char *path)                 asm("UFS#CD");

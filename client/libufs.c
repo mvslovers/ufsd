@@ -121,6 +121,7 @@ ufsnew(void)
     memcpy(ufs->eye,      "LIBUFSUFS", 8);
     ufs->token        = *(unsigned *)ufsssob.data;
     ufs->create_perm  = 0755U;
+    ufs->last_rc      = UFSD_RC_OK;
     memcpy(ufs->cwd.eye,  "LIBCWD  ", 8);
     ufs->cwd.path[0]  = '/';
     ufs->cwd.path[1]  = '\0';
@@ -261,6 +262,54 @@ void
 ufs_signoff(UFS *ufs)
 {
     (void)ufs;
+}
+
+/* ============================================================
+** ufs_setuser
+**
+** Tell UFSD to change the session owner userid.  This allows
+** a shared session (e.g. HTTPD STC) to assume a per-user
+** identity for write permission checks on owner-restricted
+** mount points.
+**
+** Wire: data[0..8] = userid (8 chars + NUL, blank-padded).
+** Returns UFSD_RC_* (0 = ok).
+** ============================================================ */
+int
+ufs_setuser(UFS *ufs, const char *userid)
+{
+    UFSSSOB  ufsssob;
+    unsigned len;
+
+    if (!ufs || !userid) return UFSD_RC_INVALID;
+
+    memset(&ufsssob, 0, sizeof(ufsssob));
+    memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
+    ufsssob.func     = UFSREQ_SETUSER;
+    ufsssob.token    = ufs->token;
+
+    /* Copy userid into data[0..8]: max 8 chars + NUL */
+    len = strlen(userid);
+    if (len > 8U) len = 8U;
+    memcpy(ufsssob.data, userid, len);
+    ufsssob.data[len] = '\0';
+    ufsssob.data_len  = 9U;
+
+    if (libufs_issue(&ufsssob) != SSRTOK) return -1;
+    ufs->last_rc = ufsssob.rc;
+    return ufsssob.rc;
+}
+
+/* ============================================================
+** ufs_last_rc
+**
+** Return the UFSD_RC_* code from the last failed operation.
+** ============================================================ */
+int
+ufs_last_rc(UFS *ufs)
+{
+    if (!ufs) return -1;
+    return ufs->last_rc;
 }
 
 /* ============================================================
@@ -526,10 +575,17 @@ ufs_fopen(UFS *ufs, const char *path, const char *mode_str)
     memcpy(ufsssob.data + 4, path, pathlen + 1U);
     ufsssob.data_len         = 4U + pathlen + 1U;
 
-    if (libufs_issue(&ufsssob) != SSRTOK)        return NULL;
-    if (ufsssob.rc != UFSD_RC_OK)                return NULL;
+    if (libufs_issue(&ufsssob) != SSRTOK) {
+        ufs->last_rc = -1;
+        return NULL;
+    }
+    if (ufsssob.rc != UFSD_RC_OK) {
+        ufs->last_rc = ufsssob.rc;
+        return NULL;
+    }
     if (ufsssob.data_len < (unsigned)sizeof(int)) return NULL;
 
+    ufs->last_rc = UFSD_RC_OK;
     fp = (UFSFILE *)calloc(1, sizeof(UFSFILE));
     if (!fp) return NULL;
 
