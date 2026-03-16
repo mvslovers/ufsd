@@ -46,6 +46,81 @@
 ** Internal helpers (static)
 ** ============================================================ */
 
+/* ============================================================
+** resolve_mount
+**
+** AP-3a: Find which mounted disk an absolute path belongs to.
+** Returns the disk index with the longest matching mountpath.
+** *out_path is set to the remainder of the path after the
+** mount prefix (e.g. "/WWW/index.html" with mount "/WWW"
+** yields out_path="index.html").
+** For root mount "/" or no match, returns disk 0 and the
+** original path.
+** ============================================================ */
+static int
+resolve_mount(UFSD_STC *stc, const char *path, const char **out_path)
+{
+    unsigned i;
+    int      best_idx;
+    unsigned best_len;
+    unsigned mlen;
+
+    best_idx = 0;
+    best_len = 1;  /* "/" always matches */
+
+    for (i = 1; i < stc->ndisks; i++) {
+        UFSD_DISK *d = stc->disks[i];
+        if (!d || d->mountpath[0] == '\0') continue;
+        mlen = strlen(d->mountpath);
+        if (mlen <= best_len) continue;
+        if (strncmp(path, d->mountpath, mlen) == 0
+            && (path[mlen] == '/' || path[mlen] == '\0')) {
+            best_idx = (int)i;
+            best_len = mlen;
+        }
+    }
+
+    if (best_len > 1) {
+        /* Strip the mount prefix */
+        *out_path = path + best_len;
+        if (**out_path == '/') (*out_path)++;
+    } else {
+        *out_path = path;
+    }
+    return best_idx;
+}
+
+/* ============================================================
+** resolve_path_disk
+**
+** Resolve the target disk and start inode for a path.
+** For absolute paths: mount resolution via resolve_mount().
+** For relative paths: use the session's current disk + cwd_ino.
+**
+** Sets *out_disk_idx, *out_start_ino, *out_path.
+** Returns the UFSD_DISK pointer (or NULL on error).
+** ============================================================ */
+static UFSD_DISK *
+resolve_path_disk(UFSD_STC *stc, UFSD_UFS *ufs, const char *path,
+                  int *out_disk_idx, unsigned *out_start_ino,
+                  const char **out_path)
+{
+    int didx;
+
+    if (path[0] == '/') {
+        didx           = resolve_mount(stc, path, out_path);
+        *out_start_ino = UFSD_ROOT_INO;
+    } else {
+        didx       = ufs->disk_idx;
+        *out_path  = path;
+        *out_start_ino = ufs->cwd_ino;
+    }
+
+    *out_disk_idx = didx;
+    if (didx < 0 || didx >= (int)stc->ndisks) return NULL;
+    return stc->disks[didx];
+}
+
 /* Check whether a directory contains only "." and ".." entries.
 ** Returns 1 (empty) or 0 (not empty / I/O error). */
 static int
@@ -268,6 +343,25 @@ ufsd_stamp(UFSD_DINODE *dino)
 ** Create a new directory at path.
 ** Allocates one inode and one data block (for "." and "..").
 ** ============================================================ */
+/* ============================================================
+** ufsd_check_write
+**
+** AP-3a: Check whether a write operation is permitted on disk.
+** Returns UFSD_RC_OK if allowed, UFSD_RC_ROFS if the mount is
+** read-only, UFSD_RC_EACCES if the session owner does not match
+** the mount owner.
+** ============================================================ */
+static int
+ufsd_check_write(UFSD_DISK *disk, UFSD_SESSION *sess)
+{
+    if (disk->mount_mode == UFSD_MOUNT_RO)
+        return UFSD_RC_ROFS;
+    if (disk->mount_owner[0] != '\0'
+        && strcmp(sess->owner, disk->mount_owner) != 0)
+        return UFSD_RC_EACCES;
+    return UFSD_RC_OK;
+}
+
 static int
 do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
          UFSREQ *req, char *resp_data, unsigned *resp_data_len)
@@ -277,38 +371,44 @@ do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
     UFSD_DINODE  dino;
     UFSD_DIRENT *de;
     const char  *path;
+    const char  *mnt_path;
     char         dir_name[UFSD_NAME_MAX + 1];
     char        *blk;
     unsigned     parent_ino;
     unsigned     existing_ino;
     unsigned     new_ino;
     unsigned     new_blk;
+    unsigned     start_ino;
+    int          didx;
     int          rc;
+    int          wrc;
 
     (void)resp_data;
     (void)resp_data_len;
 
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
 
     path = req->data;
     if (!path || path[0] == '\0') return UFSD_RC_INVALID;
 
+    disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
+    if (!disk) return UFSD_RC_IO;
+    wrc = ufsd_check_write(disk, sess);
+    if (wrc != UFSD_RC_OK) return wrc;
+
     parent_ino  = 0;
     dir_name[0] = '\0';
-    existing_ino = ufsd_path_lookup(disk,
-        (path[0] == '/') ? UFSD_ROOT_INO : ufs->cwd_ino,
-        path, &parent_ino, dir_name);
+    existing_ino = ufsd_path_lookup(disk, start_ino,
+        mnt_path, &parent_ino, dir_name);
 
     if (existing_ino != 0) return UFSD_RC_EXIST;
     if (parent_ino == 0 || dir_name[0] == '\0') return UFSD_RC_NOFILE;
 
     /* Guard: intermediate directory missing (see do_fopen comment) */
     {
-        const char *slash = strrchr(path, '/');
-        const char *base  = slash ? slash + 1 : path;
+        const char *slash = strrchr(mnt_path, '/');
+        const char *base  = slash ? slash + 1 : mnt_path;
         if (strcmp(dir_name, base) != 0)
             return UFSD_RC_NOFILE;
     }
@@ -385,27 +485,33 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
     UFSD_DISK   *disk;
     UFSD_DINODE  dino;
     const char  *path;
+    const char  *mnt_path;
     char         dir_name[UFSD_NAME_MAX + 1];
     unsigned     parent_ino;
     unsigned     dir_ino;
+    unsigned     start_ino;
+    int          didx;
     int          rc;
+    int          wrc;
 
     (void)resp_data;
     (void)resp_data_len;
 
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
 
     path = req->data;
     if (!path || path[0] == '\0') return UFSD_RC_INVALID;
 
+    disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
+    if (!disk) return UFSD_RC_IO;
+    wrc = ufsd_check_write(disk, sess);
+    if (wrc != UFSD_RC_OK) return wrc;
+
     parent_ino  = 0;
     dir_name[0] = '\0';
-    dir_ino = ufsd_path_lookup(disk,
-        (path[0] == '/') ? UFSD_ROOT_INO : ufs->cwd_ino,
-        path, &parent_ino, dir_name);
+    dir_ino = ufsd_path_lookup(disk, start_ino,
+        mnt_path, &parent_ino, dir_name);
 
     if (dir_ino == 0) return UFSD_RC_NOFILE;
     if (parent_ino == 0) return UFSD_RC_INVALID;  /* cannot remove root */
@@ -437,29 +543,33 @@ do_chgdir(UFSD_STC *stc, UFSD_SESSION *sess,
     UFSD_DISK   *disk;
     UFSD_DINODE  dino;
     const char  *path;
+    const char  *mnt_path;
     unsigned     dir_ino;
+    unsigned     start_ino;
     unsigned     pathlen;
+    int          didx;
 
     (void)resp_data;
     (void)resp_data_len;
 
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
 
     path = req->data;
     if (!path || path[0] == '\0') return UFSD_RC_INVALID;
 
-    dir_ino = ufsd_path_lookup(disk,
-        (path[0] == '/') ? UFSD_ROOT_INO : ufs->cwd_ino,
-        path, NULL, NULL);
+    disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
+    if (!disk) return UFSD_RC_IO;
+
+    dir_ino = ufsd_path_lookup(disk, start_ino,
+        mnt_path, NULL, NULL);
 
     if (dir_ino == 0) return UFSD_RC_NOFILE;
     if (ufsd_ino_read(disk, dir_ino, &dino) != UFSD_RC_OK) return UFSD_RC_IO;
     if ((dino.mode & UFSD_IFMT) != UFSD_IFDIR) return UFSD_RC_NOTDIR;
 
-    ufs->cwd_ino = dir_ino;
+    ufs->cwd_ino  = dir_ino;
+    ufs->disk_idx = didx;
     pathlen = strlen(path);
     if (pathlen >= sizeof(ufs->cwd))
         pathlen = sizeof(ufs->cwd) - 1U;
@@ -482,27 +592,33 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
     UFSD_DISK   *disk;
     UFSD_DINODE  dino;
     const char  *path;
+    const char  *mnt_path;
     char         file_name[UFSD_NAME_MAX + 1];
     unsigned     parent_ino;
     unsigned     file_ino;
+    unsigned     start_ino;
+    int          didx;
     int          rc;
+    int          wrc;
 
     (void)resp_data;
     (void)resp_data_len;
 
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
 
     path = req->data;
     if (!path || path[0] == '\0') return UFSD_RC_INVALID;
 
+    disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
+    if (!disk) return UFSD_RC_IO;
+    wrc = ufsd_check_write(disk, sess);
+    if (wrc != UFSD_RC_OK) return wrc;
+
     parent_ino   = 0;
     file_name[0] = '\0';
-    file_ino = ufsd_path_lookup(disk,
-        (path[0] == '/') ? UFSD_ROOT_INO : ufs->cwd_ino,
-        path, &parent_ino, file_name);
+    file_ino = ufsd_path_lookup(disk, start_ino,
+        mnt_path, &parent_ino, file_name);
 
     if (file_ino == 0) return UFSD_RC_NOFILE;
     if (parent_ino == 0) return UFSD_RC_INVALID;
@@ -541,35 +657,41 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     UFSD_DINODE  dino;
     UFSD_GFILE  *gfile;
     const char  *path;
+    const char  *mnt_path;
     char         file_name[UFSD_NAME_MAX + 1];
     unsigned     mode;
     unsigned     parent_ino;
     unsigned     file_ino;
     unsigned     new_ino;
+    unsigned     start_ino;
     unsigned     gidx;
     unsigned     fd;
+    int          didx;
     int          j;
     int          rc;
+    int          wrc;
 
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
 
     if (req->data_len < 5U) return UFSD_RC_INVALID;
     mode = *(unsigned *)req->data;
     path = req->data + 4;
 
+    disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
+    if (!disk) return UFSD_RC_IO;
+
     parent_ino   = 0;
     file_name[0] = '\0';
-    file_ino = ufsd_path_lookup(disk,
-        (path[0] == '/') ? UFSD_ROOT_INO : ufs->cwd_ino,
-        path, &parent_ino, file_name);
+    file_ino = ufsd_path_lookup(disk, start_ino,
+        mnt_path, &parent_ino, file_name);
 
     new_ino = 0;
     rc      = UFSD_RC_OK;
 
     if (mode & UFSD_OPEN_WRITE) {
+        wrc = ufsd_check_write(disk, sess);
+        if (wrc != UFSD_RC_OK) return wrc;
         if (file_ino != 0) {
             /* File exists: truncate */
             if (ufsd_ino_read(disk, file_ino, &dino) != UFSD_RC_OK)
@@ -588,8 +710,8 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             ** (e.g. "/test/bar" where "test" doesn't exist), file_name
             ** will be "test" — not the final component "bar".  Detect
             ** this by comparing file_name with the basename of path. */
-            const char *slash = strrchr(path, '/');
-            const char *base  = slash ? slash + 1 : path;
+            const char *slash = strrchr(mnt_path, '/');
+            const char *base  = slash ? slash + 1 : mnt_path;
             if (parent_ino == 0 || file_name[0] == '\0')
                 return UFSD_RC_NOFILE;
             if (strcmp(file_name, base) != 0)
@@ -628,7 +750,7 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
     gfile            = &anchor->gfiles[gidx];
     gfile->flags     = UFSD_GF_USED;
-    gfile->disk_idx  = ufs->disk_idx;
+    gfile->disk_idx  = didx;
     gfile->ino       = new_ino;
     gfile->position  = 0;
     gfile->open_mode = mode;
@@ -695,7 +817,6 @@ static int
 do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
          UFSREQ *req, char *resp_data, unsigned *resp_data_len)
 {
-    UFSD_UFS    *ufs;
     UFSD_DISK   *disk;
     UFSD_GFILE  *gfile;
     UFSD_DINODE  dino;
@@ -711,11 +832,6 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     unsigned     bytes_read;
     int          rc;
 
-    ufs = (UFSD_UFS *)sess->ufs;
-    if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
-
     if (req->data_len < 8U) return UFSD_RC_INVALID;
     fd    = (int)*(unsigned *)req->data;
     count = *(unsigned *)(req->data + 4);
@@ -727,6 +843,9 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     gfile = &anchor->gfiles[gidx];
     if (!(gfile->flags & UFSD_GF_USED)) return UFSD_RC_BADFD;
     if (!(gfile->open_mode & UFSD_OPEN_READ)) return UFSD_RC_INVALID;
+
+    disk = stc->disks[gfile->disk_idx];
+    if (!disk) return UFSD_RC_IO;
 
     /*
     ** Buffer selection: when count > inline max, allocate a heap staging
@@ -811,13 +930,11 @@ static int
 do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
           UFSREQ *req, char *resp_data, unsigned *resp_data_len)
 {
-    UFSD_UFS       *ufs;
     UFSD_DISK      *disk;
     UFSD_GFILE     *gfile;
     UFSD_DINODE     dino;
     char           *blk;
     const char     *src;
-    unsigned        mode;
     int             fd;
     unsigned        count;
     unsigned        bytes_written;
@@ -828,13 +945,7 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     unsigned        sector;
     int             rc;
     int             sb_dirty;
-
-    (void)mode;
-
-    ufs = (UFSD_UFS *)sess->ufs;
-    if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
+    int             wrc;
 
     if (req->data_len < 8U) return UFSD_RC_INVALID;
     fd    = (int)*(unsigned *)req->data;
@@ -860,6 +971,11 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     gfile = &anchor->gfiles[gidx];
     if (!(gfile->flags & UFSD_GF_USED)) return UFSD_RC_BADFD;
     if (!(gfile->open_mode & UFSD_OPEN_WRITE)) return UFSD_RC_INVALID;
+
+    disk = stc->disks[gfile->disk_idx];
+    if (!disk) return UFSD_RC_IO;
+    wrc = ufsd_check_write(disk, sess);
+    if (wrc != UFSD_RC_OK) return wrc;
 
     rc = ufsd_ino_read(disk, gfile->ino, &dino);
     if (rc != UFSD_RC_OK) return rc;
@@ -967,22 +1083,25 @@ do_diropen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     UFSD_DINODE  dino;
     UFSD_GFILE  *gfile;
     const char  *path;
+    const char  *mnt_path;
     unsigned     dir_ino;
+    unsigned     start_ino;
     unsigned     gidx;
     unsigned     fd;
+    int          didx;
     int          j;
 
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
 
     path = req->data;
     if (!path || path[0] == '\0') return UFSD_RC_INVALID;
 
-    dir_ino = ufsd_path_lookup(disk,
-        (path[0] == '/') ? UFSD_ROOT_INO : ufs->cwd_ino,
-        path, NULL, NULL);
+    disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
+    if (!disk) return UFSD_RC_IO;
+
+    dir_ino = ufsd_path_lookup(disk, start_ino,
+        mnt_path, NULL, NULL);
     if (dir_ino == 0) return UFSD_RC_NOFILE;
 
     if (ufsd_ino_read(disk, dir_ino, &dino) != UFSD_RC_OK)
@@ -993,7 +1112,7 @@ do_diropen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
     gfile            = &anchor->gfiles[gidx];
     gfile->flags     = UFSD_GF_USED | UFSD_GF_DIR;
-    gfile->disk_idx  = ufs->disk_idx;
+    gfile->disk_idx  = didx;
     gfile->ino       = dir_ino;
     gfile->position  = 0;
     gfile->open_mode = UFSD_OPEN_READ;
@@ -1033,7 +1152,6 @@ static int
 do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
            UFSREQ *req, char *resp_data, unsigned *resp_data_len)
 {
-    UFSD_UFS    *ufs;
     UFSD_DISK   *disk;
     UFSD_GFILE  *gfile;
     UFSD_DINODE  dino;
@@ -1050,11 +1168,6 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     unsigned     i;
     unsigned     j;
 
-    ufs = (UFSD_UFS *)sess->ufs;
-    if (!ufs) return UFSD_RC_BADSESS;
-    disk = stc->disks[ufs->disk_idx];
-    if (!disk) return UFSD_RC_IO;
-
     if (req->data_len < 4U) return UFSD_RC_INVALID;
     fd = (int)*(unsigned *)req->data;
 
@@ -1065,6 +1178,9 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     gfile = &anchor->gfiles[gidx];
     if (!(gfile->flags & UFSD_GF_USED)) return UFSD_RC_BADFD;
     if (!(gfile->flags & UFSD_GF_DIR))  return UFSD_RC_BADFD;
+
+    disk = stc->disks[gfile->disk_idx];
+    if (!disk) return UFSD_RC_IO;
 
     if (ufsd_ino_read(disk, gfile->ino, &dino) != UFSD_RC_OK)
         return UFSD_RC_IO;
@@ -1095,6 +1211,28 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
             found_ino       = de->ino;
             gfile->position = entry_pos + 1U;
+
+            /* Mount boundary: if this is ".." at the root of a
+            ** mounted filesystem, resolve the parent from the
+            ** mount point on the parent disk instead. */
+            if (de->name[0] == '.' && de->name[1] == '.'
+                && de->name[2] == '\0'
+                && gfile->ino == UFSD_ROOT_INO
+                && gfile->disk_idx > 0) {
+                UFSD_DISK *parent_disk = stc->disks[0];
+                if (parent_disk) {
+                    const char *mpath = disk->mountpath;
+                    unsigned    pino;
+                    char        pname[UFSD_NAME_MAX + 1];
+                    unsigned    ppino = 0;
+                    pino = ufsd_path_lookup(parent_disk, UFSD_ROOT_INO,
+                               mpath, &ppino, pname);
+                    if (ppino != 0) {
+                        found_ino = ppino;
+                        disk = parent_disk;
+                    }
+                }
+            }
 
             memset(resp_data, 0, UFSD_DIRREAD_RLEN);
             *(unsigned *)resp_data = found_ino;
