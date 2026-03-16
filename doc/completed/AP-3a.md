@@ -1,8 +1,8 @@
 # AP-3a: Parmlib Configuration + Mount Model
 
-**Status:** Planned  
-**Depends on:** AP-2a (complete)  
-**Branch:** `feature/ap-3a`
+**Status:** Complete
+**Depends on:** AP-2a (complete)
+**Branch:** `feature/ap-3a` (merged to main)
 
 ---
 
