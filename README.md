@@ -1,5 +1,10 @@
 # UFSD — Virtual Filesystem Daemon for MVS 3.8j
 
+> **Experimental — not for production use.**
+> UFSD is under active development. The on-disk format and wire protocol may
+> change without notice. Data loss can and will happen. Use it for
+> experimentation and development only.
+
 UFSD is a cross-address-space virtual filesystem server for MVS 3.8j. It runs
 as a Started Task (STC) and gives client programs Unix-like filesystem access
 to BDAM datasets. Communication happens via IEFSSREQ (SVC 34); the `libufs`
@@ -31,12 +36,14 @@ Client Address Space          UFSD STC Address Space
 - [System Configuration](#system-configuration)
   - [APF Authorization](#1-apf-authorization)
   - [JCL Procedure](#2-jcl-procedure)
-  - [Disk Datasets](#3-disk-datasets)
-  - [Started Task User](#4-started-task-user)
+  - [PARMLIB Configuration](#3-parmlib-configuration)
+  - [Disk Datasets](#4-disk-datasets)
+  - [Started Task User](#5-started-task-user)
 - [Operating UFSD](#operating-ufsd)
   - [Starting and Stopping](#starting-and-stopping)
   - [Operator Commands](#operator-commands)
   - [Mounting Filesystems](#mounting-filesystems)
+- [Known Limitations](#known-limitations)
 - [Using libufs in C Programs](#using-libufs-in-c-programs)
   - [Session Lifecycle](#session-lifecycle)
   - [File I/O](#file-io)
@@ -53,19 +60,27 @@ Client Address Space          UFSD STC Address Space
 
 **Prerequisites:** Hercules with TK4-, TK5, or MVS/CE; FTP or zowe CLI access.
 
-1. Download `ufsd-<version>-mvs.tar.gz` from the [Releases] page and extract it.
-   You will find one or more `.XMI` files (XMIT archives).
+Each release provides three archives:
 
-2. Upload the LOAD library archive to MVS as a binary sequential dataset:
+| Archive | Contents |
+|---------|----------|
+| `ufsd-<version>-load.tar.gz` | Load modules (UFSD, UFSDSSIR, UFSDCLNP, …) as XMIT |
+| `ufsd-<version>-lib-headers.tar.gz` | `libufs.h` for compile-time use |
+| `ufsd-<version>-lib-modules.tar.gz` | `LIBUFS` NCALIB member for link-time use |
+
+1. Download `ufsd-<version>-load.tar.gz` from the [Releases] page and extract it.
+   You will find a `.XMI` file (XMIT archive of the LOAD PDS).
+
+2. Upload it to MVS as a binary sequential dataset:
 
    ```sh
    # zowe CLI
-   zowe files upload file-to-data-set UFSD.LOAD.XMI "IBMUSER.UFSD.XMIT" --binary
+   zowe files upload file-to-data-set ufsd-1.0.0-dev-load.xmi "IBMUSER.UFSD.XMIT" --binary
 
    # or via FTP (binary mode)
    ftp mvs-host
    binary
-   put UFSD.LOAD.XMI 'IBMUSER.UFSD.XMIT'
+   put ufsd-1.0.0-dev-load.xmi 'IBMUSER.UFSD.XMIT'
    ```
 
 3. On TSO, restore the load library:
@@ -103,7 +118,7 @@ Client Address Space          UFSD STC Address Space
 **Prerequisites:**
 
 - Linux or macOS build host
-- GCC, GNU Make, Python 3.8+
+- c2asm370, GNU Make, Python 3.12+
 - MVS 3.8j system running the mvsMF REST API (port 1080 by default)
 - The `mbt` submodule is included in the repository
 
@@ -138,7 +153,12 @@ The finished load modules land in `{HLQ}.UFSD.V1R0M0D.LOAD` on MVS.
 To package for distribution:
 
 ```sh
-make package      # TRANSMIT load library → downloads UFSD.LOAD.XMI
+make package      # produces three archives + package.toml:
+                  #   ufsd-<version>-load.tar.gz        (UFSD, UFSDSSIR, … load modules)
+                  #   ufsd-<version>-lib-headers.tar.gz (libufs.h)
+                  #   ufsd-<version>-lib-modules.tar.gz (LIBUFS NCALIB member)
+                  # also installs libufs into the local mbt package cache
+                  # so dependent projects can bootstrap it without a GitHub release
 ```
 
 ---
@@ -148,11 +168,11 @@ make package      # TRANSMIT load library → downloads UFSD.LOAD.XMI
 Programs that call libufs at compile time need the header; at link time they
 need the NCALIB member.
 
-1. Download `ufsd-<version>-headers.tar.gz` from the [Releases] page.
+1. Download `ufsd-<version>-lib-headers.tar.gz` from the [Releases] page.
    Extract `libufs.h` into your project's `include/` (or `contrib/`).
 
-2. Download `ufsd-<version>-mvs.tar.gz`, upload, and `RECEIVE` it to obtain
-   the NCALIB dataset. Add it to your link JCL `SYSLIB` concatenation.
+2. Download `ufsd-<version>-lib-modules.tar.gz`, upload, and `RECEIVE` it to
+   obtain the NCALIB dataset. Add it to your link JCL `SYSLIB` concatenation.
 
    With mbt, declare the dependency in your `project.toml`:
 
@@ -170,85 +190,181 @@ need the NCALIB member.
 ### 1. APF Authorization
 
 UFSD allocates CSA storage (subpool 241, key 0) and operates in supervisor
-state. Its load library must be APF-authorized.
+state. The STC authorizes itself at startup, so explicit APF authorization of
+the load library is typically not required on TK4- or TK5.
 
-Add to `SYS1.PARMLIB(IEAAPFxx)`:
+On hardened systems (RAKF or RACF with strict APF checking) you may need to
+authorize the load library explicitly. Add to `SYS1.PARMLIB(IEAAPFxx)`:
 
 ```
 APF ADD DSNAME(IBMUSER.UFSD.LOAD) VOLUME(volser)
 ```
 
-Or authorize it dynamically without an IPL:
+Or dynamically without an IPL:
 
 ```
 SETPROG APF,ADD,DSNAME=IBMUSER.UFSD.LOAD,VOLUME=volser
-```
-
-Verify with:
-
-```
-D PROG,APF,DSNAME=IBMUSER.UFSD.LOAD
 ```
 
 ---
 
 ### 2. JCL Procedure
 
-Add member `UFSD` to `SYS1.PROCLIB` or `SYS2.PROCLIB`:
+Copy `jcl/UFSD.jcl` from this repository to `SYS2.PROCLIB(UFSD)`:
 
 ```jcl
-//UFSD     PROC
-//UFSD     EXEC PGM=UFSD
-//STEPLIB  DD   DSN=IBMUSER.UFSD.LOAD,DISP=SHR
-//SYSPRINT DD   SYSOUT=*
-//SYSUDUMP DD   SYSOUT=*
-```
-
-`STEPLIB` must be APF-authorized (see step 1). If UFSD's load library is
-already in the LNKLST, the `STEPLIB` DD is not required.
-
-If you want to pre-define disk datasets so they can be mounted via the
-`MOUNT DD=` operator command, add them here:
-
-```jcl
-//UFSD     PROC
-//UFSD     EXEC PGM=UFSD
-//STEPLIB  DD   DSN=IBMUSER.UFSD.LOAD,DISP=SHR
-//SYSPRINT DD   SYSOUT=*
-//SYSUDUMP DD   SYSOUT=*
+//UFSD     PROC M=UFSDPRM0,
+//            D='SYS2.PARMLIB'
 //*
-//* Pre-defined filesystem datasets (mount with: F UFSD,MOUNT DD=ddname,...)
-//WEBROOT  DD   DSN=HTTPD.WEBROOT,DISP=SHR,
-//              DCB=(RECFM=U,DSORG=DA,BLKSIZE=4096)
-//USRHOME  DD   DSN=SYS1.UFSHOME,DISP=SHR,
-//              DCB=(RECFM=U,DSORG=DA,BLKSIZE=4096)
+//* UFSD - Filesystem Server STC Procedure
+//*
+//* Starting:    /S UFSD
+//*              /S UFSD,M=UFSDPRM1       (alternate config member)
+//*              /S UFSD,D='MY.PARMLIB'   (alternate parmlib dataset)
+//*
+//CLEANUP  EXEC PGM=UFSDCLNP
+//STEPLIB  DD  DSN=IBMUSER.UFSD.LOAD,DISP=SHR
+//UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
+//STEPLIB  DD  DSN=IBMUSER.UFSD.LOAD,DISP=SHR
+//SYSUDUMP DD  SYSOUT=*
+//UFSDPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
+```
+
+The `CLEANUP` step runs `UFSDCLNP` before the main step, which deregisters
+any stale SSCT entry left over from a previous abend. Restarts are safe
+without manual intervention.
+
+Disk mounts are configured via the PARMLIB member (see next section) — no DD
+cards for filesystems are needed.
+
+**Using SYS1.PARMLIB:** either edit the `D=` default in the PROC, or pass the
+override at start time:
+
+```
+S UFSD,D='SYS1.PARMLIB'
+S UFSD,M=UFSDPRM1,D='MY.PARMLIB'
 ```
 
 ---
 
-### 3. Disk Datasets
+### 3. PARMLIB Configuration
 
-Each UFSD filesystem lives in a BDAM dataset. Allocate one before use:
+Create member `UFSDPRM0` in `SYS2.PARMLIB` (or whichever dataset the PROC
+points to). This member defines the root filesystem and all mounts:
+
+```
+/* SYS2.PARMLIB(UFSDPRM0) */
+
+/* Root filesystem — auto-created if the dataset does not exist */
+ROOT     DSN(SYS1.UFSD.ROOT) SIZE(1M) BLKSIZE(4096)
+
+/* Read-only web content */
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RO)
+
+/* User home directory, writable only by IBMUSER */
+MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
+
+/* Shared scratch area, writable by any authenticated user */
+MOUNT    DSN(SYS1.UFSD.SCRATCH)  PATH(/tmp)          MODE(RW)
+```
+
+**Keywords:**
+
+| Keyword | Parameters | Description |
+|---------|-----------|-------------|
+| `ROOT` | `DSN`, `SIZE`, `BLKSIZE` | Root filesystem; auto-created if missing |
+| `MOUNT` | `DSN`, `PATH`, `MODE`, `OWNER` | Additional filesystem |
+
+**Parameters:**
+
+| Parameter | Values | Default | Description |
+|-----------|--------|---------|-------------|
+| `DSN(name)` | dataset name | — | BDAM dataset to mount |
+| `PATH(/path)` | absolute path | `/` (ROOT only) | Mount point |
+| `SIZE(n)` | `500K`, `1M`, … | — | Root disk size (ROOT only) |
+| `BLKSIZE(n)` | 512–8192 | `4096` | Block size in bytes (ROOT only) |
+| `MODE(RO\|RW)` | `RO` or `RW` | `RO` | Read-only or read-write |
+| `OWNER(userid)` | RACF userid | — | Restrict writes to this userid |
+
+Lines beginning with `/*` are comments (terminated by `*/`).
+
+---
+
+### 4. Disk Datasets
+
+Each UFSD filesystem lives in a BDAM dataset. Before adding a mount to the
+PARMLIB configuration, the dataset must be **allocated and formatted**.
+
+#### Step 1: Create the filesystem image with ufsd-utils
+
+`ufsd-utils` is a host-side command-line tool (separate repository) that
+creates and inspects UFS370 disk images:
+
+```
+$ ufsd-utils create root.img --size 1M
+Creating root.img (1M, blksize=4096, inodes=10.0%)
+  Volume size:     256 blocks (1.00 MB)
+  Block size:      4096 bytes
+  Inode blocks:    2 (64 inodes)
+  Data blocks:     252 (free: 251)
+  Root owner:      MIGO/ADMIN
+  Format:          UFS370 v1 (time64 timestamps)
+
+  MVS Dataset Allocation (DSORG=DA, BDAM):
+
+    DCB=(DSORG=DA,BLKSIZE=4096)  SPACE=(4096,(256))
+
+    JCL (recommended — ISPF/RPF panel cannot set DSORG=DA):
+      //ALLOC  EXEC PGM=IEFBR14
+      //DISK   DD DSN=your.dataset.name,
+      //          DISP=(NEW,CATLG,DELETE),UNIT=SYSDA,
+      //          SPACE=(4096,(256)),
+      //          DCB=(DSORG=DA,BLKSIZE=4096)
+
+    Transfer: FTP binary PUT into pre-allocated dataset
+Done.
+```
+
+`ufsd-utils` prints the exact JCL and SPACE parameters to use for the MVS
+allocation, derived from the image geometry. Use those values — do not guess.
+
+> A native MVS formatting tool is planned and will be added to the UFSD
+> package in a future release. Until then, `ufsd-utils` on the host is the
+> only supported way to create new filesystem images.
+
+#### Step 2: Allocate the MVS dataset
+
+Use the JCL printed by `ufsd-utils` (with your actual dataset name and volume):
 
 ```jcl
-//ALLOC   JOB  (A),'ALLOC',CLASS=A,MSGCLASS=H
-//STEP1   EXEC PGM=IEFBR14
-//WEBROOT DD   DSN=HTTPD.WEBROOT,
-//             DISP=(NEW,CATLG),
-//             UNIT=SYSDA,VOL=SER=PUB000,
-//             SPACE=(TRK,(200,50)),
-//             DCB=(RECFM=U,DSORG=DA,BLKSIZE=4096)
+//ALLOC  EXEC PGM=IEFBR14
+//DISK   DD DSN=HTTPD.WEBROOT,
+//          DISP=(NEW,CATLG,DELETE),UNIT=SYSDA,VOL=SER=PUB000,
+//          SPACE=(4096,(256)),
+//          DCB=(DSORG=DA,BLKSIZE=4096)
 ```
 
-Choose `BLKSIZE` between 512 and 8192; 4096 is the recommended default.
-The dataset must be DSORG=DA (direct access / BDAM).
+ISPF/RPF dataset allocation panels cannot set `DSORG=DA` — JCL is required.
 
-To pre-format a new filesystem image, use `ufsd-utils` (a companion host-side
-tool) or issue a `REBUILD` command after first mount (see below).
+#### Step 3: Upload the image
+
+Transfer the `.img` file to the pre-allocated dataset in binary mode:
+
+```sh
+# zowe CLI
+zowe files upload file-to-data-set root.img "HTTPD.WEBROOT" --binary
+
+# or FTP (binary mode)
+ftp mvs-host
+binary
+put root.img 'HTTPD.WEBROOT'
+```
+
+The dataset is now ready to be listed in `UFSDPRM0` and mounted.
 
 ---
 
-### 4. Started Task User
+### 5. Started Task User
 
 UFSD needs OPER authority (or equivalent) to allocate CSA storage and to
 register the subsystem in the SSCT chain.
@@ -319,8 +435,7 @@ F UFSD,command
 |---------|-------------|
 | `STATS` | Print request counters, error count, POST bundles saved, free pool sizes, and a list of mounted filesystems |
 | `SESSIONS` | List all active client sessions (userid, ASID, session token) |
-| `MOUNT DD=ddname,PATH=/path` | Mount a pre-defined DD (from the PROC) at the given path |
-| `MOUNT DSN=dsn,PATH=/path` | Mount a dataset by name (DYNALLOC; requires AP-3a) |
+| `MOUNT DSN=dsn,PATH=/path` | Mount a dataset by name (DYNALLOC) |
 | `MOUNT ...,MODE=RO` | Mount read-only (write requests return ROFS) |
 | `MOUNT ...,MODE=RW` | Mount read-write (default) |
 | `MOUNT ...,OWNER=userid` | Restrict write access to the named userid |
@@ -335,8 +450,8 @@ Examples:
 
 ```
 F UFSD,STATS
-F UFSD,MOUNT DD=WEBROOT,PATH=/www
-F UFSD,MOUNT DD=USRHOME,PATH=/u,MODE=RW,OWNER=IBMUSER
+F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/www,MODE=RO
+F UFSD,MOUNT DSN=IBMUSER.UFSHOME,PATH=/u/ibmuser,MODE=RW,OWNER=IBMUSER
 F UFSD,UNMOUNT PATH=/www
 F UFSD,TRACE ON
 F UFSD,TRACE DUMP
@@ -346,25 +461,19 @@ F UFSD,TRACE DUMP
 
 ### Mounting Filesystems
 
-All filesystem access goes through a mount point. Paths are Unix-style, with
-`/` as the root separator. File names may be up to 59 characters long.
+Static mounts are defined in the PARMLIB member and activated automatically at
+startup. Use `F UFSD,MOUNT` to add additional filesystems at runtime without
+restarting.
 
-Mount a read-only web content filesystem:
+Paths are Unix-style with `/` as the root separator. File names may be up to
+59 characters long.
 
-```
-F UFSD,MOUNT DD=WEBROOT,PATH=/www,MODE=RO
-```
-
-Mount a user home directory, writable only by `IBMUSER`:
+Mount a dataset dynamically:
 
 ```
-F UFSD,MOUNT DD=USRHOME,PATH=/u/ibmuser,MODE=RW,OWNER=IBMUSER
-```
-
-Mount a shared scratch area (writable by any authenticated user):
-
-```
-F UFSD,MOUNT DD=SCRATCH,PATH=/tmp,MODE=RW
+F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/www,MODE=RO
+F UFSD,MOUNT DSN=IBMUSER.UFSHOME,PATH=/u/ibmuser,MODE=RW,OWNER=IBMUSER
+F UFSD,MOUNT DSN=SYS1.UFSD.SCRATCH,PATH=/tmp,MODE=RW
 ```
 
 A filesystem can be unmounted only when no sessions have open file descriptors
@@ -373,6 +482,21 @@ on it:
 ```
 F UFSD,UNMOUNT PATH=/www
 ```
+
+---
+
+## Known Limitations
+
+### HTTPD integration
+
+The HTTPD server is not yet fully migrated to UFSD. HTTPD currently looks for
+its web content at the filesystem root (`/`) rather than at a configurable
+mount point. Mounting the legacy `HTTPD.UFSDISK0` dataset at a path such as
+`/wwwroot` will not work — HTTPD will not find its pages there.
+
+This will be resolved in a near-term update to HTTPD. Until then, either mount
+the web content dataset at `/`, or continue using the legacy ufs370 setup for
+HTTPD.
 
 ---
 
