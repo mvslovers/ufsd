@@ -6,6 +6,10 @@
 **   1. Fills a DECB and issues osdread/osdwrite (async, returns immediately)
 **   2. Calls oscheck to wait for completion and check for errors
 **
+** SYNAD is installed at DCB open time (ufsd#ini.c) so that MVS
+** does not issue IEC020I on I/O errors.  Instead, oscheck returns
+** non-zero and we report the error via a single WTO per disk.
+**
 ** ufsd_blk_read (UFSD@BRD)  read one block by relative sector number
 ** ufsd_blk_write(UFSD@BWR)  write one block by relative sector number
 **
@@ -15,6 +19,7 @@
 
 #include "ufsd.h"
 #include <string.h>
+#include <clibwto.h>
 #include <osio.h>
 #include <osdcb.h>
 
@@ -34,7 +39,15 @@ ufsd_blk_read(UFSD_DISK *disk, unsigned sector, void *buf)
 
     memset(&decb, 0, sizeof(decb));
     osdread(&decb, (DCB *)disk->dcb, buf, (int)disk->blksize, sector);
-    return oscheck(&decb) ? UFSD_RC_IO : UFSD_RC_OK;
+    if (oscheck(&decb)) {
+        if (!disk->io_error) {
+            disk->io_error = 1;
+            wtof("UFSD063E I/O error on DSN=%s block=%u (read)",
+                 disk->dsn, sector);
+        }
+        return UFSD_RC_IO;
+    }
+    return UFSD_RC_OK;
 }
 
 /* ============================================================
@@ -55,5 +68,13 @@ ufsd_blk_write(UFSD_DISK *disk, unsigned sector, void *buf)
 
     memset(&decb, 0, sizeof(decb));
     osdwrite(&decb, (DCB *)disk->dcb, buf, (int)disk->blksize, sector);
-    return oscheck(&decb) ? UFSD_RC_IO : UFSD_RC_OK;
+    if (oscheck(&decb)) {
+        if (!disk->io_error) {
+            disk->io_error = 1;
+            wtof("UFSD063E I/O error on DSN=%s block=%u (write)",
+                 disk->dsn, sector);
+        }
+        return UFSD_RC_IO;
+    }
+    return UFSD_RC_OK;
 }

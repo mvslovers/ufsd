@@ -175,7 +175,7 @@ struct ufsd_disk {
     void          *dcb;             /* BDAM DCB (opaque: see osio.h) */
     unsigned       flags;           /* UFSD_DISK_*                   */
     unsigned short blksize;         /* physical block size from DCB  */
-    unsigned short pad;             /* alignment                     */
+    unsigned short io_error;        /* set by SYNAD / blk I/O error  */
     UFSD_SB        sb;              /* superblock (read at open)     */
     char           mountpath[128];  /* mount point path              */
     char           mount_owner[9];  /* owner userid (or empty)       */

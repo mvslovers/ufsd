@@ -2,7 +2,7 @@
 **
 ** AP-1d Step 2: Open BDAM datasets at STC startup.
 ** AP-1f: Dynamic mount/unmount via ufsd_disk_mount_dyn/ufsd_disk_umount.
-** AP-3a: Parmlib-driven config, DYNALLOC via __dsalc/__dsfree,
+** AP-3a: Parmlib-driven config, DYNALLOC via SVC 99/__dsfree,
 **        root disk auto-create, mount-point directory creation.
 **
 ** ufsd_ufs_init(stc)           read parmlib, mount root + all mounts
@@ -21,6 +21,8 @@
 #include <osio.h>
 #include <osdcb.h>
 #include <osjfcb.h>
+#include <mvssupa.h>
+#include "svc99.h"
 
 /* Boot block header (8 bytes at sector 0 offset 0).
 ** Matches struct ufs_boot in ufs370/include/ufs/disk.h. */
@@ -40,6 +42,96 @@ static unsigned s_ddn_seq = 0;
 static UFSD_DISK *open_disk(const char *ddname);
 static void       close_disk(UFSD_DISK *disk);
 static int        mkdir_p(UFSD_DISK *disk, const char *path);
+
+/* ============================================================
+** s99_errmsg
+**
+** Return a short human-readable string for common S99ERROR
+** codes.  Returns NULL for unknown codes.
+** ============================================================ */
+static const char *
+s99_errmsg(unsigned short code)
+{
+    switch (code) {
+    case 0x0210U: return "Dataset in use";
+    case 0x0218U: return "Dataset allocated exclusively";
+    case 0x1708U: return "Dataset not cataloged";
+    case 0x170CU: return "Volume not mounted";
+    default:      return NULL;
+    }
+}
+
+/* ============================================================
+** ufsd_dynalloc
+**
+** Allocate a dataset via SVC 99 (DYNALLOC).
+** Builds text units directly instead of going through __dsalc,
+** so we can capture S99ERROR on failure and issue a clear
+** operator message.
+**
+** ddname  - pre-generated DD name (8 chars, blank-padded)
+** dsname  - dataset name
+** mode    - UFSD_MOUNT_RW (DISP=OLD) or UFSD_MOUNT_RO (DISP=SHR)
+**
+** Returns 0 on success, 8 on failure (with WTO issued).
+** ============================================================ */
+static int
+ufsd_dynalloc(const char *ddname, const char *dsname, unsigned mode)
+{
+    TXT99    **txt  = NULL;
+    RB99       rb;
+    int        rc;
+    const char *msg;
+
+    if (__txddn(&txt, ddname))  goto bad_setup;
+    if (__txdsn(&txt, dsname))  goto bad_setup;
+    if (mode == UFSD_MOUNT_RW) {
+        if (__txold(&txt, NULL))  goto bad_setup;
+    } else {
+        if (__txshr(&txt, NULL))  goto bad_setup;
+    }
+
+    /* Mark end of text unit pointer list */
+    {
+        unsigned count = 0;
+        while (txt[count]) count++;
+        if (count == 0) goto bad_setup;
+        count--;
+        txt[count] = (TXT99 *)((unsigned)txt[count] | 0x80000000U);
+    }
+
+    memset(&rb, 0, sizeof(rb));
+    rb.len     = (unsigned char)sizeof(RB99);
+    rb.request = S99VRBAL;
+    rb.flag1   = S99NOCNV;
+    rb.txtptr  = txt;
+
+    rc = __svc99(&rb);
+
+    if (rc != 0) {
+        msg = s99_errmsg((unsigned short)rb.error);
+        if (msg)
+            wtof("UFSD120E DYNALLOC failed for DSN=%s "
+                 "(S99ERR=%04X: %s)", dsname,
+                 (unsigned)rb.error, msg);
+        else
+            wtof("UFSD120E DYNALLOC failed for DSN=%s "
+                 "(S99ERR=%04X)", dsname,
+                 (unsigned)rb.error);
+
+        FreeTXT99Array(&txt);
+        return 8;
+    }
+
+    FreeTXT99Array(&txt);
+    return 0;
+
+bad_setup:
+    wtof("UFSD120E DYNALLOC failed for DSN=%s "
+         "(text unit build error)", dsname);
+    if (txt) FreeTXT99Array(&txt);
+    return 8;
+}
 
 /* ============================================================
 ** open_disk
@@ -78,6 +170,20 @@ open_disk(const char *ddname)
         return NULL;
     }
     disk->dcb = (void *)dcb;
+
+    /* Install SYNAD exit to suppress IEC020I on I/O errors.
+    ** The stub is a BR 14 emitted inline with a branch around it
+    ** so it never executes during normal flow but stays in-CSECT. */
+    {
+        void *synad;
+        __asm__("B\tUFSSYNE\n\t"
+            "DS\t0H\n"
+            "UFSSYND\tDS\t0H\n\t"
+            "BR\t14\n"
+            "UFSSYNE\tDS\t0H\n\t"
+            "LA\t%0,UFSSYND" : "=r"(synad));
+        dcb->dcbsynad = synad;
+    }
 
     /* Open for BDAM UPDATE access (read + write) */
     if (osdopen(dcb, 0)) {
@@ -303,7 +409,6 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
 {
     UFSD_DISK *disk;
     char       ddname[9];
-    char       opts[256];
     unsigned   pathlen;
     unsigned   i;
 
@@ -332,15 +437,8 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
     sprintf(ddname, "UFD%05u", ++s_ddn_seq);
 
     /* DYNALLOC: DISP=OLD for RW (exclusive), DISP=SHR for RO */
-    if (mode == UFSD_MOUNT_RW)
-        sprintf(opts, "dd=%s,dsn=%s,disp=old", ddname, dsname);
-    else
-        sprintf(opts, "dd=%s,dsn=%s,disp=shr", ddname, dsname);
-
-    if (__dsalc(NULL, opts) != 0) {
-        wtof("UFSD120E DYNALLOC failed for DSN=%s", dsname);
+    if (ufsd_dynalloc(ddname, dsname, mode) != 0)
         return 8;
-    }
 
     /* Open BDAM dataset */
     disk = open_disk(ddname);
