@@ -1,38 +1,15 @@
 /* UFSD#INI.C - UFS Disk Initialization
 **
-** AP-1d Step 2: Open UFSDISK0-9 BDAM datasets at STC startup.
-** Close and free all disk handles at shutdown.
-**
+** AP-1d Step 2: Open BDAM datasets at STC startup.
 ** AP-1f: Dynamic mount/unmount via ufsd_disk_mount/ufsd_disk_umount.
+** AP-3a: Parmlib-driven config, DYNALLOC via __dsalc/__dsfree,
+**        root disk auto-create, mount-point directory creation.
 **
-** ufsd_ufs_init(stc)           scan TIOT, open each UFSDISK[0-9] found
-** ufsd_ufs_term(stc)           close and free all open disk handles
-** ufsd_disk_mount(stc,dd,path) open one BDAM dataset at runtime
+** ufsd_ufs_init(stc)           read parmlib, mount root + all mounts
+** ufsd_ufs_term(stc)           close all disks, DYNFREE allocated DDs
+** ufsd_disk_mount(stc,dd,path) open one BDAM dataset (DD-based, legacy)
+** ufsd_disk_mount_dyn(stc,...) open via DYNALLOC (AP-3a)
 ** ufsd_disk_umount(stc,path)   close and remove one disk at runtime
-**
-** WTO messages:
-**   UFSD040I N disk(s) mounted at startup
-**   UFSD041I   UFSDISK0 DSN=name (root)
-**   UFSD041I   UFSDISK0 DSN=name (READ-ONLY)
-**   UFSD042E   Cannot allocate disk handle for UFSDISK0
-**   UFSD043E   Cannot open UFSDISK0
-**   UFSD044W   UFSDISK0: not a valid UFS disk (type=0000)
-**
-** Note: only UFSDISK0 is auto-mounted at startup (as root "/").
-** Additional disks (UFSDISK1-9) must be mounted explicitly via
-** MODIFY MOUNT.  This avoids opening disks with no mountpath.
-**   UFSD060I   Mounted DDname on /path
-**   UFSD061E   DD DDname not found in TIOT
-**   UFSD062E   Cannot unmount root filesystem
-**   UFSD063E   No filesystem mounted on /path
-**   UFSD064I   Unmounting DDname from /path
-**   UFSD065E   MOUNT: path must be absolute
-**   UFSD066E   MOUNT: DDname already mounted on /path
-**   UFSD067E   MOUNT: /path already has a filesystem mounted
-**
-** Missing UFSDISK DDs are not an error; UFSD runs without any
-** physical disk at AP-1d (file operations come in AP-1e).
-** The first disk opened (UFSDISK0) becomes the root filesystem.
 */
 
 #include "ufsd.h"
@@ -40,6 +17,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <clibwto.h>
+#include <clibio.h>
+#include "time64.h"
 #include <ieftiot.h>
 #include <osio.h>
 #include <osdcb.h>
@@ -56,10 +35,14 @@ struct ufsboot_hdr {
 };                              /* 08                                   */
 #define UFSD_DISK_TYPE_UFS  2
 
+/* DD name sequence counter for DYNALLOC */
+static unsigned s_ddn_seq = 0;
+
 /* Forward declarations */
 static int        find_dd(const char *ddname);
 static UFSD_DISK *open_disk(const char *ddname);
 static void       close_disk(UFSD_DISK *disk);
+static int        mkdir_p(UFSD_DISK *disk, const char *path);
 
 /* ============================================================
 ** find_dd
@@ -187,57 +170,336 @@ close_disk(UFSD_DISK *disk)
 }
 
 /* ============================================================
+** mkdir_p
+**
+** Create all directories along a path on the given disk.
+** Like "mkdir -p /a/b/c" — creates /a, /a/b, /a/b/c.
+** Silently succeeds if directories already exist.
+** Returns UFSD_RC_OK or an error code.
+** ============================================================ */
+static int
+mkdir_p(UFSD_DISK *disk, const char *path)
+{
+    char         comp[128];
+    char         partial[128];
+    const char  *p;
+    const char  *end;
+    unsigned     cur_ino;
+    unsigned     found;
+    unsigned     new_ino;
+    unsigned     new_blk;
+    int          n;
+    int          rc;
+    UFSD_DINODE  dino;
+    UFSD_DIRENT *de;
+    char        *blk;
+
+    if (!path || path[0] != '/') return UFSD_RC_INVALID;
+
+    cur_ino    = UFSD_ROOT_INO;
+    partial[0] = '\0';
+    p          = path + 1;  /* skip leading '/' */
+
+    while (*p) {
+        /* Skip slashes */
+        while (*p == '/') p++;
+        if (*p == '\0') break;
+
+        /* Extract next component */
+        end = p;
+        while (*end && *end != '/') end++;
+        n = (int)(end - p);
+        if (n == 0) break;
+        if (n > (int)UFSD_NAME_MAX) return UFSD_RC_NAMETOOLONG;
+
+        memcpy(comp, p, (unsigned)n);
+        comp[n] = '\0';
+        p = end;
+
+        /* Build partial path for diagnostics */
+        strcat(partial, "/");
+        strcat(partial, comp);
+
+        /* Check if this component exists */
+        found = ufsd_dir_lookup(disk, cur_ino, comp);
+        if (found != 0) {
+            /* Fix up timestamps/owner if missing (legacy dirs) */
+            if (ufsd_ino_read(disk, found, &dino) == UFSD_RC_OK
+                && dino.owner[0] == '\0') {
+                mtime64_t now;
+                mtime64(&now);
+                dino.ctime.v2 = now;
+                dino.mtime.v2 = now;
+                dino.atime.v2 = now;
+                memcpy(dino.owner, "UFSD    ", 9);
+                memcpy(dino.group, "SYS1    ", 9);
+                ufsd_ino_write(disk, found, &dino);
+            }
+            cur_ino = found;
+            continue;
+        }
+
+        /* Create the directory */
+        if (ufsd_sb_alloc_inode(disk, &new_ino) != UFSD_RC_OK)
+            return UFSD_RC_NOINODES;
+        if (ufsd_sb_alloc_block(disk, &new_blk) != UFSD_RC_OK) {
+            ufsd_sb_free_inode(disk, new_ino);
+            return UFSD_RC_NOSPACE;
+        }
+
+        blk = (char *)calloc(1U, disk->blksize);
+        if (!blk) {
+            ufsd_sb_free_block(disk, new_blk);
+            ufsd_sb_free_inode(disk, new_ino);
+            return UFSD_RC_IO;
+        }
+
+        de       = (UFSD_DIRENT *)blk;
+        de->ino  = new_ino;
+        memset(de->name, 0, sizeof(de->name));
+        memcpy(de->name, ".", 2);
+
+        de++;
+        de->ino  = cur_ino;
+        memset(de->name, 0, sizeof(de->name));
+        memcpy(de->name, "..", 3);
+
+        rc = ufsd_blk_write(disk, new_blk, blk);
+        free(blk);
+        if (rc != UFSD_RC_OK) {
+            ufsd_sb_free_block(disk, new_blk);
+            ufsd_sb_free_inode(disk, new_ino);
+            return UFSD_RC_IO;
+        }
+
+        memset(&dino, 0, sizeof(dino));
+        dino.mode     = (unsigned short)(UFSD_IFDIR | 0755U);
+        dino.nlink    = 2;
+        dino.filesize = 2U * UFSD_DIRENT_SIZE;
+        dino.addr[0]  = new_blk;
+        {
+            mtime64_t now;
+            mtime64(&now);
+            dino.ctime.v2 = now;
+            dino.mtime.v2 = now;
+            dino.atime.v2 = now;
+        }
+        memcpy(dino.owner, "UFSD    ", 9);
+        memcpy(dino.group, "SYS1    ", 9);
+
+        if (ufsd_ino_write(disk, new_ino, &dino) != UFSD_RC_OK) {
+            ufsd_sb_free_block(disk, new_blk);
+            ufsd_sb_free_inode(disk, new_ino);
+            return UFSD_RC_IO;
+        }
+
+        rc = ufsd_dir_add(disk, cur_ino, comp, new_ino);
+        if (rc != UFSD_RC_OK) {
+            ufsd_sb_free_block(disk, new_blk);
+            ufsd_sb_free_inode(disk, new_ino);
+            return rc;
+        }
+
+        if (ufsd_sb_write(disk) != UFSD_RC_OK)
+            return UFSD_RC_IO;
+
+        cur_ino = new_ino;
+    }
+
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
+** ufsd_disk_mount_dyn
+**
+** AP-3a: Mount a BDAM dataset via DYNALLOC (SVC 99).
+** Generates a DD name, allocates the dataset, opens it,
+** reads the superblock, and appends to stc->disks[].
+**
+** Returns 0 on success, 8 on failure.
+** ============================================================ */
+int
+ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
+                    const char *mountpath, unsigned mode,
+                    const char *owner)
+{
+    UFSD_DISK *disk;
+    char       ddname[9];
+    char       opts[256];
+    unsigned   pathlen;
+    unsigned   i;
+
+    if (!stc || !dsname || !mountpath) return 8;
+
+    if (mountpath[0] != '/') {
+        wtof("UFSD065E MOUNT: path must be absolute");
+        return 8;
+    }
+    if (stc->ndisks >= (unsigned)UFSD_MAX_DISKS) {
+        wtof("UFSD061E MOUNT: disk table full (%u slots)",
+             (unsigned)UFSD_MAX_DISKS);
+        return 8;
+    }
+
+    /* Check for duplicate mount path */
+    for (i = 0; i < stc->ndisks; i++) {
+        if (stc->disks[i] &&
+            strcmp(stc->disks[i]->mountpath, mountpath) == 0) {
+            wtof("UFSD067E MOUNT: %s already mounted", mountpath);
+            return 8;
+        }
+    }
+
+    /* Generate DD name: UFD00001, UFD00002, ... */
+    sprintf(ddname, "UFD%05u", ++s_ddn_seq);
+
+    /* DYNALLOC: DISP=OLD for RW (exclusive), DISP=SHR for RO */
+    if (mode == UFSD_MOUNT_RW)
+        sprintf(opts, "dd=%s,dsn=%s,disp=old", ddname, dsname);
+    else
+        sprintf(opts, "dd=%s,dsn=%s,disp=shr", ddname, dsname);
+
+    if (__dsalc(NULL, opts) != 0) {
+        wtof("UFSD120E DYNALLOC failed for DSN=%s", dsname);
+        return 8;
+    }
+
+    /* Open BDAM dataset */
+    disk = open_disk(ddname);
+    if (!disk) {
+        __dsfree(ddname);
+        return 8;
+    }
+
+    /* Read superblock */
+    ufsd_sb_read(disk);
+
+    /* Store mount metadata */
+    pathlen = strlen(mountpath);
+    if (pathlen >= sizeof(disk->mountpath))
+        pathlen = sizeof(disk->mountpath) - 1U;
+    memcpy(disk->mountpath, mountpath, pathlen);
+    disk->mountpath[pathlen] = '\0';
+
+    disk->mount_mode = mode;
+    memset(disk->mount_owner, 0, sizeof(disk->mount_owner));
+    if (owner && owner[0]) {
+        strncpy(disk->mount_owner, owner, 8);
+        disk->mount_owner[8] = '\0';
+    }
+
+    if (mode == UFSD_MOUNT_RO)
+        disk->flags |= UFSD_DISK_RDONLY;
+
+    stc->disks[stc->ndisks++] = disk;
+
+    if (disk->mount_owner[0])
+        wtof("UFSD060I Mounted %s on %s (%s, OWNER=%s)",
+             disk->dsn, disk->mountpath,
+             mode == UFSD_MOUNT_RW ? "RW" : "RO",
+             disk->mount_owner);
+    else
+        wtof("UFSD060I Mounted %s on %s (%s)",
+             disk->dsn, disk->mountpath,
+             mode == UFSD_MOUNT_RW ? "RW" : "RO");
+
+    return 0;
+}
+
+/* ============================================================
 ** ufsd_ufs_init
 **
-** Scan the TIOT for UFSDISK0 through UFSDISK9.  For each DD
-** found, open the BDAM dataset and store the handle in
-** stc->disks[].  Missing DDs are silently skipped.
+** AP-3a: Read parmlib configuration, mount root filesystem
+** (auto-create if missing), create mount-point directories,
+** then mount all configured filesystems.
 **
-** The first disk opened becomes the root filesystem and is
-** flagged UFSD_DISK_ROOT.
-**
-** Issues UFSD040I with the total count and UFSD041I per disk.
-** Always returns 0 (no-disks is not a failure at AP-1d).
+** Falls back to TIOT-based UFSDISK0 if DD:UFSDPRM is absent.
 ** ============================================================ */
 int
 ufsd_ufs_init(UFSD_STC *stc)
 {
-    char       ddname[9];  /* "UFSDISK0" + NUL */
-    UFSD_DISK *disk;
-    unsigned   i;
+    UFSD_CONFIG cfg;
+    UFSD_DISK  *root;
+    unsigned    i;
+    int         rc;
 
     if (!stc) return 8;
-
     stc->ndisks = 0;
 
-    /* Only UFSDISK0 is auto-mounted at startup as the root filesystem.
-    ** UFSDISK1-9 require an explicit /F UFSD,MOUNT command. */
-    memcpy(ddname, "UFSDISK0", 9);
-    if (find_dd(ddname)) {
-        disk = open_disk(ddname);
-        if (disk) {
-            disk->flags    |= UFSD_DISK_ROOT;
-            disk->mountpath[0] = '/';
-            disk->mountpath[1] = '\0';
-            stc->disks[stc->ndisks++] = disk;
-            ufsd_sb_read(disk);
+    /* Try parmlib-driven init */
+    rc = ufsd_cfg_read(&cfg);
+    if (rc != 0) {
+        /* Fallback: legacy TIOT-based init for UFSDISK0 */
+        char ddname[9];
+
+        wtof("UFSD115I Falling back to UFSDISK0 DD-based init");
+        memcpy(ddname, "UFSDISK0", 9);
+        if (find_dd(ddname)) {
+            UFSD_DISK *disk = open_disk(ddname);
+            if (disk) {
+                disk->flags      |= UFSD_DISK_ROOT;
+                disk->mountpath[0] = '/';
+                disk->mountpath[1] = '\0';
+                disk->mount_mode   = UFSD_MOUNT_RW;
+                stc->disks[stc->ndisks++] = disk;
+                ufsd_sb_read(disk);
+            }
         }
+        goto report;
     }
 
+    ufsd_cfg_dump(&cfg);
 
-    wtof("UFSD040I %u disk(s) mounted", stc->ndisks);
+    /* Mount root filesystem via DYNALLOC */
+    rc = ufsd_disk_mount_dyn(stc, cfg.root_dsname, "/",
+                             UFSD_MOUNT_RW, "");
+    if (rc != 0) {
+        wtof("UFSD121E Cannot mount root filesystem DSN=%s",
+             cfg.root_dsname);
+        return 8;
+    }
 
+    /* Mark as root */
+    root = stc->disks[0];
+    root->flags |= UFSD_DISK_ROOT;
+
+    /* Create mount-point directories on root for each MOUNT */
+    for (i = 0; i < cfg.nmounts; i++) {
+        const char *mpath = cfg.mounts[i].path;
+        rc = mkdir_p(root, mpath);
+        if (rc != UFSD_RC_OK && rc != UFSD_RC_EXIST)
+            wtof("UFSD122W Cannot create mount point %s (rc=%d)",
+                 mpath, rc);
+    }
+
+    /* Mount each configured filesystem */
+    for (i = 0; i < cfg.nmounts; i++) {
+        UFSD_MOUNT_CFG *m = &cfg.mounts[i];
+        rc = ufsd_disk_mount_dyn(stc, m->dsname, m->path,
+                                 m->mode, m->owner);
+        if (rc != 0)
+            wtof("UFSD123W Cannot mount DSN=%s on %s",
+                 m->dsname, m->path);
+    }
+
+report:
+    wtof("UFSD040I %u filesystem(s) mounted", stc->ndisks);
     for (i = 0; i < stc->ndisks; i++) {
-        disk = stc->disks[i];
-        if (disk->flags & UFSD_DISK_ROOT)
-            wtof("UFSD041I   %s DSN=%s (root)",
-                 disk->ddname, disk->dsn);
-        else if (disk->flags & UFSD_DISK_RDONLY)
-            wtof("UFSD041I   %s DSN=%s (READ-ONLY)",
-                 disk->ddname, disk->dsn);
+        UFSD_DISK *d = stc->disks[i];
+        if (!d) continue;
+        if (d->flags & UFSD_DISK_ROOT)
+            wtof("UFSD041I   %s DSN=%s (root, %s)",
+                 d->mountpath, d->dsn,
+                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO");
+        else if (d->mount_owner[0])
+            wtof("UFSD041I   %s DSN=%s (%s, OWNER=%s)",
+                 d->mountpath, d->dsn,
+                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO",
+                 d->mount_owner);
         else
-            wtof("UFSD041I   %s DSN=%s",
-                 disk->ddname, disk->dsn);
+            wtof("UFSD041I   %s DSN=%s (%s)",
+                 d->mountpath, d->dsn,
+                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO");
     }
 
     return 0;
@@ -247,17 +509,26 @@ ufsd_ufs_init(UFSD_STC *stc)
 ** ufsd_ufs_term
 **
 ** Close all open BDAM datasets and free disk handles.
+** DYNFREE any DD names generated by ufsd_disk_mount_dyn.
 ** Called at STC shutdown before the session table is freed.
 ** ============================================================ */
 void
 ufsd_ufs_term(UFSD_STC *stc)
 {
     unsigned i;
+    char     ddname[9];
 
     if (!stc) return;
 
     for (i = 0; i < stc->ndisks; i++) {
-        close_disk(stc->disks[i]);
+        UFSD_DISK *d = stc->disks[i];
+        if (!d) continue;
+        /* Save ddname before close_disk frees the struct */
+        memcpy(ddname, d->ddname, 9);
+        close_disk(d);
+        /* Free DYNALLOC'd DDs (generated names start with "UFD") */
+        if (memcmp(ddname, "UFD", 3) == 0)
+            __dsfree(ddname);
         stc->disks[i] = NULL;
     }
     stc->ndisks = 0;
@@ -266,11 +537,8 @@ ufsd_ufs_term(UFSD_STC *stc)
 /* ============================================================
 ** ufsd_disk_mount
 **
-** AP-1f: Dynamically mount a BDAM dataset as a filesystem.
-** Scans the TIOT for ddname (blank-padded to 8 chars), opens
-** the disk, reads the superblock, and appends to stc->disks[].
-**
-** Returns 0 on success, 8 on failure.
+** AP-1f: Legacy DD-based mount (kept for backward compat and
+** /F UFSD,MOUNT DD=... command).
 ** ============================================================ */
 int
 ufsd_disk_mount(UFSD_STC *stc, const char *ddname, const char *mountpath)
@@ -283,14 +551,13 @@ ufsd_disk_mount(UFSD_STC *stc, const char *ddname, const char *mountpath)
 
     if (!stc || !ddname || !mountpath) return 8;
 
-    /* Mount path must be absolute */
     if (mountpath[0] != '/') {
-        wtof("UFSD065E MOUNT: path must be absolute (must start with '/')");
+        wtof("UFSD065E MOUNT: path must be absolute");
         return 8;
     }
-
     if (stc->ndisks >= (unsigned)UFSD_MAX_DISKS) {
-        wtof("UFSD061E MOUNT: disk table full (%u slots)", UFSD_MAX_DISKS);
+        wtof("UFSD061E MOUNT: disk table full (%u slots)",
+             (unsigned)UFSD_MAX_DISKS);
         return 8;
     }
 
@@ -323,15 +590,16 @@ ufsd_disk_mount(UFSD_STC *stc, const char *ddname, const char *mountpath)
     disk = open_disk(ddpad);
     if (!disk) return 8;
 
-    /* Read superblock */
     ufsd_sb_read(disk);
 
-    /* Store mount path */
     pathlen = strlen(mountpath);
     if (pathlen >= sizeof(disk->mountpath))
         pathlen = sizeof(disk->mountpath) - 1U;
     memcpy(disk->mountpath, mountpath, pathlen);
     disk->mountpath[pathlen] = '\0';
+
+    /* Legacy mounts default to RW, no owner */
+    disk->mount_mode = UFSD_MOUNT_RW;
 
     stc->disks[stc->ndisks++] = disk;
 
@@ -344,22 +612,18 @@ ufsd_disk_mount(UFSD_STC *stc, const char *ddname, const char *mountpath)
 ** ufsd_disk_umount
 **
 ** AP-1f: Dynamically unmount a filesystem by mount path.
-** Finds the disk matching mountpath, closes it, and compacts
-** the stc->disks[] array.
-**
-** The root filesystem ("/") cannot be unmounted.
-** Returns 0 on success, 8 on failure.
+** Root filesystem ("/") cannot be unmounted.
 ** ============================================================ */
 int
 ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
 {
     UFSD_DISK *disk;
+    char       ddname[9];
     unsigned   i;
     int        found;
 
     if (!stc || !mountpath) return 8;
 
-    /* Refuse to unmount root */
     if (mountpath[0] == '/' && mountpath[1] == '\0') {
         wtof("UFSD062E UNMOUNT: cannot unmount root filesystem");
         return 8;
@@ -380,9 +644,13 @@ ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
     }
 
     disk = stc->disks[found];
-    wtof("UFSD064I Unmounting %.8s from %s", disk->ddname, disk->mountpath);
+    wtof("UFSD064I Unmounting %s from %s", disk->dsn, disk->mountpath);
 
+    /* Save ddname, close, DYNFREE if applicable */
+    memcpy(ddname, disk->ddname, 9);
     close_disk(disk);
+    if (memcmp(ddname, "UFD", 3) == 0)
+        __dsfree(ddname);
 
     /* Compact the array */
     for (i = (unsigned)found; i < stc->ndisks - 1U; i++)

@@ -194,9 +194,9 @@ void
 ufsd_sb_free_block(UFSD_DISK *disk, unsigned sector)
 {
     if (!disk || sector == 0) return;
+    disk->sb.total_freeblock++;
     if (disk->sb.nfreeblock < UFSD_SB_MAX_FREEBLOCK) {
         disk->sb.freeblock[disk->sb.nfreeblock++] = sector;
-        disk->sb.total_freeblock++;
     }
     /* Cache overflow: sector leaked for this session. */
 }
@@ -232,23 +232,22 @@ inode_scan_refill(UFSD_DISK *disk)
     found = 0;
 
     for (sector = disk->sb.ilist_sector;
-         sector < disk->sb.datablock_start
-         && disk->sb.nfreeinode < UFSD_SB_MAX_FREEINODE;
+         sector < disk->sb.datablock_start;
          sector++) {
 
         if (ufsd_blk_read(disk, sector, buf) != UFSD_RC_OK)
             continue;
 
-        for (i = 0;
-             i < ipb && disk->sb.nfreeinode < UFSD_SB_MAX_FREEINODE;
-             i++) {
+        for (i = 0; i < ipb; i++) {
             ino = (sector - disk->sb.ilist_sector) * ipb + i + 1U;
             if (ino <= 1U) continue;  /* skip reserved inode 1 */
 
             dip = (UFSD_DINODE *)(buf + i * UFSD_INODE_SIZE);
             if (dip->mode == 0) {
-                disk->sb.freeinode[disk->sb.nfreeinode++] = ino;
                 found++;
+                /* Fill cache up to capacity */
+                if (disk->sb.nfreeinode < UFSD_SB_MAX_FREEINODE)
+                    disk->sb.freeinode[disk->sb.nfreeinode++] = ino;
             }
         }
     }
@@ -256,6 +255,7 @@ inode_scan_refill(UFSD_DISK *disk)
     free(buf);
 
     if (found > 0) {
+        disk->sb.total_freeinode = found;
         wtof("UFSD076I Free inode scan: found %u inodes "
              "(cache refilled to %u)", found, disk->sb.nfreeinode);
         return UFSD_RC_OK;
@@ -299,14 +299,18 @@ ufsd_sb_alloc_inode(UFSD_DISK *disk, unsigned *out_ino)
 ** Push an inode number back into the free inode cache.
 ** If the cache is full, the inode is effectively leaked.
 ** The caller must call ufsd_sb_write() to persist.
+**
+** total_freeinode is always incremented (even on cache overflow)
+** to keep it in sync with alloc_inode's decrement.  The scan
+** sets the authoritative value.
 ** ============================================================ */
 void
 ufsd_sb_free_inode(UFSD_DISK *disk, unsigned ino)
 {
     if (!disk || ino == 0) return;
+    disk->sb.total_freeinode++;
     if (disk->sb.nfreeinode < UFSD_SB_MAX_FREEINODE) {
         disk->sb.freeinode[disk->sb.nfreeinode++] = ino;
-        disk->sb.total_freeinode++;
     }
     /* Cache overflow: inode leaked for this session. */
 }

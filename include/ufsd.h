@@ -59,6 +59,8 @@ typedef struct ufsd_ufs     UFSD_UFS;
 typedef struct ufsd_sb      UFSD_SB;
 typedef struct ufsd_dinode  UFSD_DINODE;
 typedef struct ufsd_dirent  UFSD_DIRENT;
+typedef struct ufsd_mount_cfg  UFSD_MOUNT_CFG;
+typedef struct ufsd_config     UFSD_CONFIG;
 
 /* ============================================================
 ** AP-1e: On-disk UFS constants
@@ -161,17 +163,44 @@ struct ufsd_dirent {
 #define UFSD_DISK_RDONLY  0x40000000U  /* DISP=SHR allocation      */
 #define UFSD_DISK_ROOT    0x20000000U  /* first disk = root (/)    */
 
-#define UFSD_MAX_DISKS    10           /* UFSDISK0 ... UFSDISK9 */
+/* Mount mode (AP-3a) */
+#define UFSD_MOUNT_RO     0x00U
+#define UFSD_MOUNT_RW     0x01U
+
+#define UFSD_MAX_DISKS    16           /* max mounted filesystems   */
 
 struct ufsd_disk {
-    char           ddname[9];       /* DD name + NUL ("UFSDISK0")    */
-    char           dsn[45];         /* dataset name from JFCB + NUL  */
+    char           ddname[9];       /* DD name + NUL (generated)     */
+    char           dsn[45];         /* dataset name from config/JFCB */
     void          *dcb;             /* BDAM DCB (opaque: see osio.h) */
     unsigned       flags;           /* UFSD_DISK_*                   */
     unsigned short blksize;         /* physical block size from DCB  */
     unsigned short pad;             /* alignment                     */
     UFSD_SB        sb;              /* superblock (read at open)     */
-    char           mountpath[128];  /* mount point path (AP-1f)      */
+    char           mountpath[128];  /* mount point path              */
+    char           mount_owner[9];  /* owner userid (or empty)       */
+    unsigned       mount_mode;      /* UFSD_MOUNT_RO / UFSD_MOUNT_RW */
+};
+
+/* ============================================================
+** AP-3a: Parmlib Configuration
+** ============================================================ */
+
+#define UFSD_CFG_MAX_MOUNTS  16
+
+struct ufsd_mount_cfg {
+    char     dsname[45];     /* dataset name                */
+    char     path[128];      /* mount path                  */
+    char     owner[9];       /* owner userid (or empty)     */
+    unsigned mode;           /* UFSD_MOUNT_RO / UFSD_MOUNT_RW */
+};
+
+struct ufsd_config {
+    char             root_dsname[45];
+    unsigned         root_size;       /* bytes (from SIZE param)  */
+    unsigned         root_blksize;    /* block size (default 4096)*/
+    unsigned         nmounts;
+    UFSD_MOUNT_CFG   mounts[UFSD_CFG_MAX_MOUNTS];
 };
 
 /* ============================================================
@@ -323,6 +352,8 @@ struct ufsd_anchor {
 #define UFSD_RC_BADFD       56   /* bad file descriptor              */
 #define UFSD_RC_NOTEMPTY    60   /* directory not empty              */
 #define UFSD_RC_NAMETOOLONG 64   /* filename exceeds UFSD_NAME_MAX   */
+#define UFSD_RC_ROFS        68   /* read-only filesystem             */
+#define UFSD_RC_EACCES      72   /* permission denied (owner check)  */
 
 #define UFSREQ_MAX_INLINE   256  /* max bytes in data[] field        */
 
@@ -548,6 +579,15 @@ int           ufsd_disk_mount(UFSD_STC *stc, const char *ddname,
                               const char *mountpath)                 asm("UFSD@DMT");
 int           ufsd_disk_umount(UFSD_STC *stc,
                                const char *mountpath)                asm("UFSD@DUT");
+
+/* ufsd#ini.c (AP-3a) -- DYNALLOC-based mount */
+int           ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
+                                  const char *mountpath, unsigned mode,
+                                  const char *owner)                 asm("UFSD@DMD");
+
+/* ufsd#cfg.c (AP-3a) -- parmlib configuration */
+int           ufsd_cfg_read(UFSD_CONFIG *cfg)                        asm("UFSD@CFR");
+void          ufsd_cfg_dump(const UFSD_CONFIG *cfg)                  asm("UFSD@CFD");
 
 /* ufsd#blk.c (AP-1e) -- BDAM block I/O */
 int  ufsd_blk_read(UFSD_DISK *disk, unsigned sector, void *buf)      asm("UFSD@BRD");

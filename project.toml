@@ -60,6 +60,7 @@ include = [
   "@@CRT1",
   "UFSD",
   "UFSD#CMD",
+  "UFSD#CFG",
   "UFSD#CSA",
   "UFSD#SCT",
   "UFSD#TRC",

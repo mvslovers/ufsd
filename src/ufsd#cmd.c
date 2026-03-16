@@ -102,12 +102,21 @@ cmd_stats(UFSD_STC *ufsd)
     }
 
     for (i = 0; i < ufsd->ndisks; i++) {
-        UFSD_DISK *d = ufsd->disks[i];  /* C89: top-of-block decl */
+        UFSD_DISK *d = ufsd->disks[i];
         if (!d) continue;
-        wtof("UFSD018I DISK %u (%.8s): freeblk=%u/%u freeinode=%u/%u",
-             i, d->ddname,
-             d->sb.nfreeblock, d->sb.total_freeblock,
-             d->sb.nfreeinode, d->sb.total_freeinode);
+        if (d->mount_mode == UFSD_MOUNT_RW && d->mount_owner[0])
+            wtof("UFSD018I MOUNT %-12s DSN=%-20s RW(%.8s) "
+                 "freeblk=%u/%u freeinode=%u/%u",
+                 d->mountpath, d->dsn, d->mount_owner,
+                 d->sb.nfreeblock, d->sb.total_freeblock,
+                 d->sb.nfreeinode, d->sb.total_freeinode);
+        else
+            wtof("UFSD018I MOUNT %-12s DSN=%-20s %-2s "
+                 "freeblk=%u/%u freeinode=%u/%u",
+                 d->mountpath, d->dsn,
+                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO",
+                 d->sb.nfreeblock, d->sb.total_freeblock,
+                 d->sb.nfreeinode, d->sb.total_freeinode);
     }
 }
 
@@ -122,10 +131,12 @@ cmd_help(UFSD_STC *ufsd)
 {
     (void)ufsd;
     wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
-    wtof("UFSD020I   MOUNT DD=ddname,PATH=/path  |  MOUNT LIST");
+    wtof("UFSD020I   MOUNT DSN=dsn,PATH=/path[,MODE=RW][,OWNER=user]");
+    wtof("UFSD020I   MOUNT DD=ddname,PATH=/path  (legacy)");
+    wtof("UFSD020I   MOUNT LIST");
     wtof("UFSD020I   UNMOUNT PATH=/path");
     wtof("UFSD020I   TRACE ON|OFF|DUMP");
-    wtof("UFSD020I   REBUILD  -- scan inodes, rebuild free block cache");
+    wtof("UFSD020I   REBUILD  -- scan inodes, rebuild free block/inode cache");
 }
 
 static void
@@ -138,8 +149,11 @@ cmd_shutdown(UFSD_STC *ufsd)
 /* ============================================================
 ** cmd_mount
 **
-** AP-1f: Parse "MOUNT DD=ddname,PATH=/path" and call
-** ufsd_disk_mount().  All text has been uppercased by caller.
+** AP-3a: Parse MOUNT command.  Two syntaxes:
+**   MOUNT DSN=dsn,PATH=/path[,MODE=RW][,OWNER=user]  (DYNALLOC)
+**   MOUNT DD=ddname,PATH=/path                        (legacy)
+**   MOUNT LIST
+** All text has been uppercased by caller.
 ** ============================================================ */
 static void
 cmd_mount(UFSD_STC *ufsd, const char *args)
@@ -148,12 +162,17 @@ cmd_mount(UFSD_STC *ufsd, const char *args)
     const char *q;
     char        ddname[9];
     char        mountpath[128];
+    char        dsname[45];
+    char        owner[9];
+    unsigned    mode;
     int         namelen;
     int         pathlen;
+    int         dsnlen;
+    int         olen;
     unsigned    i;
 
     if (!args || !*args) {
-        wtof("UFSD021E MOUNT: syntax: MOUNT DD=ddname,PATH=/path  or  MOUNT LIST");
+        wtof("UFSD021E MOUNT: syntax: MOUNT DSN=dsn,PATH=/path  or  MOUNT LIST");
         return;
     }
 
@@ -161,19 +180,63 @@ cmd_mount(UFSD_STC *ufsd, const char *args)
     if (strcmp(args, "LIST") == 0) {
         wtof("UFSD068I %u filesystem(s) mounted:", ufsd->ndisks);
         for (i = 0; i < ufsd->ndisks; i++) {
-            wtof("UFSD069I   %-8s  PATH=%-32s  DSN=%s",
-                 ufsd->disks[i]->ddname,
-                 ufsd->disks[i]->mountpath[0]
-                     ? ufsd->disks[i]->mountpath : "(none)",
-                 ufsd->disks[i]->dsn);
+            UFSD_DISK *d = ufsd->disks[i];
+            if (!d) continue;
+            wtof("UFSD069I   %-12s  DSN=%-44s  %s%s%s",
+                 d->mountpath[0] ? d->mountpath : "(none)",
+                 d->dsn,
+                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO",
+                 d->mount_owner[0] ? " OWNER=" : "",
+                 d->mount_owner[0] ? d->mount_owner : "");
         }
         return;
     }
 
-    /* Parse DD=xxx */
+    /* --- DYNALLOC path: MOUNT DSN=... --- */
+    p = strstr(args, "DSN=");
+    if (p) {
+        p += 4;
+        dsnlen = 0;
+        while (*p && *p != ',' && dsnlen < 44)
+            dsname[dsnlen++] = *p++;
+        dsname[dsnlen] = '\0';
+
+        /* Parse PATH= */
+        p = strstr(args, "PATH=");
+        if (!p) { wtof("UFSD021E MOUNT: PATH= not found"); return; }
+        p += 5;
+        pathlen = 0;
+        while (*p && *p != ',' && pathlen < 127)
+            mountpath[pathlen++] = *p++;
+        mountpath[pathlen] = '\0';
+
+        /* Parse MODE= (default RO) */
+        mode = UFSD_MOUNT_RO;
+        p = strstr(args, "MODE=");
+        if (p) {
+            p += 5;
+            if (p[0] == 'R' && p[1] == 'W') mode = UFSD_MOUNT_RW;
+        }
+
+        /* Parse OWNER= (optional) */
+        memset(owner, 0, sizeof(owner));
+        p = strstr(args, "OWNER=");
+        if (p) {
+            olen = 0;
+            p += 6;
+            while (*p && *p != ',' && olen < 8)
+                owner[olen++] = *p++;
+            owner[olen] = '\0';
+        }
+
+        ufsd_disk_mount_dyn(ufsd, dsname, mountpath, mode, owner);
+        return;
+    }
+
+    /* --- Legacy path: MOUNT DD=... --- */
     p = strstr(args, "DD=");
     if (!p) {
-        wtof("UFSD021E MOUNT: DD= not found");
+        wtof("UFSD021E MOUNT: DSN= or DD= not found");
         return;
     }
     p += 3;
