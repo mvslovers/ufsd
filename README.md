@@ -71,13 +71,19 @@ Each release provides three archives:
 1. Download `ufsd-<version>-load.tar.gz` from the [Releases] page and extract it.
    You will find a `.XMI` file (XMIT archive of the LOAD PDS).
 
-2. Upload it to MVS as a binary sequential dataset:
+2. Upload it to MVS as a binary sequential dataset. Allocate the target
+   dataset first (RECFM=FB, LRECL=80, BLKSIZE=3120 or similar), then transfer:
 
+   **IND$FILE** (TSO file transfer from a 3270 terminal emulator):
+   upload the file in binary mode to `IBMUSER.UFSD.XMIT`.
+
+   **zowe CLI** (pre-allocate the dataset first, then upload):
    ```sh
-   # zowe CLI
    zowe files upload file-to-data-set ufsd-1.0.0-dev-load.xmi "IBMUSER.UFSD.XMIT" --binary
+   ```
 
-   # or via FTP (binary mode)
+   **FTP** (binary mode):
+   ```sh
    ftp mvs-host
    binary
    put ufsd-1.0.0-dev-load.xmi 'IBMUSER.UFSD.XMIT'
@@ -194,17 +200,10 @@ state. The STC authorizes itself at startup, so explicit APF authorization of
 the load library is typically not required on TK4- or TK5.
 
 On hardened systems (RAKF or RACF with strict APF checking) you may need to
-authorize the load library explicitly. Add to `SYS1.PARMLIB(IEAAPFxx)`:
-
-```
-APF ADD DSNAME(IBMUSER.UFSD.LOAD) VOLUME(volser)
-```
-
-Or dynamically without an IPL:
-
-```
-SETPROG APF,ADD,DSNAME=IBMUSER.UFSD.LOAD,VOLUME=volser
-```
+authorize the load library explicitly. Use whatever method is standard on your
+MVS system for authorizing a load library (e.g. adding it to the APF list in
+PARMLIB and re-IPLing, or via a dynamic authorization command if your system
+supports one).
 
 ---
 
@@ -287,6 +286,12 @@ MOUNT    DSN(SYS1.UFSD.SCRATCH)  PATH(/tmp)          MODE(RW)
 | `OWNER(userid)` | RACF userid | — | Restrict writes to this userid |
 
 Lines beginning with `/*` are comments (terminated by `*/`).
+
+**Root filesystem:** UFSD requires a root image mounted at `/`. A size of 1 MB
+is sufficient for the root (it only needs to hold mount-point directories).
+Create it with `ufsd-utils` as described in the [Disk Datasets](#4-disk-datasets)
+section. Automatic root disk creation on first start is planned for a future
+release.
 
 ---
 
