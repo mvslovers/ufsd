@@ -151,11 +151,11 @@ struct ufsd_dirent {
 /* ============================================================
 ** AP-1d: Physical Disk Handle  (STC heap)
 **
-** One per UFSDISK0-9 DD card.  Opened via BDAM at STC startup.
+** One per mounted filesystem.  Opened via DYNALLOC at STC startup.
 ** Closed and freed at STC shutdown.
 **
 ** AP-1e: sb field added (read from disk sector 1 at open time).
-** AP-1f: mountpath added (set by ufsd_ufs_init and ufsd_disk_mount).
+** AP-1f: mountpath added (set by ufsd_ufs_init and ufsd_disk_mount_dyn).
 ** ============================================================ */
 
 /* Disk flags */
@@ -574,16 +574,12 @@ UFSD_SESSION *ufsd_sess_find(UFSD_ANCHOR *anchor, unsigned token)    asm("UFSD@S
 int           ufsd_ufs_init(UFSD_STC *stc)                          asm("UFSD@UNI");
 void          ufsd_ufs_term(UFSD_STC *stc)                          asm("UFSD@UNT");
 
-/* ufsd#ini.c (AP-1f) -- dynamic mount/unmount */
-int           ufsd_disk_mount(UFSD_STC *stc, const char *ddname,
-                              const char *mountpath)                 asm("UFSD@DMT");
-int           ufsd_disk_umount(UFSD_STC *stc,
-                               const char *mountpath)                asm("UFSD@DUT");
-
-/* ufsd#ini.c (AP-3a) -- DYNALLOC-based mount */
+/* ufsd#ini.c -- dynamic mount/unmount (DYNALLOC) */
 int           ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
                                   const char *mountpath, unsigned mode,
                                   const char *owner)                 asm("UFSD@DMD");
+int           ufsd_disk_umount(UFSD_STC *stc,
+                               const char *mountpath)                asm("UFSD@DUT");
 
 /* ufsd#cfg.c (AP-3a) -- parmlib configuration */
 int           ufsd_cfg_read(UFSD_CONFIG *cfg)                        asm("UFSD@CFR");

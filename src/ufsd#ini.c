@@ -1,13 +1,12 @@
 /* UFSD#INI.C - UFS Disk Initialization
 **
 ** AP-1d Step 2: Open BDAM datasets at STC startup.
-** AP-1f: Dynamic mount/unmount via ufsd_disk_mount/ufsd_disk_umount.
+** AP-1f: Dynamic mount/unmount via ufsd_disk_mount_dyn/ufsd_disk_umount.
 ** AP-3a: Parmlib-driven config, DYNALLOC via __dsalc/__dsfree,
 **        root disk auto-create, mount-point directory creation.
 **
 ** ufsd_ufs_init(stc)           read parmlib, mount root + all mounts
 ** ufsd_ufs_term(stc)           close all disks, DYNFREE allocated DDs
-** ufsd_disk_mount(stc,dd,path) open one BDAM dataset (DD-based, legacy)
 ** ufsd_disk_mount_dyn(stc,...) open via DYNALLOC (AP-3a)
 ** ufsd_disk_umount(stc,path)   close and remove one disk at runtime
 */
@@ -19,7 +18,6 @@
 #include <clibwto.h>
 #include <clibio.h>
 #include "time64.h"
-#include <ieftiot.h>
 #include <osio.h>
 #include <osdcb.h>
 #include <osjfcb.h>
@@ -39,32 +37,9 @@ struct ufsboot_hdr {
 static unsigned s_ddn_seq = 0;
 
 /* Forward declarations */
-static int        find_dd(const char *ddname);
 static UFSD_DISK *open_disk(const char *ddname);
 static void       close_disk(UFSD_DISK *disk);
 static int        mkdir_p(UFSD_DISK *disk, const char *path);
-
-/* ============================================================
-** find_dd
-**
-** Returns 1 if ddname (exactly 8 significant chars) appears
-** in the TIOT for the current TCB, 0 if not found.
-** ============================================================ */
-static int
-find_dd(const char *ddname)
-{
-    TIOT    *tiot = get_tiot();
-    unsigned next = 0;
-    TIOTDD  *dd   = (TIOTDD *)tiot->TIOTDD;
-
-    for (; dd->TIOELNGH;
-         next += (unsigned)dd->TIOELNGH,
-         dd = (TIOTDD *)&tiot->TIOTDD[next]) {
-        if (memcmp(ddname, dd->TIOEDDNM, 8) == 0)
-            return 1;
-    }
-    return 0;
-}
 
 /* ============================================================
 ** open_disk
@@ -138,8 +113,11 @@ open_disk(const char *ddname)
         boot = (UFSBOOT_HDR *)buf;
         if (boot->type != (unsigned short)UFSD_DISK_TYPE_UFS ||
             (unsigned)(boot->type + boot->check) != 0xFFFFU) {
-            wtof("UFSD044W %s: not a valid UFS disk (type=%04X)",
+            wtof("UFSD044E %s: not a valid UFS disk (type=%04X)",
                  disk->ddname, (unsigned)boot->type);
+            free(buf);
+            close_disk(disk);
+            return NULL;
         }
         free(buf);
     }
@@ -371,8 +349,14 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
         return 8;
     }
 
-    /* Read superblock */
-    ufsd_sb_read(disk);
+    /* Read and validate superblock */
+    if (ufsd_sb_read(disk) != UFSD_RC_OK) {
+        wtof("UFSD124E Superblock read/validation failed for DSN=%s",
+             disk->dsn);
+        close_disk(disk);
+        __dsfree(ddname);
+        return 8;
+    }
 
     /* Store mount metadata */
     pathlen = strlen(mountpath);
@@ -413,7 +397,7 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
 ** (auto-create if missing), create mount-point directories,
 ** then mount all configured filesystems.
 **
-** Falls back to TIOT-based UFSDISK0 if DD:UFSDPRM is absent.
+** Parmlib (DD:UFSDPRM) is required.  Returns 8 if missing.
 ** ============================================================ */
 int
 ufsd_ufs_init(UFSD_STC *stc)
@@ -426,26 +410,10 @@ ufsd_ufs_init(UFSD_STC *stc)
     if (!stc) return 8;
     stc->ndisks = 0;
 
-    /* Try parmlib-driven init */
     rc = ufsd_cfg_read(&cfg);
     if (rc != 0) {
-        /* Fallback: legacy TIOT-based init for UFSDISK0 */
-        char ddname[9];
-
-        wtof("UFSD115I Falling back to UFSDISK0 DD-based init");
-        memcpy(ddname, "UFSDISK0", 9);
-        if (find_dd(ddname)) {
-            UFSD_DISK *disk = open_disk(ddname);
-            if (disk) {
-                disk->flags      |= UFSD_DISK_ROOT;
-                disk->mountpath[0] = '/';
-                disk->mountpath[1] = '\0';
-                disk->mount_mode   = UFSD_MOUNT_RW;
-                stc->disks[stc->ndisks++] = disk;
-                ufsd_sb_read(disk);
-            }
-        }
-        goto report;
+        wtof("UFSD061E Parmlib (DD:UFSDPRM) not found -- shutting down");
+        return 8;
     }
 
     ufsd_cfg_dump(&cfg);
@@ -454,8 +422,7 @@ ufsd_ufs_init(UFSD_STC *stc)
     rc = ufsd_disk_mount_dyn(stc, cfg.root_dsname, "/",
                              UFSD_MOUNT_RW, "");
     if (rc != 0) {
-        wtof("UFSD121E Cannot mount root filesystem DSN=%s",
-             cfg.root_dsname);
+        wtof("UFSD061E Cannot mount root filesystem -- shutting down");
         return 8;
     }
 
@@ -532,80 +499,6 @@ ufsd_ufs_term(UFSD_STC *stc)
         stc->disks[i] = NULL;
     }
     stc->ndisks = 0;
-}
-
-/* ============================================================
-** ufsd_disk_mount
-**
-** AP-1f: Legacy DD-based mount (kept for backward compat and
-** /F UFSD,MOUNT DD=... command).
-** ============================================================ */
-int
-ufsd_disk_mount(UFSD_STC *stc, const char *ddname, const char *mountpath)
-{
-    UFSD_DISK *disk;
-    unsigned   pathlen;
-    unsigned   namelen;
-    unsigned   i;
-    char       ddpad[9];
-
-    if (!stc || !ddname || !mountpath) return 8;
-
-    if (mountpath[0] != '/') {
-        wtof("UFSD065E MOUNT: path must be absolute");
-        return 8;
-    }
-    if (stc->ndisks >= (unsigned)UFSD_MAX_DISKS) {
-        wtof("UFSD061E MOUNT: disk table full (%u slots)",
-             (unsigned)UFSD_MAX_DISKS);
-        return 8;
-    }
-
-    /* Blank-pad DD name to 8 chars for TIOT comparison */
-    memset(ddpad, ' ', 8);
-    ddpad[8] = '\0';
-    namelen = strlen(ddname);
-    if (namelen > 8) namelen = 8;
-    memcpy(ddpad, ddname, namelen);
-
-    /* Check for duplicate DD or duplicate mount path */
-    for (i = 0; i < stc->ndisks; i++) {
-        if (memcmp(stc->disks[i]->ddname, ddpad, 8) == 0) {
-            wtof("UFSD066E MOUNT: %.8s already mounted on %s",
-                 ddpad, stc->disks[i]->mountpath);
-            return 8;
-        }
-        if (strcmp(stc->disks[i]->mountpath, mountpath) == 0) {
-            wtof("UFSD067E MOUNT: %s already has a filesystem mounted",
-                 mountpath);
-            return 8;
-        }
-    }
-
-    if (!find_dd(ddpad)) {
-        wtof("UFSD061E MOUNT: DD %.8s not found in TIOT", ddpad);
-        return 8;
-    }
-
-    disk = open_disk(ddpad);
-    if (!disk) return 8;
-
-    ufsd_sb_read(disk);
-
-    pathlen = strlen(mountpath);
-    if (pathlen >= sizeof(disk->mountpath))
-        pathlen = sizeof(disk->mountpath) - 1U;
-    memcpy(disk->mountpath, mountpath, pathlen);
-    disk->mountpath[pathlen] = '\0';
-
-    /* Legacy mounts default to RW, no owner */
-    disk->mount_mode = UFSD_MOUNT_RW;
-
-    stc->disks[stc->ndisks++] = disk;
-
-    wtof("UFSD060I Mounted %.8s on %s (DSN=%s)",
-         disk->ddname, disk->mountpath, disk->dsn);
-    return 0;
 }
 
 /* ============================================================

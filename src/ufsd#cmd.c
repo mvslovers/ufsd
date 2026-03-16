@@ -132,7 +132,6 @@ cmd_help(UFSD_STC *ufsd)
     (void)ufsd;
     wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
     wtof("UFSD020I   MOUNT DSN=dsn,PATH=/path[,MODE=RW][,OWNER=user]");
-    wtof("UFSD020I   MOUNT DD=ddname,PATH=/path  (legacy)");
     wtof("UFSD020I   MOUNT LIST");
     wtof("UFSD020I   UNMOUNT PATH=/path");
     wtof("UFSD020I   TRACE ON|OFF|DUMP");
@@ -149,9 +148,8 @@ cmd_shutdown(UFSD_STC *ufsd)
 /* ============================================================
 ** cmd_mount
 **
-** AP-3a: Parse MOUNT command.  Two syntaxes:
+** AP-3a: Parse MOUNT command.
 **   MOUNT DSN=dsn,PATH=/path[,MODE=RW][,OWNER=user]  (DYNALLOC)
-**   MOUNT DD=ddname,PATH=/path                        (legacy)
 **   MOUNT LIST
 ** All text has been uppercased by caller.
 ** ============================================================ */
@@ -159,13 +157,10 @@ static void
 cmd_mount(UFSD_STC *ufsd, const char *args)
 {
     const char *p;
-    const char *q;
-    char        ddname[9];
     char        mountpath[128];
     char        dsname[45];
     char        owner[9];
     unsigned    mode;
-    int         namelen;
     int         pathlen;
     int         dsnlen;
     int         olen;
@@ -233,41 +228,7 @@ cmd_mount(UFSD_STC *ufsd, const char *args)
         return;
     }
 
-    /* --- Legacy path: MOUNT DD=... --- */
-    p = strstr(args, "DD=");
-    if (!p) {
-        wtof("UFSD021E MOUNT: DSN= or DD= not found");
-        return;
-    }
-    p += 3;
-    q = p;
-    namelen = 0;
-    while (*q && *q != ',' && namelen < 8) {
-        ddname[namelen++] = *q++;
-    }
-    /* Blank-pad to 8 chars */
-    while (namelen < 8)
-        ddname[namelen++] = ' ';
-    ddname[8] = '\0';
-
-    /* Parse PATH=xxx */
-    p = strstr(args, "PATH=");
-    if (!p) {
-        wtof("UFSD021E MOUNT: PATH= not found");
-        return;
-    }
-    p += 5;
-    pathlen = 0;
-    while (*p && pathlen < 127)
-        mountpath[pathlen++] = *p++;
-    mountpath[pathlen] = '\0';
-
-    if (pathlen == 0) {
-        wtof("UFSD021E MOUNT: PATH is empty");
-        return;
-    }
-
-    ufsd_disk_mount(ufsd, ddname, mountpath);
+    wtof("UFSD021E MOUNT: DSN= not found");
 }
 
 /* ============================================================

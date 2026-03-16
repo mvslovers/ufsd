@@ -241,7 +241,11 @@ main(int argc, char **argv)
     wtof("UFSD047I Global file table: %u slots", (unsigned)UFSD_MAX_GFILES);
 
     /* --- UFS disk init (AP-1d Step 2) ----------------------------- */
-    ufsd_ufs_init(&ufsd); /* returns 0 even with zero disks */
+    rc = ufsd_ufs_init(&ufsd);
+    if (rc != 0) {
+        ufsd_shutdown(&ufsd);
+        return 8;
+    }
 
     wtof("UFSD000I UFSD Filesystem Server %s starting", VERSION);
     wtof("UFSD001I UFSD ready");

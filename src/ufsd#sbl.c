@@ -56,7 +56,25 @@ ufsd_sb_read(UFSD_DISK *disk)
         memcpy(&disk->sb, buf, sizeof(UFSD_SB));
 
     free(buf);
-    return rc;
+
+    if (rc != UFSD_RC_OK)
+        return rc;
+
+    /* Validate superblock fields against corruption */
+    if (disk->sb.volume_size == 0
+        || disk->sb.datablock_start < 2
+        || disk->sb.datablock_start >= disk->sb.volume_size
+        || disk->sb.inodes_per_block == 0
+        || disk->sb.blksize_shift == 0
+        || (1U << disk->sb.blksize_shift) != (unsigned)disk->blksize
+        || disk->sb.nfreeblock > UFSD_SB_MAX_FREEBLOCK
+        || disk->sb.nfreeinode > UFSD_SB_MAX_FREEINODE
+        || disk->sb.ilist_sector != 2) {
+        wtof("UFSD062E Superblock validation failed for %s", disk->dsn);
+        return UFSD_RC_CORRUPT;
+    }
+
+    return UFSD_RC_OK;
 }
 
 /* ============================================================
