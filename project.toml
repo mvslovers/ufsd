@@ -41,6 +41,12 @@ lrecl = 0
 blksize = 15040
 space = ["TRK", 20, 10, 10]
 
+[mvs.install]
+naming = "fixed"
+
+[mvs.install.datasets.syslmod]
+name = "'HTTPD2.LINKLIB'"
+
 [dependencies]
 "mvslovers/crent370" = ">=1.0.4"
 
