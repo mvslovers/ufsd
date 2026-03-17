@@ -194,8 +194,9 @@ int     ufs_signon(UFS *ufs, const char *userid,
                    const char *group)                           asm("UFS#SON");
 void    ufs_signoff(UFS *ufs)                                   asm("UFS#SOFF");
 
-/* Set session owner userid (for per-user write permission) */
-int     ufs_setuser(UFS *ufs, const char *userid)              asm("UFS#SUSR");
+/* Set session owner userid and group (for per-user permission checks) */
+int     ufs_setuser(UFS *ufs, const char *userid,
+                    const char *group)                          asm("UFS#SUSR");
 
 /* Last error code from a failed operation */
 int     ufs_last_rc(UFS *ufs)                                   asm("UFS#GLRC");

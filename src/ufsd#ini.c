@@ -537,6 +537,9 @@ ufsd_ufs_init(UFSD_STC *stc)
                  mpath, rc);
     }
 
+    /* Root is now RO for clients — mount-point dirs are created above */
+    root->mount_mode = UFSD_MOUNT_RO;
+
     /* Mount each configured filesystem */
     for (i = 0; i < cfg.nmounts; i++) {
         UFSD_MOUNT_CFG *m = &cfg.mounts[i];

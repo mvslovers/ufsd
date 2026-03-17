@@ -273,9 +273,11 @@ ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)
 /* ============================================================
 ** ufsd_sess_setuser
 **
-** Update the session owner userid from the client request.
-** Wire: req->data[0..8] = userid (NUL-terminated, max 8 chars).
-** Returns UFSD_RC_OK or UFSD_RC_BADSESS.
+** Update the session owner userid and optionally the group.
+** Wire: req->data[0..8]  = userid (NUL-terminated, max 8 chars)
+**       req->data[9..17] = group  (NUL-terminated, or zero = keep)
+** data_len = 18.
+** Returns UFSD_RC_OK, UFSD_RC_BADSESS, or UFSD_RC_INVALID.
 ** ============================================================ */
 int
 ufsd_sess_setuser(UFSD_ANCHOR *anchor, UFSREQ *req)
@@ -287,12 +289,18 @@ ufsd_sess_setuser(UFSD_ANCHOR *anchor, UFSREQ *req)
     sess = ufsd_sess_find(anchor, req->session_token);
     if (!sess) return UFSD_RC_BADSESS;
 
-    if (req->data_len >= 1U && req->data_len <= 9U) {
-        memset(sess->owner, 0, sizeof(sess->owner));
-        memcpy(sess->owner, req->data, req->data_len);
-        sess->owner[8] = '\0';
-    } else {
-        return UFSD_RC_INVALID;
+    if (req->data_len != 18U) return UFSD_RC_INVALID;
+
+    /* userid: data[0..8] — always set */
+    memset(sess->owner, 0, sizeof(sess->owner));
+    memcpy(sess->owner, req->data, 9);
+    sess->owner[8] = '\0';
+
+    /* group: data[9..17] — only update if non-empty (zero = keep default) */
+    if (req->data[9] != '\0') {
+        memset(sess->group, 0, sizeof(sess->group));
+        memcpy(sess->group, req->data + 9, 9);
+        sess->group[8] = '\0';
     }
 
     return UFSD_RC_OK;
@@ -333,11 +341,13 @@ ufsd_sess_list(UFSD_ANCHOR *anchor)
             if (sess->fd_table[j].gfile_idx != UFSD_FD_UNUSED) fd_count++;
         }
 
-        wtof("UFSD051I   #%u TOKEN=%08X ASID=%04X OWNER=%-8.8s FDs=%u/%u",
+        wtof("UFSD051I   #%u TOKEN=%08X ASID=%04X"
+             " OWNER=%-8.8s GROUP=%-8.8s FDs=%u/%u",
              i + 1U,
              sess->token,
              sess->client_asid,
              sess->owner[0] ? sess->owner : "(none)",
+             sess->group[0] ? sess->group : "(none)",
              fd_count,
              (unsigned)UFSD_MAX_FD);
     }

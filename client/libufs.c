@@ -267,16 +267,19 @@ ufs_signoff(UFS *ufs)
 /* ============================================================
 ** ufs_setuser
 **
-** Tell UFSD to change the session owner userid.  This allows
-** a shared session (e.g. HTTPD STC) to assume a per-user
-** identity for write permission checks on owner-restricted
+** Tell UFSD to change the session owner userid and group.
+** This allows a shared session (e.g. HTTPD STC) to assume a
+** per-user identity for permission checks on owner-restricted
 ** mount points.
 **
-** Wire: data[0..8] = userid (8 chars + NUL, blank-padded).
+** If group is NULL or "", the existing group is kept unchanged.
+**
+** Wire: data[0..8]  = userid (8 chars + NUL)
+**       data[9..17] = group  (8 chars + NUL, or all-zero = keep)
 ** Returns UFSD_RC_* (0 = ok).
 ** ============================================================ */
 int
-ufs_setuser(UFS *ufs, const char *userid)
+ufs_setuser(UFS *ufs, const char *userid, const char *group)
 {
     UFSSSOB  ufsssob;
     unsigned len;
@@ -288,12 +291,20 @@ ufs_setuser(UFS *ufs, const char *userid)
     ufsssob.func     = UFSREQ_SETUSER;
     ufsssob.token    = ufs->token;
 
-    /* Copy userid into data[0..8]: max 8 chars + NUL */
+    /* data[0..8]: userid (max 8 chars + NUL) */
     len = strlen(userid);
     if (len > 8U) len = 8U;
     memcpy(ufsssob.data, userid, len);
     ufsssob.data[len] = '\0';
-    ufsssob.data_len  = 9U;
+
+    /* data[9..17]: group (max 8 chars + NUL, or zero = keep default) */
+    if (group && group[0]) {
+        len = strlen(group);
+        if (len > 8U) len = 8U;
+        memcpy(ufsssob.data + 9, group, len);
+        ufsssob.data[9 + len] = '\0';
+    }
+    ufsssob.data_len = 18U;
 
     if (libufs_issue(&ufsssob) != SSRTOK) return -1;
     ufs->last_rc = ufsssob.rc;

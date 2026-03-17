@@ -319,7 +319,7 @@ struct ufsd_anchor {
 #define UFSREQ_PING         0x0001U  /* AP-1c: round-trip test       */
 #define UFSREQ_SESS_OPEN    0x0010U  /* AP-1d: open session          */
 #define UFSREQ_SESS_CLOSE   0x0011U  /* AP-1d: close session         */
-#define UFSREQ_SETUSER      0x0012U  /* set session owner userid      */
+#define UFSREQ_SETUSER      0x0012U  /* set session owner + group     */
 #define UFSREQ_FOPEN        0x0020U  /* AP-1e: open file             */
 #define UFSREQ_FCLOSE       0x0021U  /* AP-1e: close file            */
 #define UFSREQ_FREAD        0x0022U  /* AP-1e: read file             */
