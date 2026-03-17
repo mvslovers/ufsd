@@ -80,8 +80,7 @@ ufsd_dequeue(UFSD_ANCHOR *anchor)
 **
 ** Validate a dequeued UFSREQ, execute the function, write the
 ** result into the request block (key 0), then post the client
-** ECB from problem state (SVC 2 must not be issued in supervisor
-** state on MVS 3.8j).
+** ECB via __xmpost (CVT0PT01) from supervisor state.
 **
 ** The req block is NOT freed here.  The SSI router (client side)
 ** frees it after copying the result from req back to UFSSSOB.

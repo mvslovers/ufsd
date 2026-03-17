@@ -232,7 +232,15 @@ ufsdssir(void)
     req->client_ascb    = __ascb(0);     /* client ASCB: __xmpost uses this       */
     req->func           = ufsssob->func;
     req->session_token  = ufsssob->token;
-    req->client_asid    = 0;     /* AP-1d: fill from current ASCB */
+    /* Extract ASID from client ASCB (ASCBASID at offset 0x24) */
+    {
+        void *ascb = req->client_ascb;
+        if (ascb)
+            req->client_asid =
+                (unsigned)(*(unsigned short *)((char *)ascb + 0x24));
+        else
+            req->client_asid = 0;
+    }
     req->rc             = 0;
     req->errno_val      = 0;
     req->buf            = NULL;

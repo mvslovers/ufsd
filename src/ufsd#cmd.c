@@ -37,7 +37,11 @@ ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
         memcpy(buf, cib->cibdata, (size_t)len);
         buf[len] = '\0';
 
-        /* Uppercase and trim trailing spaces */
+        /* Uppercase and trim trailing spaces.
+        ** MVS console input is always uppercase, so uppercasing here
+        ** is a no-op for operator commands.  PATH values from the
+        ** console are therefore always uppercase by convention.
+        ** Case-preserving paths are supported via parmlib (UFSDPRM). */
         for (i = 0; i < len; i++) {
             buf[i] = (char)toupper((unsigned char)buf[i]);
         }

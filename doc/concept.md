@@ -1,31 +1,29 @@
-# UFS370 STC/SUBSYS Design — Concept #6
+# UFS370 STC/SUBSYS Design — Concept #7
 
-Cross-Address-Space Filesystem Server for MVS 3.8j  
-Repository: github.com/mvslovers/ufsd  
-Revision 6 — Reflects completed AP-2a + mount/configuration model design
+Cross-Address-Space Filesystem Server for MVS 3.8j
+Repository: github.com/mvslovers/ufsd
+Revision 7 — Reflects completed Phase 3 (AP-3a + AP-3b)
 
 ---
 
-## Changes from Concept #5
+## Changes from Concept #6
 
 | # | Area | Change |
 |---|------|--------|
-| 1 | Phase 1+2 merged | Phase 2 (libufs stubs, HTTPD/FTPD integration) was absorbed into AP-1f. Phase 1 and 2 are both complete. |
-| 2 | Indirect blocks | Single indirect block support implemented (AP-1g). Max file size with 4K blocks: 4.06 MB. |
-| 3 | Timestamps | `mtime64()` wallclock timestamps, V2 format (64-bit ms), auto-detect V1/V2 on read (AP-1g/AP-2a). |
-| 4 | Owner/Group | Captured from RACF ACEE at SESS_OPEN, stored in session, applied to inodes on create, included in DIRREAD response (AP-1g). |
-| 5 | Free cache refill | V7 chain-block refill for freeblock cache, inode-list scan for freeinode cache, bitmap-based emergency fallback. All automatic on cache exhaustion (AP-2a). |
-| 6 | Write path | FWRITE 4K CSA buffer pool path (server + client), write-behind buffer in libufs, `LIBUFS_WRITE_CHUNK=4096` (AP-2a). |
-| 7 | POST bundling | Conditional `__xmpost` only when queue was empty. `stat_posts_saved` counter (AP-2a). |
-| 8 | CS buffer pool | `ufsd_buf_alloc/free` now CS-based lock-free (split from ufsd#csa into ufsd#buf) (AP-2a). |
-| 9 | Path validation | Guard in `do_fopen` and `do_mkdir`: `strrchr` comparison prevents creating intermediate path component as file (AP-2a). |
-| 10 | S378 fix | `free(stg)` deferred to after `__prob` in dispatch — avoids FREEMAIN key mismatch (AP-2a). |
-| 11 | UFSDCLNP | Emergency cleanup utility: deregisters SSCT, frees CSA. Recovery without IPL (AP-2a). |
-| 12 | Module names | Updated to match actual source: `ufsd#sct.c` (was `ufsd#ssc.c`), `ufsd#ssi.c` (was `ufsdssir.c`), `ufsd#buf.c` (new). |
-| 13 | Host tooling | `ufsd-utils` Go CLI tool for creating/inspecting/populating disk images on macOS/Linux. Separate repo: `mvslovers/ufsd-utils`. |
-| 14 | Config model | Parmlib-based configuration (`UFSDPRMx`) replaces DD cards. DYNALLOC (SVC 99) for all disk datasets. |
-| 15 | Mount model | Per-mount MODE (RO/RW) and OWNER. Write-check at 5 call sites via `ufsd_check_write()`. |
-| 16 | Root disk | Auto-created on first start if missing. Always RO for clients. Provides mount-point directories. |
+| 1 | Parmlib parser | `UFSDPRMx` configuration: ROOT, MOUNT statements with DSN/PATH/MODE/OWNER (AP-3a). |
+| 2 | DYNALLOC mounts | All disk datasets opened via SVC 99 (`__svc99`/`__dsfree`), no DD cards in STC JCL (AP-3a). |
+| 3 | Root disk RO | Root filesystem always read-only for clients after mount-point creation (AP-3a). |
+| 4 | Mount traversal | Path walk crosses mount boundaries; `ufsd_find_disk` resolves longest-prefix mount (AP-3a). |
+| 5 | Write check | `ufsd_check_write(disk, sess)` at 5 call sites: RO-mount and owner-restricted mount checks (AP-3a). |
+| 6 | `ufs_setuser` | Client API to change session userid+group atomically for per-user permission checks (AP-3a). |
+| 7 | SYNAD exit | Inline BR 14 stub prevents IEC020I on BDAM I/O errors (AP-3a). |
+| 8 | Superblock validation | Boot block type/check verification on every disk open (AP-3a). |
+| 9 | S99 error decoding | `s99_errmsg()` translates common S99ERROR codes to operator messages (AP-3a). |
+| 10 | Permission bits | DIRREAD `attr[]` string built from actual inode mode bits, not hardcoded (AP-3b). |
+| 11 | ASID in sessions | `ASCBASID` (offset 0x24) extracted from client ASCB in SSI router (AP-3b). |
+| 12 | `ufs_sys_term` | Signature changed to `(UFSSYS **)`, frees the calloc'd UFSSYS block (AP-3b). |
+| 13 | `mkdir_p` cleanup | Owner/group strings use `strcpy` instead of `memcpy` with trailing blanks (AP-3b). |
+| 14 | Comment fixes | DIRREAD_RLEN corrected to 98 bytes; dispatch comment updated for `__xmpost` (AP-3b). |
 
 ---
 
@@ -347,8 +345,8 @@ Test programs: `client/ufsdping.c` (80), `client/ufsdtst.c` (330), `client/libuf
 | **1** | ✅ Done | STC + CSA + File Ops | STC skeleton, SSCT, CSA queue, SSI router, sessions, fd_table, all file ops (FOPEN–REMOVE), trace, MODIFY, ESTAE |
 | **2** | ✅ Done | Client Stubs + Integration | libufs (~30 functions), HTTPD/FTPD integration, MOUNT/UNMOUNT, diropen/dirread/dirclose, GETCWD |
 | **2a** | ✅ Done | Post-PoC Hardening | FWRITE 4K, timestamps, POST bundling, CS buf pool, write-behind, chain/inode refill, path validation, UFSDCLNP |
-| **3** | 🔲 Next | Config + Mount Model | Parmlib parser (`UFSDPRMx`), DYNALLOC (SVC 99), root-disk auto-create, mount-mode (RO/RW), owner-based write check, cache overflow fix |
-| **4** | 🔲 Future | Multi-Worker | Pre-ATTACHed worker pool, inode/dir locking, SSI to LPA |
+| **3** | ✅ Done | Config + Mount Model | Parmlib parser (`UFSDPRMx`), DYNALLOC (SVC 99), root-disk RO, mount traversal, `ufsd_check_write`, `ufs_setuser`, SYNAD exit, superblock validation, S99 error decoding, permission bits fix, ASID population, `ufs_sys_term` leak fix |
+| **4** | 🔲 Next | Multi-Worker | Pre-ATTACHed worker pool, inode/dir locking, SSI to LPA |
 | **5** | 🔲 Future | Extensions | VFS abstraction, double indirect, full RACF, pager/cache, ufsd-utils fsck |
 
 ## 15. Test Infrastructure

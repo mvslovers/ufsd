@@ -176,7 +176,7 @@ void    ufsfree(UFS **ufs);
 
 /* System handle stubs */
 UFSSYS *ufs_sys_new(void)                                       asm("UFSSYNEW");
-void    ufs_sys_term(void)                                      asm("UFSSYTRM");
+void    ufs_sys_term(UFSSYS **sys)                               asm("UFSSYTRM");
 
 /* Handle accessors */
 UFSSYS *ufs_get_sys(UFS *ufs)                                   asm("UFS#GSYS");

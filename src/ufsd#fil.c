@@ -30,7 +30,7 @@
 **   DIROPEN req: [0..]=path(NUL-term)
 **           rsp: [0..3]=dir_fd(int)
 **   DIRREAD req: [0..3]=dir_fd(int)
-**           rsp: see UFSD_DIRREAD_RLEN (72 bytes), ino=0 means end
+**           rsp: see UFSD_DIRREAD_RLEN (98 bytes), ino=0 means end
 **   DIRCLOSE req: [0..3]=dir_fd(int)
 **
 ** ufsd_fil_dispatch(UFSD@FDS)  main dispatch switch

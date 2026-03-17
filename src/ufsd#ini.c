@@ -315,8 +315,8 @@ mkdir_p(UFSD_DISK *disk, const char *path)
                 dino.ctime.v2 = now;
                 dino.mtime.v2 = now;
                 dino.atime.v2 = now;
-                memcpy(dino.owner, "UFSD    ", 9);
-                memcpy(dino.group, "SYS1    ", 9);
+                strcpy(dino.owner, "UFSD");
+                strcpy(dino.group, "SYS1");
                 ufsd_ino_write(disk, found, &dino);
             }
             cur_ino = found;
@@ -368,8 +368,8 @@ mkdir_p(UFSD_DISK *disk, const char *path)
             dino.mtime.v2 = now;
             dino.atime.v2 = now;
         }
-        memcpy(dino.owner, "UFSD    ", 9);
-        memcpy(dino.group, "SYS1    ", 9);
+        strcpy(dino.owner, "UFSD");
+        strcpy(dino.group, "SYS1");
 
         if (ufsd_ino_write(disk, new_ino, &dino) != UFSD_RC_OK) {
             ufsd_sb_free_block(disk, new_blk);

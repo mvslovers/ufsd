@@ -168,9 +168,12 @@ ufs_sys_new(void)
 }
 
 void
-ufs_sys_term(void)
+ufs_sys_term(UFSSYS **sys)
 {
-    /* no-op: UFSD STC owns the filesystem state */
+    if (sys && *sys) {
+        free(*sys);
+        *sys = NULL;
+    }
 }
 
 UFSSYS *
@@ -419,17 +422,14 @@ dirread_one(UFSDDESC *ddesc, UFSDLIST *out)
     out->filesize     = *(unsigned *)(ufsssob.data + 4);
 
     mode = *(unsigned short *)(ufsssob.data + 8);
-    out->attr[0]  = ((mode & 0xF000U) == 0x4000U) ? 'd' : '-';
-    out->attr[1]  = 'r';
-    out->attr[2]  = 'w';
-    out->attr[3]  = 'x';
-    out->attr[4]  = 'r';
-    out->attr[5]  = '-';
-    out->attr[6]  = 'x';
-    out->attr[7]  = 'r';
-    out->attr[8]  = '-';
-    out->attr[9]  = 'x';
-    out->attr[10] = '\0';
+    {
+        const char *perms = "rwxrwxrwx";
+        int k;
+        out->attr[0] = ((mode & 0xF000U) == 0x4000U) ? 'd' : '-';
+        for (k = 0; k < 9; k++)
+            out->attr[1 + k] = (mode & (1 << (8 - k))) ? perms[k] : '-';
+        out->attr[10] = '\0';
+    }
 
     memcpy(out->name, ufsssob.data + 12, 59);
     out->name[59] = '\0';
