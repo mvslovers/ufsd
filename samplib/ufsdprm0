@@ -1,0 +1,16 @@
+
+/* SYS2.PARMLIB(UFSDPRM0) */
+
+/* Root filesystem — auto-created if the dataset does not exist */
+ROOT     DSN(UFSD.ROOT)
+
+/* Read-only web content */
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)          MODE(RO)
+
+/* User home directory, writable only by IBMUSER */
+MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
+MOUNT    DSN(MVSCE01.UFSHOME)    PATH(/u/mvsce01)    MODE(RW) OWNER(MVSCE01)
+MOUNT    DSN(MVSCE02.UFSHOME)    PATH(/u/mvsce02)    MODE(RW) OWNER(MVSCE02)
+
+/* Shared scratch area, writable by any authenticated user */
+MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
