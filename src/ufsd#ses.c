@@ -212,7 +212,7 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
     sess->flags        = UFSD_SESS_ACTIVE;
     sess->ufs          = (void *)ufs;
 
-    /* Copy client userid/group from SSI router (ACEE capture) */
+    /* Owner/group start empty — set by SETUSER after SESS_OPEN */
     memset(sess->owner, 0, sizeof(sess->owner));
     memset(sess->group, 0, sizeof(sess->group));
     if (req && req->data_len >= 18U) {
