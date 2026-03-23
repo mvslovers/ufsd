@@ -16,6 +16,8 @@
 #include "time64.h"     /* mtime64_t, mlocaltime64() */
 #include "clib64.h"     /* __64_from_u32, __64_mul_u32 */
 
+#include "ufsdrc.h"     /* UFSD_RC_* return codes */
+
 /* ============================================================
 ** Atomic types  (mirror ufs/types.h)
 ** ============================================================ */
@@ -231,6 +233,9 @@ char    *ufs_fgets(char *str, int num, UFSFILE *fp)             asm("UFS#FGTS");
 INT32    ufs_fputc(INT32 c, UFSFILE *file)                      asm("UFS#FPTC");
 INT32    ufs_fputs(const char *str, UFSFILE *file)              asm("UFS#FPTS");
 INT32    ufs_fgetc(UFSFILE *file)                               asm("UFS#FGTC");
+
+/* Stat (metadata lookup without open) */
+int      ufs_stat(UFS *ufs, const char *path, UFSDLIST *out)          asm("UFS#STAT");
 
 /* Seek / status */
 INT32    ufs_fseek(UFSFILE *fp, INT32 offset, INT32 whence)     asm("UFS#FSEE");

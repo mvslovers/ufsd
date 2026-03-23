@@ -178,6 +178,7 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
     case UFSREQ_DIROPEN:  /* AP-1f */
     case UFSREQ_DIRREAD:  /* AP-1f */
     case UFSREQ_DIRCLOSE: /* AP-1f */
+    case UFSREQ_STAT:
         sess = ufsd_sess_find(anchor, req->session_token);
         if (!sess) {
             rc = UFSD_RC_BADSESS;

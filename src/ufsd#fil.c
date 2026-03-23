@@ -1321,6 +1321,80 @@ do_dirclose(UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 **
 ** Returns UFSD_RC_OK or an UFSD_RC_* error code.
 ** ============================================================ */
+
+/* ============================================================
+** do_stat
+**
+** Stat a file or directory by path. Returns inode metadata in
+** the same wire format as DIRREAD (UFSD_DIRREAD_RLEN bytes).
+** No file descriptor is allocated — lightweight metadata-only.
+**
+** Request:  data[0..] = path (NUL-terminated)
+** Response: DIRREAD format (98 bytes), see UFSD_DIRREAD_RLEN.
+** ============================================================ */
+static int
+do_stat(UFSD_STC *stc, UFSD_SESSION *sess,
+        UFSREQ *req, char *resp_data, unsigned *resp_data_len)
+{
+    UFSD_UFS    *ufs;
+    UFSD_DISK   *disk;
+    UFSD_DINODE  dino;
+    const char  *path;
+    const char  *mnt_path;
+    char         leaf_name[UFSD_NAME_MAX + 1];
+    unsigned     start_ino;
+    unsigned     ino;
+    int          didx;
+    mtime64_t    mt;
+
+    ufs = (UFSD_UFS *)sess->ufs;
+    if (!ufs) return UFSD_RC_BADSESS;
+
+    path = req->data;
+    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+
+    disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
+    if (!disk) return UFSD_RC_IO;
+
+    ino = ufsd_path_lookup(disk, start_ino, mnt_path, NULL, leaf_name);
+    if (ino == 0) return UFSD_RC_NOFILE;
+
+    if (ufsd_ino_read(disk, ino, &dino) != UFSD_RC_OK)
+        return UFSD_RC_IO;
+
+    /* Root path returns empty leaf_name from path_lookup */
+    if (leaf_name[0] == '\0') {
+        leaf_name[0] = '/';
+        leaf_name[1] = '\0';
+    }
+
+    memset(resp_data, 0, UFSD_DIRREAD_RLEN);
+
+    *(unsigned *)resp_data                = ino;
+    *(unsigned *)(resp_data + 4)          = dino.filesize;
+    *(unsigned short *)(resp_data + 8)    = dino.mode;
+    *(unsigned short *)(resp_data + 10)   = dino.nlink;
+
+    memcpy(resp_data + 12, leaf_name, UFSD_NAME_MAX);
+    resp_data[12 + UFSD_NAME_MAX] = '\0';
+
+    /* v1/v2 timestamp detection (matches ufs370 / do_dirread) */
+    if (dino.mtime.v1.useconds < 1000000U) {
+        __64_from_u32(&mt, dino.mtime.v1.seconds);
+        __64_mul_u32(&mt, 1000U, &mt);
+        __64_add_u32(&mt, dino.mtime.v1.useconds / 1000U, &mt);
+    } else {
+        mt = dino.mtime.v2;
+    }
+    memcpy(resp_data + 72, &mt, 8);
+
+    memcpy(resp_data + 80, dino.owner, 9);
+    memcpy(resp_data + 89, dino.group, 9);
+
+    *resp_data_len = UFSD_DIRREAD_RLEN;
+    return UFSD_RC_OK;
+}
+
 int
 ufsd_fil_dispatch(UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
                   UFSREQ *req,
@@ -1372,6 +1446,9 @@ ufsd_fil_dispatch(UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
     case UFSREQ_DIRCLOSE:
         return do_dirclose(anchor, sess, req, resp_data, resp_data_len);
+
+    case UFSREQ_STAT:
+        return do_stat(stc, sess, req, resp_data, resp_data_len);
 
     default:
         return UFSD_RC_NOTIMPL;
