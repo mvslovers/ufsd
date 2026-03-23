@@ -1321,7 +1321,7 @@ do_dirclose(UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 **
 ** Returns UFSD_RC_OK or an UFSD_RC_* error code.
 ** ============================================================ */
-int
+
 /* ============================================================
 ** do_stat
 **
