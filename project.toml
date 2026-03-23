@@ -134,7 +134,7 @@ version_files = ["VERSION"]
 
 [artifacts]
 headers = true
-header_files = ["libufs.h"]
+header_files = ["libufs.h", "ufsdrc.h"]
 modules = true
 module_members = ["LIBUFS"]
 loads = true
