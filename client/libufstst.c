@@ -113,6 +113,60 @@ main(int argc, char **argv)
     }
 
     /* ============================================================
+    ** Step 1c: Write ops on non-existent paths (RO root) → NOFILE
+    ** Regression test for issue #8: must return NOFILE, not ROFS.
+    ** ============================================================ */
+    rc = ufs_mkdir(ufs, "/NO_SUCH_PARENT/SUBDIR");
+    if (rc == UFSD_RC_NOFILE) {
+        wtof("LUFTSTRFI MKDIR /NO_SUCH_PARENT/SUBDIR: NOFILE -- OK");
+    } else {
+        wtof("LUFTSTRFE MKDIR /NO_SUCH_PARENT/SUBDIR: expected RC=%d, got RC=%d",
+             UFSD_RC_NOFILE, rc);
+    }
+
+    {
+        UFSFILE *tfp;
+        tfp = ufs_fopen(ufs, "/NO_SUCH_PARENT/FILE.TXT", "w");
+        if (tfp != NULL) {
+            wtof("LUFTSTRFE FOPEN /NO_SUCH.../FILE.TXT: expected NULL");
+            ufs_fclose(&tfp);
+        } else if (ufs_last_rc(ufs) == UFSD_RC_NOFILE) {
+            wtof("LUFTSTRFI FOPEN /NO_SUCH.../FILE.TXT: NOFILE -- OK");
+        } else {
+            wtof("LUFTSTRFE FOPEN /NO_SUCH.../FILE.TXT: expected RC=%d, got RC=%d",
+                 UFSD_RC_NOFILE, ufs_last_rc(ufs));
+        }
+    }
+
+    rc = ufs_remove(ufs, "/NO_SUCH_PARENT/FILE.TXT");
+    if (rc == UFSD_RC_NOFILE) {
+        wtof("LUFTSTRFI REMOVE /NO_SUCH.../FILE.TXT: NOFILE -- OK");
+    } else {
+        wtof("LUFTSTRFE REMOVE /NO_SUCH.../FILE.TXT: expected RC=%d, got RC=%d",
+             UFSD_RC_NOFILE, rc);
+    }
+
+    rc = ufs_rmdir(ufs, "/NO_SUCH_PARENT/SUBDIR");
+    if (rc == UFSD_RC_NOFILE) {
+        wtof("LUFTSTRFI RMDIR /NO_SUCH.../SUBDIR: NOFILE -- OK");
+    } else {
+        wtof("LUFTSTRFE RMDIR /NO_SUCH.../SUBDIR: expected RC=%d, got RC=%d",
+             UFSD_RC_NOFILE, rc);
+    }
+
+    /* ============================================================
+    ** Step 1d: Write ops on valid path but RO mount → ROFS
+    ** Root "/" is read-only, so writing there must return ROFS.
+    ** ============================================================ */
+    rc = ufs_mkdir(ufs, "/ROFS_TEST_DIR");
+    if (rc == UFSD_RC_ROFS) {
+        wtof("LUFTSTRFI MKDIR /ROFS_TEST_DIR: ROFS -- OK");
+    } else {
+        wtof("LUFTSTRFE MKDIR /ROFS_TEST_DIR: expected RC=%d, got RC=%d",
+             UFSD_RC_ROFS, rc);
+    }
+
+    /* ============================================================
     ** Step 2: MKDIR /LIBUFSTEST
     ** ============================================================ */
     rc = ufs_mkdir(ufs, TESTDIR);

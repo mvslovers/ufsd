@@ -394,8 +394,6 @@ do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
-    wrc = ufsd_check_write(disk, sess);
-    if (wrc != UFSD_RC_OK) return wrc;
 
     parent_ino  = 0;
     dir_name[0] = '\0';
@@ -412,6 +410,10 @@ do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
         if (strcmp(dir_name, base) != 0)
             return UFSD_RC_NOFILE;
     }
+
+    /* Write check after path validation: NOFILE takes priority over ROFS */
+    wrc = ufsd_check_write(disk, sess);
+    if (wrc != UFSD_RC_OK) return wrc;
 
     if (ufsd_sb_alloc_inode(disk, &new_ino) != UFSD_RC_OK)
         return UFSD_RC_NOINODES;
@@ -505,8 +507,6 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
-    wrc = ufsd_check_write(disk, sess);
-    if (wrc != UFSD_RC_OK) return wrc;
 
     parent_ino  = 0;
     dir_name[0] = '\0';
@@ -515,6 +515,10 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
 
     if (dir_ino == 0) return UFSD_RC_NOFILE;
     if (parent_ino == 0) return UFSD_RC_INVALID;  /* cannot remove root */
+
+    /* Write check after path validation: NOFILE takes priority over ROFS */
+    wrc = ufsd_check_write(disk, sess);
+    if (wrc != UFSD_RC_OK) return wrc;
 
     if (ufsd_ino_read(disk, dir_ino, &dino) != UFSD_RC_OK) return UFSD_RC_IO;
     if ((dino.mode & UFSD_IFMT) != UFSD_IFDIR) return UFSD_RC_NOTDIR;
@@ -612,8 +616,6 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
-    wrc = ufsd_check_write(disk, sess);
-    if (wrc != UFSD_RC_OK) return wrc;
 
     parent_ino   = 0;
     file_name[0] = '\0';
@@ -622,6 +624,10 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
 
     if (file_ino == 0) return UFSD_RC_NOFILE;
     if (parent_ino == 0) return UFSD_RC_INVALID;
+
+    /* Write check after path validation: NOFILE takes priority over ROFS */
+    wrc = ufsd_check_write(disk, sess);
+    if (wrc != UFSD_RC_OK) return wrc;
 
     if (ufsd_ino_read(disk, file_ino, &dino) != UFSD_RC_OK) return UFSD_RC_IO;
     if ((dino.mode & UFSD_IFMT) == UFSD_IFDIR) return UFSD_RC_ISDIR;
@@ -690,13 +696,13 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     rc      = UFSD_RC_OK;
 
     if (mode & UFSD_OPEN_WRITE) {
-        wrc = ufsd_check_write(disk, sess);
-        if (wrc != UFSD_RC_OK) return wrc;
         if (file_ino != 0) {
             /* File exists: truncate */
             if (ufsd_ino_read(disk, file_ino, &dino) != UFSD_RC_OK)
                 return UFSD_RC_IO;
             if ((dino.mode & UFSD_IFMT) == UFSD_IFDIR) return UFSD_RC_ISDIR;
+            wrc = ufsd_check_write(disk, sess);
+            if (wrc != UFSD_RC_OK) return wrc;
             blk_free_all(disk, &dino);
             dino.filesize = 0;
             ufsd_stamp(&dino);
@@ -716,6 +722,8 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
                 return UFSD_RC_NOFILE;
             if (strcmp(file_name, base) != 0)
                 return UFSD_RC_NOFILE;  /* intermediate dir missing */
+            wrc = ufsd_check_write(disk, sess);
+            if (wrc != UFSD_RC_OK) return wrc;
             if (ufsd_sb_alloc_inode(disk, &new_ino) != UFSD_RC_OK)
                 return UFSD_RC_NOINODES;
             memset(&dino, 0, sizeof(dino));
