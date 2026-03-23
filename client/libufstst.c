@@ -117,11 +117,11 @@ main(int argc, char **argv)
     ** Regression test for issue #8: must return NOFILE, not ROFS.
     ** ============================================================ */
     rc = ufs_mkdir(ufs, "/NO_SUCH_PARENT/SUBDIR");
-    if (rc == UFSD_RC_NOFILE) {
-        wtof("LUFTSTRFI MKDIR /NO_SUCH_PARENT/SUBDIR: NOFILE -- OK");
+    if (rc == UFSD_RC_NOFILE && ufs_last_rc(ufs) == UFSD_RC_NOFILE) {
+        wtof("LUFTSTRFI MKDIR /NO_SUCH.../SUBDIR: NOFILE (rc+last_rc) -- OK");
     } else {
-        wtof("LUFTSTRFE MKDIR /NO_SUCH_PARENT/SUBDIR: expected RC=%d, got RC=%d",
-             UFSD_RC_NOFILE, rc);
+        wtof("LUFTSTRFE MKDIR /NO_SUCH.../SUBDIR: rc=%d last_rc=%d (expected %d)",
+             rc, ufs_last_rc(ufs), UFSD_RC_NOFILE);
     }
 
     {
@@ -139,19 +139,19 @@ main(int argc, char **argv)
     }
 
     rc = ufs_remove(ufs, "/NO_SUCH_PARENT/FILE.TXT");
-    if (rc == UFSD_RC_NOFILE) {
-        wtof("LUFTSTRFI REMOVE /NO_SUCH.../FILE.TXT: NOFILE -- OK");
+    if (rc == UFSD_RC_NOFILE && ufs_last_rc(ufs) == UFSD_RC_NOFILE) {
+        wtof("LUFTSTRFI REMOVE /NO_SUCH.../FILE.TXT: NOFILE (rc+last_rc) -- OK");
     } else {
-        wtof("LUFTSTRFE REMOVE /NO_SUCH.../FILE.TXT: expected RC=%d, got RC=%d",
-             UFSD_RC_NOFILE, rc);
+        wtof("LUFTSTRFE REMOVE /NO_SUCH.../FILE.TXT: rc=%d last_rc=%d (expected %d)",
+             rc, ufs_last_rc(ufs), UFSD_RC_NOFILE);
     }
 
     rc = ufs_rmdir(ufs, "/NO_SUCH_PARENT/SUBDIR");
-    if (rc == UFSD_RC_NOFILE) {
-        wtof("LUFTSTRFI RMDIR /NO_SUCH.../SUBDIR: NOFILE -- OK");
+    if (rc == UFSD_RC_NOFILE && ufs_last_rc(ufs) == UFSD_RC_NOFILE) {
+        wtof("LUFTSTRFI RMDIR /NO_SUCH.../SUBDIR: NOFILE (rc+last_rc) -- OK");
     } else {
-        wtof("LUFTSTRFE RMDIR /NO_SUCH.../SUBDIR: expected RC=%d, got RC=%d",
-             UFSD_RC_NOFILE, rc);
+        wtof("LUFTSTRFE RMDIR /NO_SUCH.../SUBDIR: rc=%d last_rc=%d (expected %d)",
+             rc, ufs_last_rc(ufs), UFSD_RC_NOFILE);
     }
 
     /* ============================================================
@@ -159,11 +159,11 @@ main(int argc, char **argv)
     ** Root "/" is read-only, so writing there must return ROFS.
     ** ============================================================ */
     rc = ufs_mkdir(ufs, "/ROFS_TEST_DIR");
-    if (rc == UFSD_RC_ROFS) {
-        wtof("LUFTSTRFI MKDIR /ROFS_TEST_DIR: ROFS -- OK");
+    if (rc == UFSD_RC_ROFS && ufs_last_rc(ufs) == UFSD_RC_ROFS) {
+        wtof("LUFTSTRFI MKDIR /ROFS_TEST_DIR: ROFS (rc+last_rc) -- OK");
     } else {
-        wtof("LUFTSTRFE MKDIR /ROFS_TEST_DIR: expected RC=%d, got RC=%d",
-             UFSD_RC_ROFS, rc);
+        wtof("LUFTSTRFE MKDIR /ROFS_TEST_DIR: rc=%d last_rc=%d (expected %d)",
+             rc, ufs_last_rc(ufs), UFSD_RC_ROFS);
     }
 
     /* ============================================================

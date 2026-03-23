@@ -341,6 +341,7 @@ ufs_chgdir(UFS *ufs, const char *path)
     if (!ufs) return -1;
 
     rc = path_req(UFSREQ_CHGDIR, ufs->token, path);
+    ufs->last_rc = rc;
     if (rc == UFSD_RC_OK) {
         /* Mirror the new cwd in the local UFS handle */
         pathlen = strlen(path);
@@ -355,22 +356,31 @@ ufs_chgdir(UFS *ufs, const char *path)
 int
 ufs_mkdir(UFS *ufs, const char *path)
 {
+    int rc;
     if (!ufs) return -1;
-    return path_req(UFSREQ_MKDIR, ufs->token, path);
+    rc = path_req(UFSREQ_MKDIR, ufs->token, path);
+    ufs->last_rc = rc;
+    return rc;
 }
 
 int
 ufs_rmdir(UFS *ufs, const char *path)
 {
+    int rc;
     if (!ufs) return -1;
-    return path_req(UFSREQ_RMDIR, ufs->token, path);
+    rc = path_req(UFSREQ_RMDIR, ufs->token, path);
+    ufs->last_rc = rc;
+    return rc;
 }
 
 int
 ufs_remove(UFS *ufs, const char *path)
 {
+    int rc;
     if (!ufs) return -1;
-    return path_req(UFSREQ_REMOVE, ufs->token, path);
+    rc = path_req(UFSREQ_REMOVE, ufs->token, path);
+    ufs->last_rc = rc;
+    return rc;
 }
 
 /* ============================================================
