@@ -333,6 +333,7 @@ struct ufsd_anchor {
 #define UFSREQ_DIRREAD      0x0041U  /* AP-1f: read directory entry      */
 #define UFSREQ_DIRCLOSE     0x0042U  /* AP-1f: close directory handle    */
 #define UFSREQ_GETCWD       0x0050U  /* AP-1f: get current work dir  */
+#define UFSREQ_STAT         0x0060U  /* stat file/dir metadata       */
 #define UFSREQ_MAX          0x00FFU
 
 /* Return codes */

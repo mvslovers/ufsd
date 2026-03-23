@@ -22,6 +22,8 @@
 **   DIRREAD  req: [0..3]=dir_fd(int)
 **            rsp: [0..3]=ino(0=end), [4..7]=filesize, [8..9]=mode, [12..71]=name
 **   DIRCLOSE req: [0..3]=dir_fd(int)
+**   STAT     req: [0..]=path(NUL-term)
+**            rsp: DIRREAD format (98 bytes): ino, filesize, mode, nlink, name, mtime, owner, group
 **   SESS_OPEN  rsp: [0..3]=token(unsigned)
 **   SESS_CLOSE req: (session token in ufsssob.token)
 */
@@ -552,6 +554,73 @@ ufs_dirclose(UFSDDESC **pddesc)
     if (ddesc->entries) free(ddesc->entries);
     free(ddesc);
     *pddesc = NULL;
+}
+
+/* ============================================================
+** Stat (metadata lookup without open)
+** ============================================================ */
+
+int
+ufs_stat(UFS *ufs, const char *path, UFSDLIST *out)
+{
+    UFSSSOB        ufsssob;
+    unsigned       pathlen;
+    unsigned short mode;
+
+    if (!ufs || !path || !out) return UFSD_RC_INVALID;
+
+    pathlen = strlen(path);
+    if (pathlen == 0 || pathlen >= (unsigned)UFSREQ_MAX_INLINE)
+        return UFSD_RC_INVALID;
+
+    memset(&ufsssob, 0, sizeof(ufsssob));
+    memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
+    ufsssob.func     = UFSREQ_STAT;
+    ufsssob.token    = ufs->token;
+    ufsssob.data_len = pathlen + 1U;
+    memcpy(ufsssob.data, path, pathlen + 1U);
+
+    if (libufs_issue(&ufsssob) != SSRTOK) {
+        ufs->last_rc = -1;
+        return -1;
+    }
+    if (ufsssob.rc != UFSD_RC_OK) {
+        ufs->last_rc = ufsssob.rc;
+        return ufsssob.rc;
+    }
+    if (ufsssob.data_len < UFSD_DIRREAD_RLEN) {
+        ufs->last_rc = UFSD_RC_INVALID;
+        return UFSD_RC_INVALID;
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->inode_number = *(unsigned *)ufsssob.data;
+    out->filesize     = *(unsigned *)(ufsssob.data + 4);
+
+    mode = *(unsigned short *)(ufsssob.data + 8);
+    {
+        const char *perms = "rwxrwxrwx";
+        int k;
+        out->attr[0] = ((mode & 0xF000U) == 0x4000U) ? 'd' : '-';
+        for (k = 0; k < 9; k++)
+            out->attr[1 + k] = (mode & (1 << (8 - k))) ? perms[k] : '-';
+        out->attr[10] = '\0';
+    }
+
+    out->nlink = *(unsigned short *)(ufsssob.data + 10);
+
+    memcpy(out->name, ufsssob.data + 12, 59);
+    out->name[59] = '\0';
+
+    memcpy(&out->mtime, ufsssob.data + 72, 8);
+
+    memcpy(out->owner, ufsssob.data + 80, 9);
+    out->owner[8] = '\0';
+    memcpy(out->group, ufsssob.data + 89, 9);
+    out->group[8] = '\0';
+
+    ufs->last_rc = UFSD_RC_OK;
+    return UFSD_RC_OK;
 }
 
 /* ============================================================

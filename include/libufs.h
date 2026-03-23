@@ -232,6 +232,9 @@ INT32    ufs_fputc(INT32 c, UFSFILE *file)                      asm("UFS#FPTC");
 INT32    ufs_fputs(const char *str, UFSFILE *file)              asm("UFS#FPTS");
 INT32    ufs_fgetc(UFSFILE *file)                               asm("UFS#FGTC");
 
+/* Stat (metadata lookup without open) */
+int      ufs_stat(UFS *ufs, const char *path, UFSDLIST *out)          asm("UFS#STAT");
+
 /* Seek / status */
 INT32    ufs_fseek(UFSFILE *fp, INT32 offset, INT32 whence)     asm("UFS#FSEE");
 INT32    ufs_feof(UFSFILE *file)                                asm("UFS#FEOF");
