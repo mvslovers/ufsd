@@ -51,8 +51,8 @@
 #include <clibwto.h>
 #include "libufs.h"
 
-#define TESTDIR  "/LIBUFSTEST"
-#define TESTFILE "/LIBUFSTEST/HELLO.TXT"
+#define TESTDIR  "/tmp/LIBUFSTEST"
+#define TESTFILE "/tmp/LIBUFSTEST/HELLO.TXT"
 
 static const char testdata[] = "Hello from libufs!";
 #define TESTLEN  18U  /* strlen("Hello from libufs!") */
