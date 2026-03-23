@@ -6,10 +6,14 @@
 **
 ** Test sequence:
 **   1. ufsnew()             -- open UFSD session, get UFS *
+**  1a. ufs_stat("/")        -- stat root, verify directory
+**  1b. ufs_stat(noexist)   -- stat non-existent, verify NOFILE
 **   2. ufs_mkdir()          -- create /libufstest
+**  2a. ufs_stat(dir)       -- stat new directory, verify attrs
 **   3. ufs_fopen() write    -- create /libufstest/hello.txt
 **   4. ufs_fwrite()         -- write "Hello from libufs!"
 **   5. ufs_fclose() write
+**  5a. ufs_stat(file)      -- stat file, verify size + type
 **   6. ufs_fopen() read     -- open for reading
 **   7. ufs_fread()          -- read and verify content
 **   8. ufs_fclose() read
@@ -34,6 +38,10 @@
 **   LUFTST11I FCLOSE fgets: OK
 **   LUFTST12I REMOVE /LIBUFSTEST/HELLO.TXT: OK
 **   LUFTST13I RMDIR /LIBUFSTEST: OK
+**   LUFTSTSTI STAT /: OK (d, ino=2)
+**   LUFTSTSTI STAT /NOEXIST: NOFILE (RC=28) -- OK
+**   LUFTSTSTI STAT /LIBUFSTEST: OK (d, ino=NN, name=LIBUFSTEST)
+**   LUFTSTSTI STAT /LIBUFSTEST/HELLO.TXT: OK (-, ino=NN, size=18)
 **   LUFTST14I CWD: /
 **   LUFTST15I Session closed
 */
@@ -56,6 +64,7 @@ main(int argc, char **argv)
     UFSFILE  *fp;
     UFSCWD   *cwd;
     UFSDDESC *ddesc;
+    UFSDLIST  stbuf;
     char      rdbuf[64];
     char      linebuf[64];
     UINT32    items;
@@ -81,6 +90,29 @@ main(int argc, char **argv)
     wtof("LUFTST01I Session opened, token=0x%08X", ufs->token);
 
     /* ============================================================
+    ** Step 1a: STAT root "/"
+    ** ============================================================ */
+    rc = ufs_stat(ufs, "/", &stbuf);
+    if (rc != 0) {
+        wtof("LUFTSTSTE STAT /: FAILED RC=%d", rc);
+    } else if (stbuf.attr[0] != 'd') {
+        wtof("LUFTSTSTE STAT /: expected dir, got '%c'", stbuf.attr[0]);
+    } else {
+        wtof("LUFTSTSTI STAT /: OK (d, ino=%u)", stbuf.inode_number);
+    }
+
+    /* ============================================================
+    ** Step 1b: STAT non-existent path
+    ** ============================================================ */
+    rc = ufs_stat(ufs, "/NOEXIST_STAT_TEST", &stbuf);
+    if (rc == UFSD_RC_NOFILE) {
+        wtof("LUFTSTSTI STAT /NOEXIST: NOFILE (RC=%d) -- OK", rc);
+    } else {
+        wtof("LUFTSTSTE STAT /NOEXIST: expected RC=%d, got RC=%d",
+             UFSD_RC_NOFILE, rc);
+    }
+
+    /* ============================================================
     ** Step 2: MKDIR /LIBUFSTEST
     ** ============================================================ */
     rc = ufs_mkdir(ufs, TESTDIR);
@@ -89,6 +121,20 @@ main(int argc, char **argv)
         goto close_sess;
     }
     wtof("LUFTST02I MKDIR %s: OK", TESTDIR);
+
+    /* ============================================================
+    ** Step 2a: STAT newly created directory
+    ** ============================================================ */
+    rc = ufs_stat(ufs, TESTDIR, &stbuf);
+    if (rc != 0) {
+        wtof("LUFTSTSTE STAT %s: FAILED RC=%d", TESTDIR, rc);
+    } else if (stbuf.attr[0] != 'd') {
+        wtof("LUFTSTSTE STAT %s: expected dir, got '%c'",
+             TESTDIR, stbuf.attr[0]);
+    } else {
+        wtof("LUFTSTSTI STAT %s: OK (d, ino=%u, name=%s)",
+             TESTDIR, stbuf.inode_number, stbuf.name);
+    }
 
     /* ============================================================
     ** Step 3: FOPEN for writing
@@ -119,7 +165,24 @@ main(int argc, char **argv)
     wtof("LUFTST05I FCLOSE write: OK");
 
     /* ============================================================
-    ** Step 5a: DIROPEN + DIRREAD -- list /LIBUFSTEST
+    ** Step 5a: STAT the written file
+    ** ============================================================ */
+    rc = ufs_stat(ufs, TESTFILE, &stbuf);
+    if (rc != 0) {
+        wtof("LUFTSTSTE STAT %s: FAILED RC=%d", TESTFILE, rc);
+    } else if (stbuf.attr[0] != '-') {
+        wtof("LUFTSTSTE STAT %s: expected file, got '%c'",
+             TESTFILE, stbuf.attr[0]);
+    } else if (stbuf.filesize != TESTLEN) {
+        wtof("LUFTSTSTE STAT %s: expected size=%u, got %u",
+             TESTFILE, TESTLEN, stbuf.filesize);
+    } else {
+        wtof("LUFTSTSTI STAT %s: OK (-, ino=%u, size=%u, name=%s)",
+             TESTFILE, stbuf.inode_number, stbuf.filesize, stbuf.name);
+    }
+
+    /* ============================================================
+    ** Step 5b: DIROPEN + DIRREAD -- list /LIBUFSTEST
     ** ============================================================ */
     ddesc = ufs_diropen(ufs, TESTDIR, NULL);
     if (ddesc) {

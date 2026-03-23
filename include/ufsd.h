@@ -336,7 +336,9 @@ struct ufsd_anchor {
 #define UFSREQ_STAT         0x0060U  /* stat file/dir metadata       */
 #define UFSREQ_MAX          0x00FFU
 
-/* Return codes */
+/* Return codes — canonical definitions are in libufs.h.
+** Guarded to avoid redefinition when both headers are included. */
+#ifndef UFSD_RC_OK
 #define UFSD_RC_OK          0    /* success                          */
 #define UFSD_RC_NOREQ       4    /* no free request block available  */
 #define UFSD_RC_CORRUPT     8    /* corrupt request block (eye fail) */
@@ -356,6 +358,7 @@ struct ufsd_anchor {
 #define UFSD_RC_NAMETOOLONG 64   /* filename exceeds UFSD_NAME_MAX   */
 #define UFSD_RC_ROFS        68   /* read-only filesystem             */
 #define UFSD_RC_EACCES      72   /* permission denied (owner check)  */
+#endif /* UFSD_RC_OK */
 
 #define UFSREQ_MAX_INLINE   256  /* max bytes in data[] field        */
 
