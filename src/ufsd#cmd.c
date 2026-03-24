@@ -16,7 +16,7 @@
 static void cmd_stats(UFSD_STC *ufsd);
 static void cmd_help(UFSD_STC *ufsd);
 static void cmd_shutdown(UFSD_STC *ufsd);
-static void cmd_sessions(UFSD_STC *ufsd);
+static void cmd_sessions(UFSD_STC *ufsd, const char *args);
 static void cmd_mount(UFSD_STC *ufsd, const char *args);
 static void cmd_unmount(UFSD_STC *ufsd, const char *args);
 static void cmd_trace(UFSD_STC *ufsd, const char *args);
@@ -52,7 +52,9 @@ ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
         if (strcmp(buf, "STATS") == 0) {
             cmd_stats(ufsd);
         } else if (strcmp(buf, "SESSIONS") == 0) {
-            cmd_sessions(ufsd);
+            cmd_sessions(ufsd, NULL);
+        } else if (strncmp(buf, "SESSIONS ", 9) == 0) {
+            cmd_sessions(ufsd, buf + 9);
         } else if (strcmp(buf, "HELP") == 0) {
             cmd_help(ufsd);
         } else if (strcmp(buf, "SHUTDOWN") == 0) {
@@ -125,8 +127,17 @@ cmd_stats(UFSD_STC *ufsd)
 }
 
 static void
-cmd_sessions(UFSD_STC *ufsd)
+cmd_sessions(UFSD_STC *ufsd, const char *args)
 {
+    if (args && strcmp(args, "PRUNE") == 0) {
+        unsigned n = ufsd_sess_cleanup(ufsd->anchor);
+        wtof("UFSD053I SESSIONS PRUNE: %u stale session(s) released", n);
+        return;
+    }
+    if (args && *args) {
+        wtof("UFSD021E SESSIONS: syntax: SESSIONS  or  SESSIONS PRUNE");
+        return;
+    }
     ufsd_sess_list(ufsd->anchor);
 }
 
@@ -139,6 +150,7 @@ cmd_help(UFSD_STC *ufsd)
     wtof("UFSD020I   MOUNT LIST");
     wtof("UFSD020I   UNMOUNT PATH=/path");
     wtof("UFSD020I   TRACE ON|OFF|DUMP");
+    wtof("UFSD020I   SESSIONS PRUNE  -- release stale sessions (terminated ASIDs)");
     wtof("UFSD020I   REBUILD  -- scan inodes, rebuild free block/inode cache");
 }
 
@@ -342,3 +354,4 @@ cmd_rebuild(UFSD_STC *ufsd)
                  d->ddname, rc);
     }
 }
+

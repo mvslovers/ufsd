@@ -554,6 +554,7 @@ int           ufsd_sess_close(UFSD_ANCHOR *anchor, UFSREQ *req)      asm("UFSD@S
 void          ufsd_sess_list(UFSD_ANCHOR *anchor)                    asm("UFSD@SLS");
 UFSD_SESSION *ufsd_sess_find(UFSD_ANCHOR *anchor, unsigned token)    asm("UFSD@SFN");
 int           ufsd_sess_setuser(UFSD_ANCHOR *anchor, UFSREQ *req)  asm("UFSD@SSU");
+unsigned      ufsd_sess_cleanup(UFSD_ANCHOR *anchor)               asm("UFSD@SCU");
 
 /* ufsd#ini.c (AP-1d Step 2) */
 int           ufsd_ufs_init(UFSD_STC *stc)                          asm("UFSD@UNI");
