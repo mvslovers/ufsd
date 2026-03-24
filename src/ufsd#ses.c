@@ -54,7 +54,7 @@ ufsd_sess_init(UFSD_ANCHOR *anchor)
     sessions = (UFSD_SESSION *)calloc(UFSD_MAX_SESSIONS,
                                       sizeof(UFSD_SESSION));
     if (!sessions) {
-        wtof("UFSD060E Cannot allocate session table");
+        wtof("UFSD045E Cannot allocate session table");
         return 8;
     }
 
@@ -71,7 +71,7 @@ ufsd_sess_init(UFSD_ANCHOR *anchor)
     /* Store pointer in CSA anchor (key-0 write) */
     if (__super(PSWKEY0, &savekey)) {
         free(sessions);
-        wtof("UFSD061E Cannot enter supervisor state for session init");
+        wtof("UFSD046E Cannot enter supervisor state for session init");
         return 8;
     }
     anchor->sessions     = sessions;

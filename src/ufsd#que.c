@@ -106,7 +106,7 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
 
     /* --- Eye-catcher check --- */
     if (memcmp(req->eye, "UFSREQ__", 8) != 0) {
-        wtof("UFSD-DBG eye mismatch");
+        wtof("UFSD150E Corrupt request block (eye catcher mismatch)");
         ufsd_trace(anchor, UFSD_T_CORRUPT, 0, (unsigned short)UFSD_RC_CORRUPT);
         /* Write error stat and post client ECB (key 0 for CSA write) */
         if (!__super(PSWKEY0, &savekey)) {
@@ -120,7 +120,7 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
 
     /* --- Function code check --- */
     if (req->func < UFSREQ_MIN || req->func > UFSREQ_MAX) {
-        wtof("UFSD-DBG bad func %04X", req->func);
+        wtof("UFSD151E Invalid function code %04X", req->func);
         ufsd_trace(anchor, UFSD_T_BADFUNC, req->session_token,
                    (unsigned short)UFSD_RC_BADFUNC);
         if (!__super(PSWKEY0, &savekey)) {

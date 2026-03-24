@@ -157,6 +157,8 @@ main(int argc, char **argv)
     /* --- ESTAE recovery ------------------------------------------ */
     __estae(ESTAE_CREATE, ufsd_recover, &ufsd);
 
+    wtof("UFSD000I UFSD %s starting", VERSION);
+
     /* --- CSA anchor ---------------------------------------------- */
     anchor = ufsd_anchor_alloc();
     if (!anchor) {
@@ -247,8 +249,17 @@ main(int argc, char **argv)
         return 8;
     }
 
-    wtof("UFSD000I UFSD Filesystem Server %s starting", VERSION);
-    wtof("UFSD001I UFSD ready");
+    {
+        unsigned csa_kb =
+            ((UFSD_REQ_POOL_COUNT * (unsigned)sizeof(UFSREQ)) +
+             (UFSD_BUF_POOL_COUNT * (unsigned)sizeof(UFSBUF)) +
+             (UFSD_TRACE_SIZE * (unsigned)sizeof(UFSD_TRACE)) +
+             (unsigned)sizeof(UFSD_ANCHOR) + 1023U) / 1024U;
+        wtof("UFSD001I UFSD %s ready -- %u disks, %uK CSA, "
+             "%u sessions, %u files",
+             VERSION, ufsd.ndisks, csa_kb,
+             (unsigned)UFSD_MAX_SESSIONS, (unsigned)UFSD_MAX_GFILES);
+    }
 
     /* --- Main event loop ----------------------------------------- */
     while (ufsd.flags & UFSD_ACTIVE) {

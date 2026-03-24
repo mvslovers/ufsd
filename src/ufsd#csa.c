@@ -78,7 +78,7 @@ ufsd_csa_init(UFSD_ANCHOR *anchor)
     unsigned        i;
 
     if (__super(PSWKEY0, &savekey)) {
-        wtof("UFSD091E Cannot enter supervisor state for CSA init");
+        wtof("UFSD038E Cannot enter supervisor state for CSA init");
         return -1;
     }
 
@@ -135,7 +135,7 @@ ufsd_csa_init(UFSD_ANCHOR *anchor)
 
 fail:
     __prob(savekey, NULL);
-    wtof("UFSD092E Cannot allocate CSA pools");
+    wtof("UFSD039E Cannot allocate CSA pools");
     return -1;
 }
 
