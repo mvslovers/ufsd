@@ -110,8 +110,6 @@ Each release provides three archives:
    | UFSD      | Main STC load module                   |
    | UFSDSSIR  | SSI thin router (loaded into CSA)      |
    | UFSDCLNP  | Emergency cleanup utility              |
-   | UFSDTEST  | Session lifecycle test client          |
-   | UFSDPING  | Ping/pong connectivity test            |
    | LIBUFTST  | libufs integration test client         |
 
    Copy the members you need into an existing system load library, or use
