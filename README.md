@@ -409,6 +409,7 @@ F UFSD,command
 | `TRACE OFF` | Disable tracing |
 | `TRACE DUMP` | Dump the last 256 trace entries to SYSPRINT |
 | `REBUILD` | Force a full free-block and free-inode cache rebuild on all mounted disks |
+| `SESSIONS PRUNE` | Release sessions for terminated address spaces (stale ASID detection via ASVT) |
 | `HELP` | Print a summary of available commands |
 | `SHUTDOWN` | Orderly shutdown (same as P UFSD) |
 
@@ -424,6 +425,7 @@ F UFSD,UNMOUNT PATH=/wwwroot
 F UFSD,TRACE ON
 F UFSD,TRACE DUMP
 F UFSD,REBUILD
+F UFSD,SESSIONS PRUNE
 F UFSD,HELP
 ```
 

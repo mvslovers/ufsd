@@ -29,6 +29,8 @@
 #include <stdlib.h>
 #include <clibos.h>
 #include <clibwto.h>
+#include <cvt.h>
+#include <ihaasvt.h>
 
 /* Static serial counter.  Accessed only from the STC (problem state,
 ** single-threaded in Phase 1).  NOT in CSA; no key-0 window needed. */
@@ -351,4 +353,82 @@ ufsd_sess_list(UFSD_ANCHOR *anchor)
              fd_count,
              (unsigned)UFSD_MAX_FD);
     }
+}
+
+/* ============================================================
+** ufsd_sess_cleanup
+**
+** Walk all active sessions.  For each one, check the ASVT to
+** see whether the owning address space (client_asid) is still
+** assigned.  If the ASID is no longer active, close the session
+** (release FDs, GFT entries, UFS handle) and log a message.
+**
+** Returns the number of sessions cleaned up.
+** ============================================================ */
+unsigned
+ufsd_sess_cleanup(UFSD_ANCHOR *anchor)
+{
+    CVT          *cvt;
+    ASVT         *asvt;
+    unsigned      i;
+    unsigned      cleaned;
+    unsigned      asid;
+    unsigned      asvte;
+    UFSD_SESSION *sess;
+    int           j;
+
+    if (!anchor || !anchor->sessions) return 0;
+
+    cvt  = *(CVT **)16;
+    asvt = (ASVT *)cvt->cvtasvt;
+    if (!asvt) return 0;
+
+    cleaned = 0;
+
+    for (i = 0; i < anchor->max_sessions; i++) {
+        sess = &anchor->sessions[i];
+        if (!(sess->flags & UFSD_SESS_ACTIVE)) continue;
+
+        asid = sess->client_asid;
+
+        /* Validate ASID range */
+        if (asid == 0 || asid > asvt->asvtmaxu)
+            goto stale;
+
+        /* Check ASVT entry: high bit set = ASID available (not assigned) */
+        asvte = *(unsigned *)&asvt->asvtenty[asid - 1];
+        if (asvte & 0x80000000U)
+            goto stale;
+
+        continue;  /* address space still active */
+
+    stale:
+        /* Release open file descriptors */
+        for (j = 0; j < UFSD_MAX_FD; j++) {
+            if (sess->fd_table[j].gfile_idx != UFSD_FD_UNUSED) {
+                ufsd_gft_release(anchor, sess->fd_table[j].gfile_idx);
+                sess->fd_table[j].gfile_idx = UFSD_FD_UNUSED;
+                sess->fd_table[j].flags     = 0;
+            }
+        }
+
+        /* Free per-session UFS handle */
+        if (sess->ufs) {
+            free(sess->ufs);
+            sess->ufs = NULL;
+        }
+
+        wtof("UFSD052I CLEANUP: session #%u TOKEN=%08X ASID=%04X"
+             " (%.8s) released",
+             i + 1U, sess->token, asid,
+             sess->owner[0] ? sess->owner : "(none)");
+
+        ufsd_trace(anchor, UFSD_T_SESS_ABEND, sess->token, 0);
+
+        sess->flags = 0;
+        sess->token = 0;
+        cleaned++;
+    }
+
+    return cleaned;
 }
