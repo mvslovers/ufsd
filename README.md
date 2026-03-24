@@ -115,7 +115,7 @@ Each release provides three archives:
    | LIBUFTST  | libufs integration test client         |
 
    Copy the members you need into an existing system load library, or use
-   `IBMUSER.UFSD.LOAD` directly as a `STEPLIB`.
+   `UFSD.LINKLIB` directly as a `STEPLIB`.
 
 [Releases]: https://github.com/mvslovers/ufsd/releases
 
@@ -185,7 +185,7 @@ need the NCALIB member.
 
    ```toml
    [dependencies]
-   "mvslovers/ufsd" = ">=1.0.0-dev"
+   "mvslovers/ufsd" = "=1.0.0-dev"
    ```
 
    `make bootstrap` then fetches and installs everything automatically.
@@ -224,9 +224,9 @@ Adjust the `STEPLIB` DSN to match your load library name:
 //*              /S UFSD,D='MY.PARMLIB'   (alternate parmlib dataset)
 //*
 //CLEANUP  EXEC PGM=UFSDCLNP
-//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
+//STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
-//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
+//STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
 //SYSUDUMP DD  SYSOUT=*
 //UFSDPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
 ```
@@ -315,57 +315,20 @@ Creating root.img (1M, blksize=4096, inodes=10.0%)
   Block size:      4096 bytes
   Inode blocks:    2 (64 inodes)
   Data blocks:     252 (free: 251)
-  Root owner:      MIGO/ADMIN
+  Root owner:      MIKE/ADMIN
   Format:          UFS370 v1 (time64 timestamps)
 
-  MVS Dataset Allocation (DSORG=DA, BDAM):
-
-    DCB=(DSORG=DA,BLKSIZE=4096)  SPACE=(4096,(256))
-
-    JCL (recommended — ISPF/RPF panel cannot set DSORG=DA):
-      //ALLOC  EXEC PGM=IEFBR14
-      //DISK   DD DSN=your.dataset.name,
-      //          DISP=(NEW,CATLG,DELETE),UNIT=SYSDA,
-      //          SPACE=(4096,(256)),
-      //          DCB=(DSORG=DA,BLKSIZE=4096)
-
-    Transfer: FTP binary PUT into pre-allocated dataset
+  Upload to MVS:  ufsd-utils upload root.img --dsn YOUR.DATASET.NAME
 Done.
 ```
 
-`ufsd-utils` prints the exact JCL and SPACE parameters to use for the MVS
-allocation, derived from the image geometry. Use those values — do not guess.
+#### Step 2: Upload to MVS
 
-> A native MVS formatting tool is planned and will be added to the UFSD
-> package in a future release. Until then, `ufsd-utils` on the host is the
-> only supported way to create new filesystem images.
-
-#### Step 2: Allocate the MVS dataset
-
-Use the JCL printed by `ufsd-utils` (with your actual dataset name and volume):
-
-```jcl
-//ALLOC  EXEC PGM=IEFBR14
-//DISK   DD DSN=HTTPD.WEBROOT,
-//          DISP=(NEW,CATLG,DELETE),UNIT=SYSDA,VOL=SER=PUB000,
-//          SPACE=(4096,(256)),
-//          DCB=(DSORG=DA,BLKSIZE=4096)
-```
-
-ISPF/RPF dataset allocation panels cannot set `DSORG=DA` — JCL is required.
-
-#### Step 3: Upload the image
-
-Transfer the `.img` file to the pre-allocated dataset in binary mode:
+Use `ufsd-utils upload` to allocate the BDAM dataset and transfer the image
+in one step:
 
 ```sh
-# zowe CLI
-zowe files upload file-to-data-set root.img "HTTPD.WEBROOT" --binary
-
-# or FTP (binary mode)
-ftp mvs-host
-binary
-put root.img 'HTTPD.WEBROOT'
+ufsd-utils upload root.img --dsn UFSD.ROOT
 ```
 
 The dataset is now ready to be listed in `UFSDPRM0` and mounted.
@@ -420,13 +383,6 @@ or:
 
 ```
 F UFSD,SHUTDOWN
-```
-
-If UFSD abends and leaves its subsystem entry registered, subsequent starts
-will fail. Run the cleanup utility to deregister the stale entry and free CSA:
-
-```
-S UFSDCLNP
 ```
 
 ---
