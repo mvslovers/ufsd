@@ -24,7 +24,9 @@
 **   4. Fill UFSREQ fields from UFSSSOB
 **   5. CS-enqueue UFSREQ at req_tail (req_lock spin)
 **   6. POST anchor->server_ecb to wake the STC
-**   7. WAIT on req->client_ecb for the STC to reply
+**   7. Timed WAIT on req->client_ecb (5 s intervals)
+**      - On timeout: check UFSD_ANCHOR_ACTIVE, bail if dead
+**      - On POST: continue to step 8
 **   8. Copy result back to UFSSSOB
 **   9. Return UFSREQ to free pool
 **  10. Set SSOB.SSOBRETN, return to IEFSSREQ
@@ -40,6 +42,16 @@
 #include <clibssct.h>
 #include <iefssobh.h>
 #include <iefjssib.h>
+
+/* Liveness check interval: hundredths of a second (500 = 5 s).
+** After each timeout the router checks UFSD_ANCHOR_ACTIVE.  If
+** the server is still alive, it clears the ECB and retries. */
+#define UFSD_WAIT_INTERVAL   500U
+
+/* Post code written to the client ECB when the timer fires.
+** Must be non-zero so we can distinguish it from a normal STC
+** reply (which uses post code 0 via __xmpost). */
+#define UFSD_TIMEOUT_CODE    0x0FFFFU
 
 /* ============================================================
 ** Internal helpers (static, inline in the CSA load module)
@@ -289,8 +301,34 @@ ufsdssir(void)
         */
         __prob(savekey, NULL);
 
-        /* --- Wait for STC reply (WAIT SVC 1 from problem state) --- */
-        __asm__ __volatile__("WAIT ECB=(%0)" : : "r"(ecbp));
+        /* --- Timed WAIT loop with liveness check ---
+        ** ecb_timed_wait sets STIMER for UFSD_WAIT_INTERVAL hundredths.
+        ** If the timer fires before the STC replies, the ECB is posted
+        ** with UFSD_TIMEOUT_CODE.  We then check UFSD_ANCHOR_ACTIVE;
+        ** if the server is dead, we abandon the request and return.
+        ** If the server is alive, we clear the ECB and retry.
+        **
+        ** CSA has no fetch-protection, so anchor->flags is readable
+        ** from problem state (key 8).
+        */
+        for (;;) {
+            ecb_timed_wait(ecbp, UFSD_WAIT_INTERVAL, UFSD_TIMEOUT_CODE);
+
+            /* Normal completion: STC posted with code 0 */
+            if ((*ecbp & ECB_VALUE_MASK) != UFSD_TIMEOUT_CODE)
+                break;
+
+            /* Timeout: check if server is still alive */
+            if (!(anchor->flags & UFSD_ANCHOR_ACTIVE)) {
+                /* Server is dead.  The request block is orphaned in CSA;
+                ** UFSDCLNP will reclaim it on the next start. */
+                ssob->SSOBRETN = UFSD_RC_CORRUPT;
+                return;
+            }
+
+            /* Server alive but hasn't replied yet.  Clear ECB, retry. */
+            *ecbp = 0;
+        }
     }
 
     /* --- Phase 2: key-0 window for reading CSA results + freeing req ---
