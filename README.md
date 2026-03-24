@@ -48,6 +48,8 @@ Client Address Space          UFSD STC Address Space
   - [Session Lifecycle](#session-lifecycle)
   - [File I/O](#file-io)
   - [Directory Listing](#directory-listing)
+  - [Seek and Sync](#seek-and-sync)
+  - [Session User Identity](#session-user-identity)
   - [Error Handling](#error-handling)
   - [Complete Example](#complete-example)
 - [Using libufs from Assembler](#using-libufs-from-assembler)
@@ -65,7 +67,7 @@ Each release provides three archives:
 | Archive | Contents |
 |---------|----------|
 | `ufsd-<version>-load.tar.gz` | Load modules (UFSD, UFSDSSIR, UFSDCLNP, …) as XMIT |
-| `ufsd-<version>-lib-headers.tar.gz` | `libufs.h` for compile-time use |
+| `ufsd-<version>-lib-headers.tar.gz` | `libufs.h` and `ufsdrc.h` for compile-time use |
 | `ufsd-<version>-lib-modules.tar.gz` | `LIBUFS` NCALIB member for link-time use |
 
 1. Download `ufsd-<version>-load.tar.gz` from the [Releases] page and extract it.
@@ -142,8 +144,7 @@ MBT_MVS_PORT=1080               # mvsMF port
 MBT_MVS_USER=IBMUSER
 MBT_MVS_PASS=SYS1
 MBT_MVS_HLQ=IBMUSER             # high-level qualifier for build datasets
-MBT_MVS_DEPS_HLQ=MBTDEPS        # HLQ for dependency datasets
-MBT_MVS_DEPS_VOLUME=PUB000      # volume for TSO RECEIVE (MVS/CE: required)
+MBT_MVS_DEPS_HLQ=IBMUSER.DEPS   # HLQ for dependency datasets
 ```
 
 Then build:
@@ -175,7 +176,7 @@ Programs that call libufs at compile time need the header; at link time they
 need the NCALIB member.
 
 1. Download `ufsd-<version>-lib-headers.tar.gz` from the [Releases] page.
-   Extract `libufs.h` into your project's `include/` (or `contrib/`).
+   Extract `libufs.h` and `ufsdrc.h` into your project's `include/` (or `contrib/`).
 
 2. Download `ufsd-<version>-lib-modules.tar.gz`, upload, and `RECEIVE` it to
    obtain the NCALIB dataset. Add it to your link JCL `SYSLIB` concatenation.
@@ -184,7 +185,7 @@ need the NCALIB member.
 
    ```toml
    [dependencies]
-   "mvslovers/ufsd" = ">=1.0.0"
+   "mvslovers/ufsd" = ">=1.0.0-dev"
    ```
 
    `make bootstrap` then fetches and installs everything automatically.
@@ -209,7 +210,8 @@ supports one).
 
 ### 2. JCL Procedure
 
-Copy `jcl/UFSD.jcl` from this repository to `SYS2.PROCLIB(UFSD)`:
+Copy `samplib/ufsd` from this repository to `SYS2.PROCLIB(UFSD)`.
+Adjust the `STEPLIB` DSN to match your load library name:
 
 ```jcl
 //UFSD     PROC M=UFSDPRM0,
@@ -222,9 +224,9 @@ Copy `jcl/UFSD.jcl` from this repository to `SYS2.PROCLIB(UFSD)`:
 //*              /S UFSD,D='MY.PARMLIB'   (alternate parmlib dataset)
 //*
 //CLEANUP  EXEC PGM=UFSDCLNP
-//STEPLIB  DD  DSN=IBMUSER.UFSD.LOAD,DISP=SHR
+//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
-//STEPLIB  DD  DSN=IBMUSER.UFSD.LOAD,DISP=SHR
+//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
 //SYSUDUMP DD  SYSOUT=*
 //UFSDPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
 ```
@@ -249,29 +251,30 @@ S UFSD,M=UFSDPRM1,D='MY.PARMLIB'
 ### 3. PARMLIB Configuration
 
 Create member `UFSDPRM0` in `SYS2.PARMLIB` (or whichever dataset the PROC
-points to). This member defines the root filesystem and all mounts:
+points to). A sample is provided in `samplib/ufsdprm0`. This member defines
+the root filesystem and all mounts:
 
 ```
 /* SYS2.PARMLIB(UFSDPRM0) */
 
-/* Root filesystem — auto-created if the dataset does not exist */
-ROOT     DSN(SYS1.UFSD.ROOT) SIZE(1M) BLKSIZE(4096)
+/* Root filesystem */
+ROOT     DSN(UFSD.ROOT)
 
 /* Read-only web content */
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RO)
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)      MODE(RO)
 
 /* User home directory, writable only by IBMUSER */
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
 
 /* Shared scratch area, writable by any authenticated user */
-MOUNT    DSN(SYS1.UFSD.SCRATCH)  PATH(/tmp)          MODE(RW)
+MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 ```
 
 **Keywords:**
 
 | Keyword | Parameters | Description |
 |---------|-----------|-------------|
-| `ROOT` | `DSN`, `SIZE`, `BLKSIZE` | Root filesystem; auto-created if missing |
+| `ROOT` | `DSN` \[, `SIZE`, `BLKSIZE`\] | Root filesystem; SIZE and BLKSIZE are used for auto-creation |
 | `MOUNT` | `DSN`, `PATH`, `MODE`, `OWNER` | Additional filesystem |
 
 **Parameters:**
@@ -444,22 +447,28 @@ F UFSD,command
 | `MOUNT ...,MODE=RO` | Mount read-only (write requests return ROFS) |
 | `MOUNT ...,MODE=RW` | Mount read-write (default) |
 | `MOUNT ...,OWNER=userid` | Restrict write access to the named userid |
+| `MOUNT LIST` | List all currently mounted filesystems |
 | `UNMOUNT PATH=/path` | Unmount the filesystem at the given path |
 | `TRACE ON` | Enable per-request trace entries in the ring buffer |
 | `TRACE OFF` | Disable tracing |
 | `TRACE DUMP` | Dump the last 256 trace entries to SYSPRINT |
 | `REBUILD` | Force a full free-block and free-inode cache rebuild on all mounted disks |
+| `HELP` | Print a summary of available commands |
 | `SHUTDOWN` | Orderly shutdown (same as P UFSD) |
 
 Examples:
 
 ```
 F UFSD,STATS
-F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/www,MODE=RO
+F UFSD,SESSIONS
+F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/wwwroot,MODE=RO
 F UFSD,MOUNT DSN=IBMUSER.UFSHOME,PATH=/u/ibmuser,MODE=RW,OWNER=IBMUSER
-F UFSD,UNMOUNT PATH=/www
+F UFSD,MOUNT LIST
+F UFSD,UNMOUNT PATH=/wwwroot
 F UFSD,TRACE ON
 F UFSD,TRACE DUMP
+F UFSD,REBUILD
+F UFSD,HELP
 ```
 
 ---
@@ -476,32 +485,32 @@ Paths are Unix-style with `/` as the root separator. File names may be up to
 Mount a dataset dynamically:
 
 ```
-F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/www,MODE=RO
+F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/wwwroot,MODE=RO
 F UFSD,MOUNT DSN=IBMUSER.UFSHOME,PATH=/u/ibmuser,MODE=RW,OWNER=IBMUSER
-F UFSD,MOUNT DSN=SYS1.UFSD.SCRATCH,PATH=/tmp,MODE=RW
+F UFSD,MOUNT DSN=UFSD.SCRATCH,PATH=/tmp,MODE=RW
 ```
 
 A filesystem can be unmounted only when no sessions have open file descriptors
 on it:
 
 ```
-F UFSD,UNMOUNT PATH=/www
+F UFSD,UNMOUNT PATH=/wwwroot
 ```
 
 ---
 
 ## Known Limitations
 
-### HTTPD integration
-
-The HTTPD server is not yet fully migrated to UFSD. HTTPD currently looks for
-its web content at the filesystem root (`/`) rather than at a configurable
-mount point. Mounting the legacy `HTTPD.UFSDISK0` dataset at a path such as
-`/wwwroot` will not work — HTTPD will not find its pages there.
-
-This will be resolved in a near-term update to HTTPD. Until then, either mount
-the web content dataset at `/`, or continue using the legacy ufs370 setup for
-HTTPD.
+- **On-disk format is not finalized.** The UFS370 v1 format may change in
+  future releases. Do not rely on disk images being portable across versions.
+- **64 concurrent sessions.** The session table is fixed at 64 slots. If all
+  slots are occupied, `ufsnew()` returns NULL.
+- **256 open file descriptors.** The global file table limits the total number
+  of simultaneously open files across all sessions.
+- **No symbolic links or hard links.** Only regular files and directories are
+  supported.
+- **No file locking.** Concurrent writes to the same file from different
+  sessions are not serialized.
 
 ---
 
@@ -636,15 +645,62 @@ ufs_rmdir(ufs, "/u/ibmuser/tmp");
 
 /* Delete a file */
 ufs_remove(ufs, "/u/ibmuser/old.txt");
+
+/* Stat a file or directory (metadata without open) */
+UFSDLIST info;
+if (ufs_stat(ufs, "/www/index.html", &info) == 0) {
+    /* info.filesize, info.attr, info.owner, info.mtime, ... */
+}
+```
+
+---
+
+### Seek and Sync
+
+```c
+/* Seek within an open file */
+ufs_fseek(fp, 0, UFS_SEEK_SET);    /* rewind to beginning */
+ufs_fseek(fp, 100, UFS_SEEK_CUR);  /* skip 100 bytes forward */
+ufs_fseek(fp, -10, UFS_SEEK_END);  /* 10 bytes before end */
+
+/* Flush pending writes to the server */
+ufs_fsync(fp);      /* flush a single file handle */
+ufs_sync(ufs);      /* flush all open files in the session */
+```
+
+---
+
+### Session User Identity
+
+Set the session owner for per-user permission checks on OWNER-restricted
+mounts. Typically called after `ufsnew()`:
+
+```c
+ufs_setuser(ufs, "IBMUSER", "SYS1");
 ```
 
 ---
 
 ### Error Handling
 
-File functions return `NULL` on failure. Integer functions return a negative
-value or zero. No per-call error code is available in Phase 1; use
-`ufs_ferror()` on a file handle after a failed read or write:
+File functions return `NULL` on failure. Integer functions return a non-zero
+value on error. Use `ufs_last_rc()` to retrieve the UFSD return code after
+a failed operation:
+
+```c
+if (ufs_mkdir(ufs, "/u/ibmuser/docs") != 0) {
+    int rc = ufs_last_rc(ufs);
+    /* rc is one of the UFSD_RC_* codes from ufsdrc.h, e.g.:
+     *   UFSD_RC_NOFILE   (28) — parent path not found
+     *   UFSD_RC_EXIST    (32) — directory already exists
+     *   UFSD_RC_ROFS     (68) — read-only filesystem
+     *   UFSD_RC_EACCES   (72) — permission denied
+     */
+}
+```
+
+For file I/O, use `ufs_ferror()` on the file handle after a short read
+or write:
 
 ```c
 UINT32 n;
