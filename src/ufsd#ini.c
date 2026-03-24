@@ -628,7 +628,7 @@ ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
     if (!stc || !mountpath) return 8;
 
     if (mountpath[0] == '/' && mountpath[1] == '\0') {
-        wtof("UFSD062E UNMOUNT: cannot unmount root filesystem");
+        wtof("UFSD132E UNMOUNT: cannot unmount root filesystem");
         return 8;
     }
 
@@ -642,7 +642,7 @@ ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
     }
 
     if (found < 0) {
-        wtof("UFSD063E UNMOUNT: no filesystem mounted on %s", mountpath);
+        wtof("UFSD133E UNMOUNT: no filesystem mounted on %s", mountpath);
         return 8;
     }
 

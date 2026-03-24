@@ -35,13 +35,13 @@ ufsd_gft_init(UFSD_ANCHOR *anchor)
 
     gfiles = (UFSD_GFILE *)calloc(UFSD_MAX_GFILES, sizeof(UFSD_GFILE));
     if (!gfiles) {
-        wtof("UFSD065E Cannot allocate global file table");
+        wtof("UFSD047E Cannot allocate global file table");
         return 8;
     }
 
     if (__super(PSWKEY0, &savekey)) {
         free(gfiles);
-        wtof("UFSD066E Cannot enter supervisor state for GFT init");
+        wtof("UFSD048E Cannot enter supervisor state for GFT init");
         return 8;
     }
     anchor->gfiles     = gfiles;

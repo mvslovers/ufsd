@@ -34,25 +34,25 @@ main(int argc, char **argv)
 
     (void)argc;
 
-    wtof("UFSDCLNP starting -- emergency UFSD cleanup");
+    wtof("UFSD140I UFSDCLNP starting");
 
     /* --- APF authorization (required for key-0 and SSCT ops) --- */
     rc = clib_apf_setup(argv[0]);
     if (rc) {
-        wtof("UFSDCLNP APF setup failed RC=%d", rc);
+        wtof("UFSD141E UFSDCLNP: APF setup failed RC=%d", rc);
         return 8;
     }
 
     /* --- Locate UFSD subsystem --- */
     ssct = ssct_find("UFSD");
     if (!ssct) {
-        wtof("UFSDCLNP UFSD subsystem not registered -- nothing to do");
+        wtof("UFSD142I UFSDCLNP: subsystem UFSD not registered");
         return 0;
     }
 
     /* --- Enter supervisor state key-0 for all CSA operations --- */
     if (__super(PSWKEY0, &savekey)) {
-        wtof("UFSDCLNP cannot enter supervisor state");
+        wtof("UFSD143E UFSDCLNP: cannot enter supervisor state");
         return 8;
     }
 
@@ -66,7 +66,7 @@ main(int argc, char **argv)
     if (ssvt) {
         ssvt_reset(ssvt, UFSD_SSVT_ROUTER);
         ssvt_funcmap(ssvt, 0, UFSD_SSOBFUNC);
-        wtof("UFSDCLNP SSVT function pointer cleared");
+        wtof("UFSD144I UFSDCLNP: SSVT function pointer cleared");
     }
 
     /* --- Step 2: Grab anchor before unchaining SSCT --- */
@@ -76,7 +76,7 @@ main(int argc, char **argv)
     ssct_remove(ssct);
     ssct_free(ssct);
     if (ssvt) ssvt_free(ssvt);
-    wtof("UFSDCLNP SSCT deregistered and freed");
+    wtof("UFSD145I UFSDCLNP: SSCT deregistered");
 
     /* --- Step 4: Free CSA pools if anchor looks valid ---
     ** We check the eye catcher to avoid freeing random storage
@@ -90,7 +90,7 @@ main(int argc, char **argv)
         if (anchor->ssir_lpa) {
             freemain(anchor->ssir_lpa);
             anchor->ssir_lpa = NULL;
-            wtof("UFSDCLNP SSI router module freed");
+            wtof("UFSD146I UFSDCLNP: SSI router module freed");
         }
 
         /* Free trace ring buffer */
@@ -113,20 +113,20 @@ main(int argc, char **argv)
             anchor->free_head     = NULL;
         }
 
-        wtof("UFSDCLNP CSA pools freed (trace + buffers + requests)");
+        wtof("UFSD147I UFSDCLNP: CSA pools freed");
 
         /* Free anchor itself (must be last) */
         freemain(anchor);
-        wtof("UFSDCLNP anchor freed");
+        wtof("UFSD148I UFSDCLNP: anchor freed");
     } else if (anchor) {
-        wtof("UFSDCLNP anchor eye mismatch at %08X -- skipping CSA free",
+        wtof("UFSD148W UFSDCLNP: anchor eye mismatch at %08X",
              (unsigned)anchor);
     } else {
-        wtof("UFSDCLNP no anchor found (ssctsuse=NULL)");
+        wtof("UFSD148I UFSDCLNP: no anchor (ssctsuse=NULL)");
     }
 
     __prob(savekey, NULL);
 
-    wtof("UFSDCLNP complete -- UFSD can be restarted");
+    wtof("UFSD149I UFSDCLNP complete");
     return 0;
 }
