@@ -61,6 +61,7 @@ make link           # mvslink on MVS
 |--------|------|---------|
 | UFSD | `src/ufsd.c` | STC main + main loop + ESTAE |
 | UFSD#CMD | `src/ufsd#cmd.c` | MODIFY command parser |
+| UFSD#CFG | `src/ufsd#cfg.c` | PARMLIB configuration parser |
 | UFSD#CSA | `src/ufsd#csa.c` | CSA pools (request + trace) |
 | UFSD#BUF | `src/ufsd#buf.c` | CSA buffer pool alloc/free |
 | UFSD#SCT | `src/ufsd#sct.c` | SSCT registration |
