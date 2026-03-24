@@ -93,24 +93,6 @@ options = ["LIST", "MAP", "XREF", "RENT"]
 include = ["UFSD#SSI", "UFSD#BUF"]
 
 # ---------------------------------------------------------------
-# AP-1c: Ping/Pong test client
-# ---------------------------------------------------------------
-[[link.module]]
-name = "UFSDPING"
-entry = "@@CRT0"
-options = ["LIST", "MAP", "XREF", "RENT"]
-include = ["@@CRT1", "UFSDPING"]
-
-# ---------------------------------------------------------------
-# AP-1d: Session lifecycle test client
-# ---------------------------------------------------------------
-[[link.module]]
-name = "UFSDTEST"
-entry = "@@CRT0"
-options = ["LIST", "MAP", "XREF", "RENT"]
-include = ["@@CRT1", "UFSDTST"]
-
-# ---------------------------------------------------------------
 # AP-1f: libufs API integration test client
 # ---------------------------------------------------------------
 [[link.module]]

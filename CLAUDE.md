@@ -77,7 +77,7 @@ make link           # mvslink on MVS
 | UFSD#GFT | `src/ufsd#gft.c` | Global file table |
 | UFSD#TRC | `src/ufsd#trc.c` | Trace ring buffer |
 
-Client: `client/libufs.c` (stub library — includes ufs_stat), `client/ufsdping.c`, `client/ufsdtst.c`
+Client: `client/libufs.c` (stub library — includes ufs_stat), `client/libufstst.c` (integration test)
 
 ## Coding Rules
 
