@@ -5,9 +5,10 @@ Derived from [ufs370](https://github.com/mvslovers/ufs370). Runs on Hercules.
 
 ## Current Status
 
-**Post-PoC Hardening — AP-2a**  
-Phase 1 (AP-1a–1f) complete. HTTPD and FTPD operational via libufsd.  
-Current focus: FWRITE 4K path, timestamps, POST-Bündelung, write-behind buffer.
+**Operational — AP-4a complete**
+Phases 1–3 (AP-1a–3b) complete. AP-4a hardening done: SSI timed WAIT,
+superblock writeback, logging cleanup, session prune, test consolidation.
+HTTPD and FTPD operational via libufs.
 
 ## Architecture in 30 Seconds
 
