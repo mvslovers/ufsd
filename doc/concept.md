@@ -2,11 +2,22 @@
 
 Cross-Address-Space Filesystem Server for MVS 3.8j
 Repository: github.com/mvslovers/ufsd
-Revision 7 — Reflects completed Phase 3 (AP-3a + AP-3b)
+Revision 8 — Reflects completed Phase 4a (AP-4a)
 
 ---
 
-## Changes from Concept #6
+## Changes from Concept #7
+
+| # | Area | Change |
+|---|------|--------|
+| 1 | SSI timed WAIT | Unconditional WAIT replaced with `ecb_timed_wait` loop (5 s interval). Checks `UFSD_ANCHOR_ACTIVE` after each timeout; returns `UFSD_RC_CORRUPT` if server is dead. Prevents client hangs (AP-4a #2). |
+| 2 | Superblock writeback | `ufsd_ufs_term` and `ufsd_disk_umount` call `ufsd_sb_write` for each RW disk before closing. Persists free block/inode caches (AP-4a #3). |
+| 3 | Logging cleanup | All WTO messages follow `UFSDnnnS` pattern. `UFSD-DBG` messages removed. UFSDCLNP messages assigned 140-149 range. Message number conflicts resolved across modules (AP-4a #5). |
+| 4 | Startup banner | `UFSD000I` before init, `UFSD001I` with version, disk count, CSA size, session/file slot summary (AP-4a #5). |
+| 5 | Session cleanup | `SESSIONS PRUNE` command walks ASVT, detects terminated ASIDs, releases orphaned sessions with FDs and GFT entries (AP-4a #6). |
+| 6 | Test consolidation | Removed `ufsdping` (superseded by `/F UFSD,STATS`) and `ufsdtst` (superseded by `LIBUFTST`). `LIBUFTST` retained as sole regression tool (AP-4a #7). |
+
+<details><summary>Changes from Concept #6 (AP-3a + AP-3b)</summary>
 
 | # | Area | Change |
 |---|------|--------|
@@ -24,6 +35,8 @@ Revision 7 — Reflects completed Phase 3 (AP-3a + AP-3b)
 | 12 | `ufs_sys_term` | Signature changed to `(UFSSYS **)`, frees the calloc'd UFSSYS block (AP-3b). |
 | 13 | `mkdir_p` cleanup | Owner/group strings use `strcpy` instead of `memcpy` with trailing blanks (AP-3b). |
 | 14 | Comment fixes | DIRREAD_RLEN corrected to 98 bytes; dispatch comment updated for `__xmpost` (AP-3b). |
+
+</details>
 
 ---
 
@@ -51,9 +64,9 @@ UFSD solves this by running the filesystem as a Subsystem Started Task (STC) wit
 │  SSI Router           │     │                          │
 │  (ufsd#ssi)           │     │  Session Table (64 slots)│
 │    │ R1=SSOB          │     │    ├─ fd_table[64]       │
-│    │ ACEE capture     │     │    ├─ CWD                │
-│    │ __xmpost to wake │     │    └─ owner/group        │
-│    │ WAIT on stack ECB│     │  Global File Table (256) │
+│    │ __xmpost to wake │     │    ├─ CWD                │
+│    │ timed WAIT (5s)  │     │    └─ owner/group        │
+│    │ liveness check   │     │  Global File Table (256) │
 │    ▼                  │     │  MODIFY commands         │
 │  ┌─────── CSA ────────────────────────────────┐       │
 │  │  UFSD_ANCHOR                               │       │
