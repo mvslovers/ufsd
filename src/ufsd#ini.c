@@ -591,6 +591,15 @@ ufsd_ufs_term(UFSD_STC *stc)
     for (i = 0; i < stc->ndisks; i++) {
         UFSD_DISK *d = stc->disks[i];
         if (!d) continue;
+        /* Write superblock back to disk for RW filesystems */
+        if ((d->flags & UFSD_DISK_OPEN) &&
+            !(d->flags & UFSD_DISK_RDONLY)) {
+            if (ufsd_sb_write(d))
+                wtof("UFSD130W Superblock writeback failed for DSN=%s",
+                     d->dsn);
+            else
+                wtof("UFSD131I Superblock written for DSN=%s", d->dsn);
+        }
         /* Save ddname before close_disk frees the struct */
         memcpy(ddname, d->ddname, 9);
         close_disk(d);
@@ -639,6 +648,16 @@ ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
 
     disk = stc->disks[found];
     wtof("UFSD064I Unmounting %s from %s", disk->dsn, disk->mountpath);
+
+    /* Write superblock back to disk for RW filesystems */
+    if ((disk->flags & UFSD_DISK_OPEN) &&
+        !(disk->flags & UFSD_DISK_RDONLY)) {
+        if (ufsd_sb_write(disk))
+            wtof("UFSD130W Superblock writeback failed for DSN=%s",
+                 disk->dsn);
+        else
+            wtof("UFSD131I Superblock written for DSN=%s", disk->dsn);
+    }
 
     /* Save ddname, close, DYNFREE if applicable */
     memcpy(ddname, disk->ddname, 9);
