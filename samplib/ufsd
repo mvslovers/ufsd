@@ -15,9 +15,12 @@
 //*              /F UFSD,SHUTDOWN
 //* Stopping:    /P UFSD
 //*
-//CLEANUP  EXEC PGM=UFSDCLNP
-//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
+//* Recovery:    If UFSD abends (/C or S0Cx), the SSCT and CSA may
+//*              remain allocated.  Run UFSDCLNP before restarting:
+//*                /S UFSDCLNP     (if installed as STC proc)
+//*              or submit the UFSDCLNP batch JCL from SAMPLIB.
+//*
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
-//STEPLIB  DD  DSN=IBMUSER.UFSD.V1R0M0D.LOAD,DISP=SHR
+//STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
+//UFSDPRM  DD  DISP=SHR,DSN=&D(&M),FREE=CLOSE
 //SYSUDUMP DD  SYSOUT=*
-//UFSDPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE

@@ -1,0 +1,16 @@
+//UFSDCLNP PROC
+//*
+//* UFSDCLNP - Emergency UFSD Cleanup
+//*
+//* Deregisters the UFSD SSCT, unloads the SSI router from CSA,
+//* and frees all CSA pools (requests, buffers, trace, anchor).
+//* Run this after an UFSD abend before restarting UFSD.
+//*
+//* As STC:       /S UFSDCLNP
+//* As batch:     Submit the UFSDCLNP JCL from SAMPLIB
+//*
+//* Safe to run when UFSD is not registered — reports
+//* "nothing to do" and exits RC=0.
+//*
+//CLEANUP  EXEC PGM=UFSDCLNP
+//STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
