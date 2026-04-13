@@ -1,4 +1,4 @@
-# UFS370 STC/SUBSYS Design — Concept #7
+# UFS370 STC/SUBSYS Design — Concept #8
 
 Cross-Address-Space Filesystem Server for MVS 3.8j
 Repository: github.com/mvslovers/ufsd
@@ -358,13 +358,15 @@ Test programs: `client/ufsdping.c` (80), `client/ufsdtst.c` (330), `client/libuf
 | **1** | ✅ Done | STC + CSA + File Ops | STC skeleton, SSCT, CSA queue, SSI router, sessions, fd_table, all file ops (FOPEN–REMOVE), trace, MODIFY, ESTAE |
 | **2** | ✅ Done | Client Stubs + Integration | libufs (~30 functions), HTTPD/FTPD integration, MOUNT/UNMOUNT, diropen/dirread/dirclose, GETCWD |
 | **2a** | ✅ Done | Post-PoC Hardening | FWRITE 4K, timestamps, POST bundling, CS buf pool, write-behind, chain/inode refill, path validation, UFSDCLNP |
-| **3** | ✅ Done | Config + Mount Model | Parmlib parser (`UFSDPRMx`), DYNALLOC (SVC 99), root-disk RO, mount traversal, `ufsd_check_write`, `ufs_setuser`, SYNAD exit, superblock validation, S99 error decoding, permission bits fix, ASID population, `ufs_sys_term` leak fix |
-| **4** | 🔲 Next | Multi-Worker | Pre-ATTACHed worker pool, inode/dir locking, SSI to LPA |
-| **5** | 🔲 Future | Extensions | VFS abstraction, double indirect, full RACF, pager/cache, ufsd-utils fsck |
+| **3** | ✅ Done | Config + Mount Model | Parmlib, DYNALLOC, root-disk RO, mount traversal, check_write, ufs_setuser, SYNAD, superblock validation, S99 decode |
+| **4a** | ✅ Done | Beta Readiness | SSI timed WAIT, SB writeback, logging cleanup, session PRUNE, ufs_stat, RC fixes, ufsdrc.h, README |
+| **4b** | 🔲 Open | Beta Remaining | /F UFSD,CREATE, nested mount fix, ESTAE cleanup, UFSDCLNP separate proc |
+| **5** | 🔲 Future | Multi-Worker | Pre-ATTACHed worker pool, inode/dir locking, SSI to LPA |
+| **6** | 🔲 Future | Extensions | VFS abstraction, double indirect, full RACF, pager/cache, ufsd-utils fsck |
 
 ## 15. Test Infrastructure
 
 - **FTP Test Suite v4:** 15 test cases, 46 assertions. Covers timestamps, data integrity, chain-refill, edge sizes, mass upload, path validation, error handling, performance. (`ufsd-ftp-test.sh`)
 - **HTTP Test:** TTFB + total time comparison vs. reference.
-- **ufsdtst / ufsdping:** Direct IPC test programs.
+- **LIBUFTST:** libufs API regression test (sole remaining test tool, replaces ufsdtst/ufsdping).
 - **ufsd-utils:** Host-side image inspection and verification.
