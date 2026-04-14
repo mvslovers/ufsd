@@ -48,7 +48,7 @@ naming = "fixed"
 name = "'HTTPD2.LINKLIB'"
 
 [dependencies]
-"mvslovers/crent370" = ">=1.0.7"
+"mvslovers/crent370" = ">=1.0.9"
 
 [link]
 autocall = false
