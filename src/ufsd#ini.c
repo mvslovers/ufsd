@@ -489,6 +489,52 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
 }
 
 /* ============================================================
+** path_depth
+**
+** Count '/' characters in a path.  Used as sort key so that
+** shallower mounts are processed before deeper ones, ensuring
+** parent filesystems are mounted before their children.
+** ============================================================ */
+static unsigned
+path_depth(const char *p)
+{
+    unsigned d = 0;
+    while (*p) { if (*p == '/') d++; p++; }
+    return d;
+}
+
+/* ============================================================
+** find_parent_disk
+**
+** Longest-prefix match over already-mounted disks.  Returns
+** the disk index (0 = root) whose mountpath is the longest
+** prefix of the given path.  Used to create a nested mount's
+** mountpoint on the correct parent filesystem instead of the
+** root disk.
+** ============================================================ */
+static int
+find_parent_disk(UFSD_STC *stc, const char *path)
+{
+    unsigned i;
+    int      best_idx = 0;
+    unsigned best_len = 1;  /* "/" always matches */
+    unsigned mlen;
+
+    for (i = 1; i < stc->ndisks; i++) {
+        UFSD_DISK *d = stc->disks[i];
+        if (!d || d->mountpath[0] == '\0') continue;
+        mlen = strlen(d->mountpath);
+        if (mlen <= best_len) continue;
+        if (strncmp(path, d->mountpath, mlen) == 0
+            && (path[mlen] == '/' || path[mlen] == '\0')) {
+            best_idx = (int)i;
+            best_len = mlen;
+        }
+    }
+    return best_idx;
+}
+
+/* ============================================================
 ** ufsd_ufs_init
 **
 ** AP-3a: Read parmlib configuration, mount root filesystem
@@ -528,21 +574,46 @@ ufsd_ufs_init(UFSD_STC *stc)
     root = stc->disks[0];
     root->flags |= UFSD_DISK_ROOT;
 
-    /* Create mount-point directories on root for each MOUNT */
-    for (i = 0; i < cfg.nmounts; i++) {
-        const char *mpath = cfg.mounts[i].path;
-        rc = mkdir_p(root, mpath);
-        if (rc != UFSD_RC_OK && rc != UFSD_RC_EXIST)
-            wtof("UFSD122W Cannot create mount point %s (rc=%d)",
-                 mpath, rc);
+    /* Sort cfg.mounts[] by path depth (stable insertion sort) so
+    ** parent filesystems are mounted before nested children. */
+    for (i = 1; i < cfg.nmounts; i++) {
+        UFSD_MOUNT_CFG tmp = cfg.mounts[i];
+        unsigned       d   = path_depth(tmp.path);
+        int            j   = (int)i - 1;
+        while (j >= 0 && path_depth(cfg.mounts[j].path) > d) {
+            cfg.mounts[j + 1] = cfg.mounts[j];
+            j--;
+        }
+        cfg.mounts[j + 1] = tmp;
     }
 
-    /* Root is now RO for clients — mount-point dirs are created above */
-    root->mount_mode = UFSD_MOUNT_RO;
-
-    /* Mount each configured filesystem */
+    /* Create mountpoint on the correct parent disk, then mount */
     for (i = 0; i < cfg.nmounts; i++) {
-        UFSD_MOUNT_CFG *m = &cfg.mounts[i];
+        UFSD_MOUNT_CFG *m      = &cfg.mounts[i];
+        int             pidx   = find_parent_disk(stc, m->path);
+        UFSD_DISK      *pdisk  = stc->disks[pidx];
+        const char     *relpath = m->path;
+        unsigned        saved_mode;
+
+        /* Strip parent mount prefix to get disk-relative path */
+        if (pidx > 0) {
+            unsigned mlen = strlen(pdisk->mountpath);
+            relpath = m->path + mlen;
+        }
+
+        /* Temporarily allow writes on parent (may be RO, e.g. root) */
+        saved_mode = pdisk->mount_mode;
+        pdisk->mount_mode = UFSD_MOUNT_RW;
+
+        rc = mkdir_p(pdisk, relpath[0] ? relpath : "/");
+
+        pdisk->mount_mode = saved_mode;
+
+        if (rc != UFSD_RC_OK && rc != UFSD_RC_EXIST)
+            wtof("UFSD122W Cannot create mount point %s (rc=%d)",
+                 m->path, rc);
+
+        /* Mount the child filesystem */
         rc = ufsd_disk_mount_dyn(stc, m->dsname, m->path,
                                  m->mode, m->owner);
         if (rc != 0)
@@ -550,7 +621,9 @@ ufsd_ufs_init(UFSD_STC *stc)
                  m->dsname, m->path);
     }
 
-report:
+    /* Root is now RO for clients — all mountpoints are created */
+    root->mount_mode = UFSD_MOUNT_RO;
+
     wtof("UFSD040I %u filesystem(s) mounted", stc->ndisks);
     for (i = 0; i < stc->ndisks; i++) {
         UFSD_DISK *d = stc->disks[i];
