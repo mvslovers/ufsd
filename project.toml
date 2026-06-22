@@ -4,119 +4,39 @@ version = "1.0.0-dev"
 type = "application"
 
 [build]
-cflags = ["-std=gnu99", "-I./include"]
+cflags = ["-I", "include"]
 
-[build.sources]
-c_dirs = ["src/", "client/"]
-
-[mvs.build.datasets.source]
-suffix = "SOURCE"
-dsorg = "PO"
-recfm = "FB"
-lrecl = 80
-blksize = 19040
-space = ["TRK", 50, 20, 30]
-
-[mvs.build.datasets.punch]
-suffix = "OBJECT"
-dsorg = "PO"
-recfm = "FB"
-lrecl = 80
-blksize = 19040
-space = ["TRK", 30, 10, 30]
-
-[mvs.build.datasets.ncalib]
-suffix = "NCALIB"
-dsorg = "PO"
-recfm = "U"
-lrecl = 0
-blksize = 19069
-space = ["TRK", 30, 10, 30]
-
-[mvs.build.datasets.syslmod]
-suffix = "LOAD"
-dsorg = "PO"
-recfm = "U"
-lrecl = 0
-blksize = 15040
-space = ["TRK", 20, 10, 10]
-
-[mvs.install]
-naming = "fixed"
-
-[mvs.install.datasets.syslmod]
-name = "'HTTPD2.LINKLIB'"
-
-[dependencies]
-"mvslovers/crent370" = ">=1.0.9"
-
-[link]
-autocall = false
-
-# ---------------------------------------------------------------
-# AP-1c: CSA Infrastructure + SSCT + SSI Router
-# ---------------------------------------------------------------
-
-[[link.module]]
+# ── Load modules ─────────────────────────────────────────
+# UFSD — main daemon (threading → crt1)
+[[module]]
 name = "UFSD"
-entry = "@@CRT0"
-options = ["LIST", "MAP", "XREF", "RENT"]
-setcode = "AC(1)"
-include = [
-  "@@CRT1",
-  "UFSD",
-  "UFSD#CMD",
-  "UFSD#CFG",
-  "UFSD#CSA",
-  "UFSD#SCT",
-  "UFSD#TRC",
-  "UFSD#QUE",
-  "UFSD#SES",
-  "UFSD#INI",
-  "UFSD#BLK",
-  "UFSD#SBL",
-  "UFSD#INO",
-  "UFSD#DIR",
-  "UFSD#GFT",
-  "UFSD#FIL",
-  "UFSD#BUF",
-]
+startup = "crt1"
+sources = ["src/ufsd*.c"]
+exclude = ["src/ufsdclnp.c", "src/ufsd#ssi.c"]
 
-# ---------------------------------------------------------------
-# AP-1c: SSI Thin Router (loaded into CSA via __loadhi, no CRT)
-# Self-contained: all needed crent370 routines are linked in.
-# ---------------------------------------------------------------
-[[link.module]]
+# UFSDSSIR — SSI thin router (loaded into CSA, no CRT)
+[[module]]
 name = "UFSDSSIR"
 entry = "UFSDSSIR"
-options = ["LIST", "MAP", "XREF", "RENT"]
-include = ["UFSD#SSI", "UFSD#BUF"]
+startup = false
+sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c"]
 
-# ---------------------------------------------------------------
-# AP-1f: libufs API integration test client
-# ---------------------------------------------------------------
-[[link.module]]
-name = "LIBUFTST"
-entry = "@@CRT0"
-options = ["LIST", "MAP", "XREF", "RENT"]
-include = ["@@CRT1", "LIBUFSTS", "LIBUFS"]
-
-
-# ---------------------------------------------------------------
-# AP-1f: cleanup routine
-# ---------------------------------------------------------------
-[[link.module]]
+# UFSDCLNP — cleanup utility (all defaults: entry=@@CRT0, startup=crt0)
+[[module]]
 name = "UFSDCLNP"
-entry = "@@CRT0"
-options = ["LIST", "MAP", "XREF", "RENT"]
-include = ["@@CRT1", "UFSDCLNP", "GETMAIN"]
+sources = ["src/ufsdclnp.c"]
 
+# ── Tests ────────────────────────────────────────────────
+[[test]]
+name = "LIBUFTST"
+sources = ["client/libufstst.c", "client/libufs.c"]
+
+# ── Library (consumed by HTTPD and others) ───────────────
+[lib]
+name = "libufs"
+sources = ["client/libufs.c"]
+headers = ["include/libufs.h", "include/ufsdrc.h"]
+
+# ── Release ──────────────────────────────────────────────
 [release]
 version_files = ["VERSION"]
-
-[artifacts]
-headers = true
-header_files = ["libufs.h", "ufsdrc.h"]
-modules = true
-module_members = ["LIBUFS"]
-loads = true
