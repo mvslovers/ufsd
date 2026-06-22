@@ -47,6 +47,7 @@ CLAUDE.md
 *.jcl
 .build-warnings
 .mbt/
+build/
 contrib/
 dist/
 compile_commands.json
