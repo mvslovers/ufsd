@@ -20,11 +20,13 @@ exclude = ["src/ufsdclnp.c", "src/ufsd#ssi.c"]
 name = "UFSDSSIR"
 entry = "UFSDSSIR"
 startup = false
+ac = 1
 sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c"]
 
 # UFSDCLNP — cleanup utility (all defaults: entry=@@CRT0, startup=crt0)
 [[module]]
 name = "UFSDCLNP"
+ac = 1
 sources = ["src/ufsdclnp.c"]
 
 # ── Tests ────────────────────────────────────────────────
