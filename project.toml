@@ -11,6 +11,7 @@ cflags = ["-I", "include"]
 [[module]]
 name = "UFSD"
 startup = "crt1"
+ac = 1
 sources = ["src/ufsd*.c"]
 exclude = ["src/ufsdclnp.c", "src/ufsd#ssi.c"]
 
