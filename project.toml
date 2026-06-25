@@ -4,7 +4,9 @@ version = "1.0.0-dev"
 type = "application"
 
 [build]
-cflags = ["-I", "include"]
+# -DVERSION feeds ufsd.c's `#ifndef VERSION` (otherwise the hardcoded
+# fallback). v1's mbt injected it automatically; v2 does not.
+cflags = ["-I", "include", '-DVERSION=\"$(PROJECT_VERSION)\"']
 
 # ── Load modules ─────────────────────────────────────────
 # UFSD — main daemon (threading → crt1)
