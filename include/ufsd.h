@@ -511,7 +511,10 @@ struct ufsssob {
 int  ufsd_process_cib(UFSD_STC *ufsd, CIB *cib);
 
 /* ufsd.c (AP-1a) */
-void ufsd_shutdown(UFSD_STC *ufsd);
+/* graceful != 0: clean STOP -- quiesce in-flight SSI clients (clear
+** UFSD_ANCHOR_ACTIVE + grace WAIT) before freeing shared CSA.
+** graceful == 0: emergency/ESTAE path -- clear the flag but do not WAIT. */
+void ufsd_shutdown(UFSD_STC *ufsd, int graceful);
 
 /* ufsd#csa.c (AP-1b) */
 UFSD_ANCHOR *ufsd_anchor_alloc(void)                                 asm("UFSD@ANA");

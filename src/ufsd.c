@@ -24,6 +24,10 @@
 **     SSI router unloaded) then percolates for normal MVS dump
 **   - ufsd_shutdown() deletes the ESTAE as its first action to
 **     prevent re-entrant recovery on clean or emergency shutdown
+**   - ufsd_shutdown() clears UFSD_ANCHOR_ACTIVE so in-flight SSI
+**     clients quiesce out of the CSA router/pools before they are
+**     freed; the clean STOP path also waits one router interval
+**     (Issue #30 -- intermittent S0C4 in the shutdown FREEMAIN path)
 */
 
 #ifndef VERSION
@@ -68,7 +72,7 @@ ufsd_recover(SDWA *sdwa)
 
     if (ufsd) {
         ufsd->flags &= ~UFSD_ACTIVE;
-        ufsd_shutdown(ufsd);
+        ufsd_shutdown(ufsd, 0);   /* emergency: clear flag, no grace WAIT */
     }
 
     /* Percolate: let MVS produce the abend dump and terminate */
@@ -76,7 +80,7 @@ ufsd_recover(SDWA *sdwa)
 }
 
 void
-ufsd_shutdown(UFSD_STC *ufsd)
+ufsd_shutdown(UFSD_STC *ufsd, int graceful)
 {
     UFSD_ANCHOR *anchor;
 
@@ -85,6 +89,32 @@ ufsd_shutdown(UFSD_STC *ufsd)
     __estae(ESTAE_DELETE, NULL, NULL);
 
     anchor = ufsd->anchor;
+
+    /* Quiesce in-flight SSI clients BEFORE freeing any shared CSA.
+    ** ufsdssir runs in the *client's* address space out of the CSA load
+    ** module and spins in a timed WAIT (UFSD_WAIT_INTERVAL = 5 s),
+    ** re-checking UFSD_ANCHOR_ACTIVE after every timeout.  We clear that
+    ** flag so a waiting client bails out of the module and the request/
+    ** buffer pools before ufsd_ssi_unload()/ufsd_csa_free() freemain them
+    ** underneath it.  (Issue #30: tearing down the router + pools while a
+    ** client was still in-flight corrupted CSA and abended the shutdown
+    ** FREEMAIN path with an intermittent S0C4.) */
+    if (anchor) {
+        unsigned char savekey;
+        if (!__super(PSWKEY0, &savekey)) {
+            anchor->flags &= ~UFSD_ANCHOR_ACTIVE;
+            __prob(savekey, NULL);
+        }
+        /* Clean STOP only: wait one router interval (+1 s margin) so every
+        ** waiting client gets at least one timeout to observe the cleared
+        ** flag and return.  Skipped on the emergency/ESTAE path
+        ** (graceful == 0), where a STIMER WAIT under RTM is unsafe -- there
+        ** we percolate and let UFSDCLNP reclaim any orphaned block on the
+        ** next start. */
+        if (graceful) {
+            __asm__ __volatile__("STIMER WAIT,BINTVL==F'600'");  /* 6.00 s */
+        }
+    }
 
     /* AP-1d Step 2: close disk datasets (STC-local, before CSA free) */
     ufsd_ufs_term(ufsd);
@@ -245,7 +275,7 @@ main(int argc, char **argv)
     /* --- UFS disk init (AP-1d Step 2) ----------------------------- */
     rc = ufsd_ufs_init(&ufsd);
     if (rc != 0) {
-        ufsd_shutdown(&ufsd);
+        ufsd_shutdown(&ufsd, 0);  /* startup failure: no clients yet */
         return 8;
     }
 
@@ -330,6 +360,6 @@ main(int argc, char **argv)
         }
     }
 
-    ufsd_shutdown(&ufsd);
+    ufsd_shutdown(&ufsd, 1);      /* clean STOP: quiesce in-flight clients */
     return 0;
 }
