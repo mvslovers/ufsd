@@ -298,6 +298,15 @@ struct ufsd_anchor {
 
     /* AP-1e: STC pointer (for file dispatch access to stc->disks[]) */
     void           *server_stc;     /* UFSD_STC *, set at startup            */
+
+    /* Issue #30: count of SSI clients currently executing inside
+    ** ufsdssir.  Incremented (CS, key-0) right after free_pop() at
+    ** router entry, decremented before every router return.  Shutdown
+    ** clears UFSD_ANCHOR_ACTIVE, then drains this to zero before it
+    ** frees any CSA.  Appended at the end of the anchor so the field
+    ** offsets shared with UFSDSSIR/UFSDCLNP are unchanged -- but all
+    ** three load modules must still be rebuilt and deployed together. */
+    unsigned        inflight;
 };
 
 /* ============================================================
@@ -511,10 +520,22 @@ struct ufsssob {
 int  ufsd_process_cib(UFSD_STC *ufsd, CIB *cib);
 
 /* ufsd.c (AP-1a) */
-/* graceful != 0: clean STOP -- quiesce in-flight SSI clients (clear
-** UFSD_ANCHOR_ACTIVE + grace WAIT) before freeing shared CSA.
-** graceful == 0: emergency/ESTAE path -- clear the flag but do not WAIT. */
-void ufsd_shutdown(UFSD_STC *ufsd, int graceful);
+/* Shutdown modes for ufsd_shutdown().
+**
+** UFSD_SHUT_NORMAL  clean STOP (/P, SHUTDOWN) or startup failure:
+**                   null SSVT entry, clear ANCHOR_ACTIVE, drain
+**                   in-flight clients, then release CSA.
+** UFSD_SHUT_ABEND   ESTAE recovery path: null SSVT entry and clear
+**                   ANCHOR_ACTIVE only.  No drain (STIMER under RTM
+**                   is unsafe) and no CSA release -- the state of
+**                   in-flight clients is unknown, and freeing CSA
+**                   that a foreign PSW may be executing is exactly
+**                   the S0C4 this fix is meant to prevent.
+**                   UFSDCLNP reclaims on the next start. */
+#define UFSD_SHUT_NORMAL  0
+#define UFSD_SHUT_ABEND   1
+
+void ufsd_shutdown(UFSD_STC *ufsd, int mode);
 
 /* ufsd#csa.c (AP-1b) */
 UFSD_ANCHOR *ufsd_anchor_alloc(void)                                 asm("UFSD@ANA");

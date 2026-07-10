@@ -237,6 +237,12 @@ ufsdssir(void)
         return;
     }
 
+    /* Mark ourselves in-flight.  Shutdown clears UFSD_ANCHOR_ACTIVE and
+    ** then drains this counter to zero before it frees the router and
+    ** pools.  Incremented here (still inside the entry key-0 window) and
+    ** decremented on every path out of the router below. */
+    __uinc(&anchor->inflight);
+
     /* --- Fill in the request block --- */
     local_ecb           = 0;             /* clear before storing pointer          */
     req->client_ecb_ptr = &local_ecb;    /* key-8 stack ECB, WAIT target          */
@@ -318,12 +324,35 @@ ufsdssir(void)
             if ((*ecbp & ECB_VALUE_MASK) != UFSD_TIMEOUT_CODE)
                 break;
 
-            /* Timeout: check if server is still alive */
-            if (!(anchor->flags & UFSD_ANCHOR_ACTIVE)) {
-                /* Server is dead.  The request block is orphaned in CSA;
-                ** UFSDCLNP will reclaim it on the next start. */
-                ssob->SSOBRETN = UFSD_RC_CORRUPT;
-                return;
+            /* Timeout: is the server still there?
+            **
+            ** Freed CSA (SP=241) is reused, not zeroed, so anchor->flags
+            ** alone cannot be trusted after an emergency shutdown -- a
+            ** stale high bit would keep us looping forever on an ECB
+            ** nobody will ever post.  Revalidate the eye catcher first. */
+            {
+                int eye_ok = (memcmp(anchor->eye, "UFSDANCR", 8) == 0);
+
+                if (!eye_ok || !(anchor->flags & UFSD_ANCHOR_ACTIVE)) {
+                    /* Server gone or quiescing.  If the anchor is still
+                    ** valid (a clean shutdown retains it), give back our
+                    ** in-flight count so ufsd_drain() can complete -- open a
+                    ** dedicated key-0 window, since we are in problem state
+                    ** here.  If the eye catcher is gone the anchor was
+                    ** already freed (emergency path / UFSDCLNP): the counter
+                    ** no longer exists, so do NOT write to it.  The request
+                    ** block stays orphaned; the STC may still hold it on its
+                    ** queue. */
+                    if (eye_ok) {
+                        unsigned char bkey;
+                        if (!__super(PSWKEY0, &bkey)) {
+                            __udec(&anchor->inflight);
+                            __prob(bkey, NULL);
+                        }
+                    }
+                    ssob->SSOBRETN = UFSD_RC_CORRUPT;
+                    return;
+                }
             }
 
             /* Server alive but hasn't replied yet.  Clear ECB, retry. */
@@ -387,6 +416,21 @@ ufsdssir(void)
             __uinc(&anchor->free_count);
         }
 
+        /* Leave the router: decrement inflight LAST, so a shutdown drain
+        ** only observes us gone after every other CSA write is complete. */
+        __udec(&anchor->inflight);
+
         __prob(savekey, NULL);
+    } else {
+        /* Re-entering supervisor state failed here (it succeeded at entry,
+        ** so this should be impossible).  We cannot copy results or return
+        ** the request block, but we still owe the inflight decrement so a
+        ** shutdown drain can finish -- retry a minimal key-0 window for it.
+        ** The request block stays orphaned (reclaimed with the pool). */
+        if (!__super(PSWKEY0, &savekey)) {
+            __udec(&anchor->inflight);
+            __prob(savekey, NULL);
+        }
+        ssob->SSOBRETN = UFSD_RC_CORRUPT;
     }
 }

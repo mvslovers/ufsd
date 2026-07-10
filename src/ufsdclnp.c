@@ -86,6 +86,13 @@ main(int argc, char **argv)
     ** pool blocks), then pools, then anchor itself.
     */
     if (anchor && memcmp(anchor->eye, "UFSDANCR", 8) == 0) {
+        /* Diagnostic: report any clients that were still executing inside
+        ** UFSDSSIR when UFSD died.  These were orphaned -- their request
+        ** blocks are reclaimed with the pools below. */
+        if (anchor->inflight)
+            wtof("UFSD146W UFSDCLNP: %u client(s) were in flight",
+                 anchor->inflight);
+
         /* Free UFSDSSIR CSA load module */
         if (anchor->ssir_lpa) {
             freemain(anchor->ssir_lpa);
