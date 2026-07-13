@@ -47,6 +47,11 @@ ufsd_anchor_free(UFSD_ANCHOR *anchor)
 
     if (!anchor) return;
     if (__super(PSWKEY0, &savekey)) return;
+    /* Invalidate the eye catcher BEFORE releasing the block.  Freed
+    ** SP=241 storage is reused, not zeroed, so a client still looping
+    ** in ufsdssir must not accept the reused anchor as valid: its
+    ** timeout-branch revalidates "UFSDANCR" and bails once it is gone. */
+    memset(anchor->eye, 0, sizeof(anchor->eye));
     freemain(anchor);
     __prob(savekey, NULL);
 }

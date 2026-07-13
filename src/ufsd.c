@@ -20,10 +20,21 @@
 **
 ** ESTAE recovery (AP-1d+):
 **   - ufsd_recover() registered immediately after APF setup
-**   - Any abend triggers emergency shutdown (SSCT deregistered,
-**     SSI router unloaded) then percolates for normal MVS dump
 **   - ufsd_shutdown() deletes the ESTAE as its first action to
 **     prevent re-entrant recovery on clean or emergency shutdown
+**
+** Shutdown quiescing (Issue #30):
+**   ufsd_shutdown() nulls the SSVT function entry and clears
+**   UFSD_ANCHOR_ACTIVE FIRST, so iefssreq stops routing new clients
+**   into UFSDSSIR and parked clients bail on their next timeout.
+**   - UFSD_SHUT_NORMAL (clean STOP / startup fail): then drains the
+**     anchor->inflight counter to zero and releases the CSA.  A drain
+**     timeout retains CSA rather than freeing storage a client may
+**     still be executing.
+**   - UFSD_SHUT_ABEND (ESTAE): nulls the entry + clears the flag only,
+**     then percolates for the MVS dump.  Under RTM the state of
+**     in-flight clients is unknown, so nothing is freed.  UFSDCLNP
+**     reclaims the CSA on the next start.
 */
 
 #ifndef VERSION
@@ -43,9 +54,12 @@
 ** in the UFSD STC address space.
 **
 ** Goals:
-**   1. Deregister the SSCT + unload UFSDSSIR so that MVS can
-**      route future SSI calls to another handler (or reject them
-**      cleanly) rather than crashing in a dangling SSVT entry.
+**   1. Null the SSVT function entry + clear UFSD_ANCHOR_ACTIVE
+**      (UFSD_SHUT_ABEND) so iefssreq stops dispatching new clients
+**      into UFSDSSIR and parked clients bail on their next timeout.
+**      CSA is NOT freed: under RTM a foreign PSW may still be inside
+**      the router or the pools, and freeing it is the very S0C4 we
+**      are recovering from.  UFSDCLNP reclaims the CSA on next start.
 **   2. Percolate (SDWACWT = 0): MVS produces the SVC dump and
 **      terminates the address space normally.
 **
@@ -68,53 +82,147 @@ ufsd_recover(SDWA *sdwa)
 
     if (ufsd) {
         ufsd->flags &= ~UFSD_ACTIVE;
-        ufsd_shutdown(ufsd);
+        ufsd_shutdown(ufsd, UFSD_SHUT_ABEND);
     }
 
     /* Percolate: let MVS produce the abend dump and terminate */
     sdwa->SDWARCDE = SDWACWT;
 }
 
-void
-ufsd_shutdown(UFSD_STC *ufsd)
+/* ufsd_pause -- block the STC for `hsec` hundredths of a second.
+**
+** Uses ecb_timed_wait() on a private stack ECB that nobody posts: the
+** interval timer fires after `hsec` hundredths, posts the ECB, and wakes
+** us.  This is the same timed-wait primitive the SSI router (5 s liveness
+** wait) and libc370 sleep() use, so its runtime behaviour is already
+** proven on this target -- preferred over a hand-rolled STIMER WAIT,
+** BINTVL whose operand form and unit would be unverified here.  It is
+** also a call barrier, so ufsd_drain()'s poll of anchor->inflight is
+** reloaded across it. */
+static void
+ufsd_pause(unsigned hsec)
 {
-    UFSD_ANCHOR *anchor;
+    ECB local = 0;
+    ecb_timed_wait(&local, hsec, 0);
+}
+
+/* ufsd_drain -- poll anchor->inflight to zero.  Returns 1 on success,
+** 0 on timeout.
+**
+** With no clients in flight this returns after one settle -- a clean /P
+** costs a fraction of a second.  A client parked in ecb_timed_wait needs
+** up to one full UFSD_WAIT_INTERVAL (5.00 s) to notice the cleared
+** ANCHOR_ACTIVE flag, so the ceiling exceeds that.
+**
+** The counter tracks CSA *data* access; a client that has just
+** decremented is still executing the router epilogue out of the CSA load
+** module, so a short settle is added and inflight re-checked.  Neither is
+** a guarantee -- which is why a drain timeout means "retain CSA", not
+** "free anyway".  anchor->inflight is in CSA without fetch-protection and
+** is read from problem state (volatile: another address space writes it;
+** no __super needed to poll). */
+#define UFSD_DRAIN_POLL     10U   /* 0.10 s per poll                     */
+#define UFSD_DRAIN_MAX     100U   /* 100 * 0.10 s = 10.00 s ceiling      */
+#define UFSD_DRAIN_SETTLE   20U   /* 0.20 s after inflight reaches zero  */
+
+static int
+ufsd_drain(UFSD_ANCHOR *anchor)
+{
+    volatile unsigned *inflight = &anchor->inflight;
+    unsigned           n;
+
+    for (n = 0; n < UFSD_DRAIN_MAX; n++) {
+        if (*inflight == 0) {
+            ufsd_pause(UFSD_DRAIN_SETTLE);
+            return (*inflight == 0);      /* re-check: catch a racing entry */
+        }
+        ufsd_pause(UFSD_DRAIN_POLL);
+    }
+    return 0;
+}
+
+void
+ufsd_shutdown(UFSD_STC *ufsd, int mode)
+{
+    UFSD_ANCHOR   *anchor;
+    unsigned char  savekey;
 
     /* Delete ESTAE first: prevents re-entrant recovery if shutdown
-    ** itself encounters an error (clean path or emergency path). */
+    ** itself encounters an error. */
     __estae(ESTAE_DELETE, NULL, NULL);
 
     anchor = ufsd->anchor;
 
-    /* AP-1d Step 2: close disk datasets (STC-local, before CSA free) */
-    ufsd_ufs_term(ufsd);
-
     if (anchor) {
-        /* AP-1c: deregister + unload SSI router first */
-        if (anchor->ssir_lpa) {
-            ufsd_ssi_unload(anchor);
-            wtof("UFSD036I SSI router unloaded");
+        /* --- Step 1: close the door -------------------------------
+        ** Null the SSVT function entry BEFORE anything is freed.  Until
+        ** this store, iefssreq keeps routing new clients into UFSDSSIR --
+        ** including into the entry checks themselves, which are
+        ** instructions inside the very module we are about to FREEMAIN.
+        ** Clearing ANCHOR_ACTIVE alone does not stop that; only the SSVT
+        ** entry does.  Same order as UFSDCLNP. */
+        if (__super(PSWKEY0, &savekey)) {
+            wtof("UFSD097E Cannot enter supervisor state -- "
+                 "CSA retained, run UFSDCLNP before restart");
+            ufsd_ufs_term(ufsd);
+            return;                       /* free nothing */
         }
-        if (anchor->ssct) {
-            ufsd_ssct_free(anchor);
-            wtof("UFSD095I SSCT deregistered");
+        if (anchor->ssvt) {
+            ssvt_reset(anchor->ssvt, UFSD_SSVT_ROUTER);
+            ssvt_funcmap(anchor->ssvt, 0, UFSD_SSOBFUNC);
         }
-        /* AP-1e: release GFT before session table */
-        if (anchor->gfiles) {
-            ufsd_gft_free(anchor);
-            wtof("UFSD048I Global file table freed");
-        }
-        /* AP-1d: release session table before freeing CSA */
-        if (anchor->sessions) {
-            ufsd_sess_free(anchor);
-            wtof("UFSD046I Session table freed");
-        }
-        ufsd_csa_free(anchor);
-        wtof("UFSD096I CSA freed");
-        ufsd_anchor_free(anchor);
-        ufsd->anchor = NULL;
+        /* Step 2: parked clients bail on their next timeout. */
+        anchor->flags &= ~UFSD_ANCHOR_ACTIVE;
+        __prob(savekey, NULL);
     }
 
+    /* Step 3: close disk datasets (STC-local, superblock writeback). */
+    ufsd_ufs_term(ufsd);
+
+    if (!anchor)
+        goto done;
+
+    if (mode == UFSD_SHUT_ABEND) {
+        /* Under RTM we cannot drain and must not free: a foreign PSW may
+        ** still be executing inside UFSDSSIR or touching the pools.
+        ** Leave everything and percolate; UFSDCLNP reclaims on restart. */
+        wtof("UFSD097W Abend shutdown -- CSA retained, "
+             "run UFSDCLNP before restart");
+        goto done;
+    }
+
+    /* Step 4: drain in-flight clients out of the router. */
+    if (!ufsd_drain(anchor)) {
+        wtof("UFSD098W %u client(s) still in flight -- CSA retained, "
+             "run UFSDCLNP before restart", anchor->inflight);
+        goto done;                        /* free nothing */
+    }
+
+    /* Step 5..9: teardown, same order as UFSDCLNP -- deregister the SSCT
+    ** (which also frees the SSVT), unload the router module, then release
+    ** the tables, pools, and finally the anchor. */
+    if (anchor->ssct) {
+        ufsd_ssct_free(anchor);
+        wtof("UFSD095I SSCT deregistered");
+    }
+    if (anchor->ssir_lpa) {
+        ufsd_ssi_unload(anchor);
+        wtof("UFSD036I SSI router unloaded");
+    }
+    if (anchor->gfiles) {
+        ufsd_gft_free(anchor);
+        wtof("UFSD048I Global file table freed");
+    }
+    if (anchor->sessions) {
+        ufsd_sess_free(anchor);
+        wtof("UFSD046I Session table freed");
+    }
+    ufsd_csa_free(anchor);
+    wtof("UFSD096I CSA freed");
+    ufsd_anchor_free(anchor);             /* clears the eye catcher first */
+    ufsd->anchor = NULL;
+
+done:
     wtof("UFSD099I UFSD shutdown complete");
 }
 
@@ -245,7 +353,8 @@ main(int argc, char **argv)
     /* --- UFS disk init (AP-1d Step 2) ----------------------------- */
     rc = ufsd_ufs_init(&ufsd);
     if (rc != 0) {
-        ufsd_shutdown(&ufsd);
+        /* No clients yet: drain sees inflight == 0 and returns at once. */
+        ufsd_shutdown(&ufsd, UFSD_SHUT_NORMAL);
         return 8;
     }
 
@@ -330,6 +439,6 @@ main(int argc, char **argv)
         }
     }
 
-    ufsd_shutdown(&ufsd);
+    ufsd_shutdown(&ufsd, UFSD_SHUT_NORMAL);   /* clean STOP */
     return 0;
 }
