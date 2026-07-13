@@ -61,17 +61,20 @@ If JES2 still refuses the proc name, wait for the old job to be purged (check `$
 
 ### UFSDCLNP Details
 
-UFSDCLNP is a standalone program that locates the UFSD anchor in CSA via the SSCT chain, then tears down all resources in reverse order:
+UFSDCLNP is a standalone program that locates the UFSD anchor in CSA via the SSCT chain, then tears down all resources:
 
-1. Clears the SSVT function pointer (prevents new SSI calls)
-2. Deregisters and frees the SSCT
-3. Unloads the SSI router module from CSA
-4. Frees all CSA pools (trace ring, buffer pool, request pool)
-5. Frees the anchor itself
+1. Nulls the SSVT function pointer (no new SSI dispatches) and clears `UFSD_ANCHOR_ACTIVE` (a client parked in the router bails on its next timeout)
+2. **Drains `anchor->inflight` to zero** — keeping the eye catcher and the router module present — so a parked client bails `RC_CORRUPT` and leaves the module *before* it is freed (best-effort, ~12 s ceiling; see below)
+3. Deregisters and frees the SSCT
+4. Unloads the SSI router module from CSA
+5. Frees all CSA pools (trace ring, buffer pool, request pool)
+6. Invalidates the eye catcher and frees the anchor
+
+The drain (step 2) mirrors the clean-`/P` path and closes the window where freeing the router module out from under a parked client would S0C4 that client's address space (issue #39). It is **best-effort**: a count still standing after the ceiling is almost certainly leaked — a client that faulted or whose address space was cancelled while in-flight never runs its decrement — so UFSDCLNP warns (`UFSD146W … assuming leaked, freeing`) and frees anyway. Stranding CSA is the one failure UFSDCLNP exists to prevent, and it has no fallback but an IPL.
 
 UFSDCLNP is safe to run when UFSD is not registered — it reports "nothing to do" and exits RC=0.
 
-**Important:** Do not run UFSDCLNP while UFSD is still active. It will free the CSA under the running server, causing S0C4 on the next request or at shutdown. A future version will add a liveness check before cleanup.
+**Important:** Do not run UFSDCLNP while UFSD is *healthy and active*. It clears `UFSD_ANCHOR_ACTIVE` and frees the CSA, which pulls the storage out from under the running STC — an S0C4 in UFSD itself. The drain protects in-flight *clients* during recovery; it does not detect a live server. UFSDCLNP is for the post-abend case where the STC is already gone.
 
 ### Installation
 
@@ -83,7 +86,9 @@ Copy the UFSDCLNP STC procedure from `samplib/ufsdclnp` to `SYS2.PROCLIB(UFSDCLN
 
 After `/C UFSD` or any abend, the ESTAE handler runs in `UFSD_SHUT_ABEND` mode: it nulls the SSVT function entry and clears `UFSD_ANCHOR_ACTIVE` (so `iefssreq` stops routing new clients into UFSDSSIR and any parked client bails on its next router timeout), then percolates. It **frees nothing** — under RTM a foreign PSW may still be executing inside the router module or touching the CSA pools, and freeing them then is the very S0C4 this behaviour prevents.
 
-So `/S UFSDCLNP` is the **designed** recovery step after `/C` or an abend, not a workaround. UFSDCLNP nulls the SSVT entry (idempotent), deregisters the SSCT, and frees the router module, pools, and anchor. Because `ufsd_anchor_free`/UFSDCLNP invalidate the anchor eye catcher before the FREEMAIN, a client still looping in the router revalidates it on its next timeout and bails with `RC_CORRUPT` — a stuck HTTPD/FTPD worker does not hang indefinitely (worst case one `UFSD_WAIT_INTERVAL`, ~5 s).
+So `/S UFSDCLNP` is the **designed** recovery step after `/C` or an abend, not a workaround. UFSDCLNP nulls the SSVT entry (idempotent), clears `UFSD_ANCHOR_ACTIVE`, then **drains `anchor->inflight` to zero before it frees anything** — keeping the eye catcher and the router module present throughout. A client still parked in the router revalidates the (still-valid) eye catcher on its next timeout, sees the cleared flag, and bails `RC_CORRUPT`, decrementing the counter as it leaves. Only once the count reaches zero does UFSDCLNP deregister the SSCT and free the router module, pools, and anchor (invalidating the eye catcher just before the anchor FREEMAIN). This closes the window — present before #39 — where freeing the router out from under a parked client faulted that client's address space (`S0C4`; contained by a client-side ESTAE such as HTTPD's, fatal to a bare libufs batch client).
+
+The drain is **best-effort**, ceiling ~12 s (two `UFSD_WAIT_INTERVAL`s, so a live parked client gets two wake-and-bail chances). A count still standing after that is almost certainly leaked — a client that faulted or was cancelled while in-flight never runs its decrement — so UFSDCLNP warns (`UFSD146W`) and frees anyway rather than strand the CSA. So a genuinely stuck worker does not hang the cleanup indefinitely; worst case UFSDCLNP waits ~12 s, then reclaims.
 
 A clean `/P UFSD` (or `/F UFSD,SHUTDOWN`) runs in `UFSD_SHUT_NORMAL` mode instead: it nulls the SSVT entry, clears `UFSD_ANCHOR_ACTIVE`, then **drains** `anchor->inflight` to zero and frees the CSA itself — no UFSDCLNP needed after a normal stop. If the drain does not reach zero within its ceiling (~10 s), UFSD issues `UFSD098W` and retains the CSA rather than freeing storage a client may still be executing; run `/S UFSDCLNP` in that case.
 
@@ -156,7 +161,7 @@ All UFSD messages follow the `UFSDnnnS` pattern, where `nnn` is the message numb
 | UFSD143I | I | SSI router module freed |
 | UFSD144I | I | CSA pools freed |
 | UFSD145I | I | Anchor freed |
-| UFSD146W | W | Clients were in flight when UFSD died (diagnostic) |
+| UFSD146W | W | Client(s) still in flight after the drain ceiling — assumed leaked, CSA freed anyway |
 | UFSD149I | I | UFSDCLNP complete |
 
 > **Note:** The message numbers listed here reflect the current codebase. Exact numbers may differ slightly — consult the source for authoritative message IDs.
