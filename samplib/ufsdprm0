@@ -1,7 +1,7 @@
 
 /* SYS2.PARMLIB(UFSDPRM0) */
 
-/* Root filesystem — auto-created if the dataset does not exist */
+/* Root filesystem — the dataset must already exist (see docs/disk-setup.md) */
 ROOT     DSN(UFSD.ROOT)
 
 /* Read-only web content */

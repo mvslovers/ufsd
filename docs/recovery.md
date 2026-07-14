@@ -15,11 +15,18 @@ Stop the daemon with `/P UFSD` or `/F UFSD,SHUTDOWN`. UFSD performs an orderly s
 Console output:
 
 ```
-UFSD090I UFSD shutting down
-UFSD091I Superblock written for DSN=IBMUSER.UFSHOME (/u/ibmuser)
-UFSD092I 3 filesystem(s) unmounted
+UFSD131I Superblock written for DSN=IBMUSER.UFSHOME
+UFSD131I Superblock written for DSN=UFSD.SCRATCH
+UFSD095I SSCT deregistered
+UFSD036I SSI router unloaded
+UFSD096I CSA freed
 UFSD099I UFSD shutdown complete
 ```
+
+(One `UFSD131I` per RW-mounted filesystem; RO mounts are not written back. If a
+client is still in flight when the stop is issued, a short drain delay precedes
+`UFSD095I`; if the drain does not reach zero within its ceiling the daemon
+issues `UFSD098W` and retains the CSA instead — run `/S UFSDCLNP` in that case.)
 
 ## Recovery after Abend
 
@@ -42,14 +49,18 @@ If UFSD abends (S0C4, S222 from `/C`, etc.), the ESTAE handler runs in emergency
    Console output:
 
    ```
-   UFSDCLNP starting -- emergency UFSD cleanup
-   UFSDCLNP SSVT function pointer cleared
-   UFSDCLNP SSCT deregistered and freed
-   UFSDCLNP SSI router module freed
-   UFSDCLNP CSA pools freed (trace + buffers + requests)
-   UFSDCLNP anchor freed
-   UFSDCLNP complete -- UFSD can be restarted
+   UFSD140I UFSDCLNP starting
+   UFSD144I UFSDCLNP: SSVT function pointer cleared
+   UFSD145I UFSDCLNP: SSCT deregistered
+   UFSD146I UFSDCLNP: SSI router module freed
+   UFSD147I UFSDCLNP: CSA pools freed
+   UFSD148I UFSDCLNP: anchor freed
+   UFSD149I UFSDCLNP complete
    ```
+
+   (If clients were parked in the router when UFSD died, a short drain delay
+   precedes `UFSD145I` while they bail; a count still standing after the
+   ceiling yields `UFSD146W … assuming leaked, freeing` and cleanup proceeds.)
 
 2. Restart UFSD:
 
@@ -112,19 +123,32 @@ Concurrent writes to the same file from different sessions are not serialized. A
 
 ## WTO Message Reference
 
-All UFSD messages follow the `UFSDnnnS` pattern, where `nnn` is the message number and `S` is the severity (I=informational, W=warning, E=error).
+All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message number and `X` is the severity (I=informational, W=warning, E=error).
 
-### Startup and Shutdown (000–099)
+### Startup and Shutdown
 
 | Message | Severity | Description |
 |---------|----------|-------------|
-| UFSD000I | I | UFSD starting |
-| UFSD001I | I | Version banner with CSA summary |
+| UFSD000I | I | UFSD starting (version) |
+| UFSD001I | I | Ready — version + CSA/session/file summary |
+| UFSD030I | I | CSA anchor allocated |
+| UFSD031I–033I | I | Pool sizes (request pool / buffer pool / trace buffer) |
+| UFSD034I | I | SSCT registered |
+| UFSD035I | I | SSI router (UFSDSSIR) loaded into CSA |
+| UFSD045I | I | Session table allocated |
+| UFSD047I | I | Global file table allocated |
 | UFSD040I | I | Mount summary (n filesystems mounted) |
 | UFSD041I | I | Individual mount detail (path, DSN, mode, owner) |
-| UFSD090I | I | Shutdown initiated |
-| UFSD091I | I | Superblock written for disk |
-| UFSD092I | I | Filesystems unmounted |
+| UFSD060I | I | Mounted DSN on path |
+| UFSD090E | E | Cannot initialize console interface (startup fails) |
+| UFSD091E | E | APF setup failed — STEPLIB not APF-authorized (startup fails) |
+| UFSD092E | E | Cannot allocate CSA anchor (startup fails) |
+| UFSD130W | W | Superblock writeback failed for a disk at shutdown |
+| UFSD131I | I | Superblock written for DSN (one per RW filesystem) |
+| UFSD095I | I | SSCT deregistered |
+| UFSD036I | I | SSI router unloaded from CSA |
+| UFSD046I | I | Session table freed |
+| UFSD048I | I | Global file table freed |
 | UFSD096I | I | CSA freed |
 | UFSD097E | E | Cannot enter supervisor state at shutdown — CSA retained, run UFSDCLNP |
 | UFSD097W | W | Abend shutdown — CSA retained, run UFSDCLNP before restart |
@@ -156,12 +180,16 @@ All UFSD messages follow the `UFSDnnnS` pattern, where `nnn` is the message numb
 | Message | Severity | Description |
 |---------|----------|-------------|
 | UFSD140I | I | UFSDCLNP starting |
-| UFSD141I | I | SSVT function pointer cleared |
-| UFSD142I | I | SSCT deregistered and freed |
-| UFSD143I | I | SSI router module freed |
-| UFSD144I | I | CSA pools freed |
-| UFSD145I | I | Anchor freed |
+| UFSD141E | E | APF setup failed (STEPLIB not APF-authorized?) |
+| UFSD142I | I | Subsystem UFSD not registered — nothing to do (RC 0) |
+| UFSD143E | E | Cannot enter supervisor state |
+| UFSD144I | I | SSVT function pointer cleared |
+| UFSD145I | I | SSCT deregistered |
+| UFSD146I | I | SSI router module freed |
 | UFSD146W | W | Client(s) still in flight after the drain ceiling — assumed leaked, CSA freed anyway |
+| UFSD147I | I | CSA pools freed |
+| UFSD148I | I | Anchor freed |
+| UFSD148W | W | Anchor eye-catcher mismatch — anchor not freed |
 | UFSD149I | I | UFSDCLNP complete |
 
 > **Note:** The message numbers listed here reflect the current codebase. Exact numbers may differ slightly — consult the source for authoritative message IDs.

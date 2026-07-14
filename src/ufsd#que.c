@@ -197,7 +197,8 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
     /* --- Write result + post client ECB (key 0 for CSA write + __xmpost) ---
     ** __xmpost uses CVT0PT01 (POST branch entry), not SVC 2.
     ** It works for cross-AS POST and must be called from supervisor state.
-    ** req->client_ecb_ptr -> CSA ECB (key 0), accessible via CVT0PT01.
+    ** req->client_ecb_ptr -> the client's key-8 stack ECB (in the caller's
+    ** address space), posted cross-AS via CVT0PT01.
     ** req->client_ascb is the waiting task's ASCB (saved by ufsdssir).
     */
     if (!__super(PSWKEY0, &savekey)) {

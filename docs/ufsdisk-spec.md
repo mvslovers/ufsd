@@ -175,6 +175,12 @@ The authoritative timestamps are in the boot extension (64-bit, ms).
 On version 0 disks, the superblock timestamps are 32-bit `time_t`
 (seconds since Unix epoch), which overflow after year 2106.
 
+**UFSD implementation note (`unused3`, offset 0x1FC):** Although the
+format defines this field as reserved/zero, UFSD reuses it at runtime as
+a free-block scan cursor. Because the superblock is written back as a
+whole 512-byte block, a **non-zero** value can reach disk. A host-side
+tool must not assume `unused3 == 0` and should ignore the field on read.
+
 ---
 
 ## 5. Inodes (Sectors 2 through datablock_start - 1)
@@ -244,9 +250,13 @@ sector = ilist_sector + (ino - 1) / inodes_per_block
 offset = ((ino - 1) % inodes_per_block) × 128
 ```
 
-Note: inode 0 occupies the first 128-byte slot in sector 2, but is
-never allocated. Inode 1 (BALBLK) occupies the second slot. Inode 2
-(root) is the third slot.
+Note: inode numbering is 1-based and there is **no physical slot for
+inode 0**. Under the `(ino - 1)` mapping above, inode 1 (BALBLK)
+occupies the first 128-byte slot in sector 2 (offset 0), inode 2 (root)
+occupies the second slot (sector 2, offset 128), and inode 3 the third
+slot (offset 256). The value 0 is never stored on disk — it is the
+"no inode" sentinel used in directory entries. (This is consistent with
+the formula above and with the reader algorithm in section 11.)
 
 ### 5.4 Mode Field (File Type + Permissions)
 
@@ -263,13 +273,20 @@ Bits     Mask     Value   Meaning
                   0x8000  Regular file
                   0xA000  Symbolic link (BSD extension)
                   0xC000  Socket (BSD extension)
-11..9    0x0E00           Owner permissions (rwx)
-8..6     0x01C0           Group permissions (rwx)
-5..3     0x0038           Other permissions (rwx)
-2..0     0x0007           (unused on UFS370)
+8..6     0x01C0           Owner permissions (rwx)
+5..3     0x0038           Group permissions (rwx)
+2..0     0x0007           Other permissions (rwx)
 ```
 
+Permission bits use the **standard Unix positions** (owner 8..6, group
+5..3, other 2..0), consistent with the `0x01ED` default value below.
+
 Default permission mask: `0755` (octal) = `0x01ED`.
+
+> **UFSD implementation note:** UFSD never interprets the rwx permission
+> bits — it only masks `mode & 0xF000` to obtain the file type. The
+> permission bits are stored (directories are created `0x41ED`, regular
+> files `0x81A4` = `0644`) but not enforced.
 
 ### 5.5 Block Address List (addr[0..18])
 
@@ -277,22 +294,32 @@ Default permission mask: `0755` (octal) = `0x01ED`.
 |-------|---------|
 | 0–15 | Direct block addresses (16 × blksize bytes) |
 | 16 | Single indirect block (points to block of UINT32 addresses) |
-| 17 | Double indirect block |
-| 18 | Triple indirect block |
+| 17 | Double indirect block (reserved; **not implemented in UFSD**) |
+| 18 | Triple indirect block (reserved; **not implemented in UFSD**) |
 
 **Maximum file sizes (4096-byte blocks):**
 
 | Addressing | Blocks | Max Size |
 |-----------|--------|----------|
 | Direct only (addr[0..15]) | 16 | 64 KB |
-| + Single indirect | 16 + 1024 | 4.06 MB |
-| + Double indirect | + 1,048,576 | 4.00 GB |
-| + Triple indirect | + 1,073,741,824 | 4.00 TB (theoretical) |
+| + Single indirect | 16 + 1024 | 4.06 MB — **UFSD effective maximum** |
+| + Double indirect | + 1,048,576 | 4.00 GB (format only; unimplemented in UFSD) |
+| + Triple indirect | + 1,073,741,824 | 4.00 TB theoretical (format only; unimplemented in UFSD) |
 
 An indirect block is a sector filled with UINT32 block addresses.
 Entries per indirect block: `blksize / sizeof(UINT32)` = `blksize / 4`.
 
 An address value of 0 means "not allocated" (sparse file / hole).
+
+> **UFSD implementation note:** UFSD reads and writes only direct
+> (addr[0..15]) and single-indirect (addr[16]) blocks. The addr[17] and
+> addr[18] slots are reserved by the format but never followed, so the
+> effective maximum file size under UFSD is **4.06 MB** (16 direct +
+> 1024 single-indirect blocks at 4 KB). A file written by another
+> format-compliant tool that uses double- or triple-indirect blocks is
+> **silently truncated on read** by UFSD: block resolution returns 0 for
+> any logical block beyond the single-indirect range, and the read stops
+> at that apparent hole.
 
 ---
 
@@ -376,6 +403,14 @@ Push the freed block number onto the superblock cache:
      sb.freeblock[0] = freed_block
 ```
 
+> **UFSD implementation note:** UFSD does **not** implement step 2. On
+> free-cache overflow (`nfreeblock == 51`) it simply drops the freed
+> block (leaked until the next remount or a REBUILD scan) instead of
+> spilling the cache into a chain block. UFSD therefore only *consumes*
+> V7 chain blocks — refilling the superblock cache when it empties (see
+> 7.3) — and never *produces* them. Chain blocks exist on disk only if
+> they were created at format time by `mkufs`.
+
 ---
 
 ## 8. Free Inode Management
@@ -389,31 +424,45 @@ entries to refill.
 
 ## 9. Multi-Disk and Mounting
 
+> **Scope:** This section describes *runtime* mount and configuration
+> behavior — **not** the on-disk format. The disk layout in sections 3–8
+> is independent of how a system discovers and mounts images. The
+> original ufs370 conventions are kept for reference; the current MVS
+> server (UFSD) uses a different scheme, documented alongside each.
+
 ### 9.1 DD Name Convention
 
-On MVS, disks are referenced by DD names: `UFSDISK0` through
-`UFSDISK9` (maximum 10 disks). `UFSDISK0` is always the root
-filesystem.
+**ufs370 (legacy):** disks were referenced by fixed DD names `UFSDISK0`
+through `UFSDISK9` (maximum 10 disks), with `UFSDISK0` as the root.
 
-### 9.2 fstab
+**UFSD (current):** UFSD supports up to **16** mounted filesystems
+(`UFSD_MAX_DISKS`). It does not use fixed `UFSDISK` DDs; instead it
+allocates each dataset dynamically via **DYNALLOC (SVC 99)**, generating
+sequential DD names of the form `UFDnnnnn` (`UFD00001`, `UFD00002`, …).
+The root filesystem is `disks[0]`, taken from the parmlib `ROOT`
+statement and mounted on `/`.
 
-The file `/etc/fstab` on the root disk controls additional mounts.
-Format (one entry per line):
+### 9.2 Configuration (parmlib, not fstab)
+
+**ufs370 (legacy):** additional mounts were listed in `/etc/fstab` on
+the root disk (one `ddname=NAME  path  type` entry per line).
+
+**UFSD (current):** UFSD does **not** read `/etc/fstab`. Mounts are
+configured in a PARMLIB member `SYS1.PARMLIB(UFSDPRMx)` (or `SYS2`, per
+the standard PARMLIB search order), read via `DD:UFSDPRM` at startup.
+The member uses keyword statements; comments are `/* … */` blocks:
 
 ```
-ddname=UFSDISK1  /disk1  ufs
-ddname=UFSDISK2  /data   ufs
+ROOT   DSN(UFSD.ROOT)       SIZE(1M)  BLKSIZE(4096)
+MOUNT  DSN(HTTPD.WEBROOT)   PATH(/wwwroot) MODE(RO)
+MOUNT  DSN(USER.HOME)       PATH(/u/USER)  MODE(RW) OWNER(USER)
 ```
 
-Or shorthand (DD name inferred from first field if <= 8 chars, no dots):
-```
-UFSDISK1  /disk1  ufs
-```
-
-Fields: `ddname=NAME` or `dsname=DS.NAME`, mount path, filesystem type.
-Lines starting with `#` are comments.
-
-The mount path directory must already exist on the root disk.
+A single `ROOT` statement declares the root dataset (mounted RW at `/`),
+and each `MOUNT` statement adds a filesystem (`DSN`, `PATH`, optional
+`MODE(RO|RW)` defaulting to `RO`, optional `OWNER`). The mount-point
+directory is created automatically on the appropriate parent filesystem
+if it does not already exist.
 
 ### 9.3 Host-Side Mounting
 
@@ -483,6 +532,9 @@ Starting from `datablock_start`, build the chain:
    - `ctime/mtime/atime = now` (time64 format)
    - `owner = "HERC01"` (or from RACF ACEE)
    - `group = "ADMIN"` (or from RACF ACEE)
+   - (UFSD note: directories that UFSD itself creates at runtime — e.g.
+     auto-created mount points via its internal `mkdir_p` — default to
+     `owner = "UFSD"`, `group = "SYS1"` rather than the `mkufs` values.)
 4. Write root data block:
    - Entry 0: `inode=2, name="."`
    - Entry 1: `inode=2, name=".."` (root parent is itself)

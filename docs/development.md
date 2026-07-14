@@ -7,8 +7,8 @@ This document covers building UFSD from source, the server architecture, the com
 ### Prerequisites
 
 - Linux or macOS build host
-- `c2asm370` cross-compiler, GNU Make, Python 3.12+
-- MVS 3.8j system running the [mvsMF](https://github.com/mvslovers/mvsmf) REST API (port 1080 by default)
+- The `cc370` cross-toolchain (`cc370`, `as370`, `ld370`, `ar370`) on `PATH`, GNU Make, Python 3.12+
+- MVS 3.8j system running the [mvsMF](https://github.com/mvslovers/mvsmf) REST API (port 1080 by default) — only needed for `make deploy` and `make test-mvs`; the build itself runs entirely on the host
 - The `mbt` submodule is included in the repository
 
 ### Build Commands
@@ -33,13 +33,26 @@ MBT_MVS_DEPS_HLQ=IBMUSER.DEPS   # HLQ for dependency datasets
 Then build:
 
 ```sh
-make bootstrap    # fetch crent370 headers + NCALIB from GitHub
-make build        # cross-compile C → S/370 ASM, assemble on MVS
-make link         # linkedit load modules on MVS
-make package      # produce distribution archives
+make deps         # download + stage declared dependencies (none for ufsd today)
+make              # build the load modules on the host (default target)
+make lib          # build the libufs static archive (build/libufs.a)
+make package      # produce distribution archives in dist/
+make deploy       # XMIT + upload the load modules into the MVS LINKLIB
 ```
 
-The finished load modules land in `{HLQ}.UFSD.V1R0M0D.LOAD` on MVS. The build system uses `project.toml` for project metadata and dependency management. Dependencies (crent370) are resolved automatically by `mbt`.
+The entire build runs on the host with the `cc370` toolchain (`cc370` → `.o`,
+`as370`, `ld370`, `ar370`); MVS is touched only by `make deploy`. The load
+modules are written locally under `build/` (e.g. `build/UFSD.iebcopy`) and reach
+the MVS `LINKLIB` only after `make deploy`. The build is driven by `project.toml`
+(project metadata, modules, dependencies). `libc370` is the cc370 sysroot
+(`-lc`), not a declared dependency; `ufsd` itself currently declares no
+`[dependencies]`, so `make deps` is a no-op until one is added.
+
+Other targets: `make all` (modules + library), `make modules`, the test targets
+(`make test` / `test-host` / `test-mvs` / `check`, see [Testing](#testing)),
+`make doctor` (check the toolchain + MVS connectivity), `make compiledb` (write
+`compile_commands.json` for clangd), and `make clean` / `distclean`.
+`VERBOSE=1 make` echoes the full cc370/as370/ld370/ar370 commands.
 
 ### Project Structure
 
@@ -50,27 +63,59 @@ ufsd/
   client/            Client library and test programs
   samplib/           Sample JCL procedures and Parmlib member
   jcl/               Batch JCL
-  docs/              Documentation
-  doc/               Design documents (concept, disk spec)
-  project.toml       Build configuration and dependencies
+  docs/              Documentation and design docs (concept, disk spec)
+  mbt/               MVS Build Tools submodule (cc370 build system)
+  project.toml       Build configuration, modules, dependencies
+  Makefile           Two-line include of mbt/mk/mbt.mk
+  VERSION            Version string for release automation
+  mbt.lock           Resolved dependency pins (committed; empty when no deps)
 ```
 
 ### Installing libufs for Consumers
 
-Programs that call libufs need the header at compile time and the NCALIB member at link time.
+Programs that call libufs need the header at compile time and the `libufs.a`
+archive at link time. Both ship together in one release artifact.
 
-1. Download `ufsd-<version>-lib-headers.tar.gz` from the [Releases](https://github.com/mvslovers/ufsd/releases) page. Extract `libufs.h` and `ufsdrc.h` into your project's `include/`.
-
-2. Download `ufsd-<version>-lib-modules.tar.gz`, upload, and `RECEIVE` it to obtain the NCALIB dataset. Add it to your link JCL `SYSLIB` concatenation.
-
-With mbt, declare the dependency in your `project.toml`:
+The mbt v2 way — declare the dependency in your `project.toml`:
 
 ```toml
 [dependencies]
-"mvslovers/ufsd" = "=1.0.0-beta"
+"mvslovers/ufsd" = ">=1.0.0-dev"
 ```
 
-`make bootstrap` then fetches and installs everything automatically.
+`make deps` then resolves the range against the ufsd GitHub Releases, downloads
+`ufsd-<version>-lib.tar.gz`, and stages its `include/` + `lib/libufs.a` under
+`.mbt/deps/ufsd/`. The build wires these in automatically: `-I .mbt/deps/ufsd/include`
+on compile and `.mbt/deps/ufsd/lib/libufs.a` autocalled by `ld370` on link — no
+MVS-side link library or `SYSLIB` concatenation is involved. `make deps` also
+writes the resolved version + SHA256 to `mbt.lock` (commit it).
+
+To fetch the artifact by hand instead, download `ufsd-<version>-lib.tar.gz` from
+the [Releases](https://github.com/mvslovers/ufsd/releases) page and extract its
+`include/*.h` and `lib/libufs.a` into your project.
+
+## Testing
+
+Tests are declared as `[[test]]` blocks in `project.toml` (one translation unit
+with a `main()` each). UFSD ships one: `LIBUFTST` (`client/libufstst.c` +
+`client/libufs.c`), an integration test that exercises the libufs client API.
+
+Tests use `#include <mbtcheck.h>` and its `CHECK` / `CHECK_EQ` /
+`mbt_test_summary` macros — portable C, so the same source runs both natively on
+the host and on the MVS target. The only hard contract is the return code
+(`0` = all passed), which becomes the job-step condition code on MVS.
+
+```sh
+make test        # build the test load modules
+make test-host   # build + run the tests natively on the host — fast inner loop
+make test-mvs    # build + deploy the tests to a TESTLIB + run them on MVS
+make check       # run every available suite (host first, then MVS)
+```
+
+`make test-mvs` deploys to a separate `…TESTLIB` and prints a per-test pass/fail
+matrix. The production `LINKLIB` must already be deployed, since the MVS tests
+`LOAD` the server modules from it. Run only selected tests with
+`make test-mvs ARGS="--only LIBUFTST"`.
 
 ## Architecture
 
@@ -103,16 +148,16 @@ No Cross-Memory Services (PC/PT) are available on S/370. The IPC uses IEFSSREQ (
 
 | Module | File | Lines | Description |
 |--------|------|-------|-------------|
-| UFSD | `src/ufsd.c` | 335 | STC main, dispatch loop, ESTAE, shutdown |
+| UFSD | `src/ufsd.c` | 444 | STC main, dispatch loop, ESTAE, shutdown |
 | UFSD#CMD | `src/ufsd#cmd.c` | 357 | MODIFY command parser |
 | UFSD#CFG | `src/ufsd#cfg.c` | 245 | Parmlib parser |
-| UFSD#CSA | `src/ufsd#csa.c` | 220 | CSA allocation, request pool |
+| UFSD#CSA | `src/ufsd#csa.c` | 225 | CSA allocation, request pool |
 | UFSD#BUF | `src/ufsd#buf.c` | 78 | 4K buffer pool (CS lock-free) |
 | UFSD#SCT | `src/ufsd#sct.c` | 159 | SSCT/SSVT registration |
-| UFSD#SSI | `src/ufsd#ssi.c` | 392 | SSI thin router (runs in client AS) |
-| UFSD#QUE | `src/ufsd#que.c` | 273 | Lock-free queue, dispatch routing |
+| UFSD#SSI | `src/ufsd#ssi.c` | 436 | SSI thin router (runs in client AS) |
+| UFSD#QUE | `src/ufsd#que.c` | 274 | Lock-free queue, dispatch routing |
 | UFSD#SES | `src/ufsd#ses.c` | 434 | Session management |
-| UFSD#INI | `src/ufsd#ini.c` | 674 | Disk init (DYNALLOC, BDAM open, mount) |
+| UFSD#INI | `src/ufsd#ini.c` | 747 | Disk init (DYNALLOC, BDAM open, mount) |
 | UFSD#BLK | `src/ufsd#blk.c` | 80 | BDAM block read/write |
 | UFSD#SBL | `src/ufsd#sbl.c` | 486 | Superblock, alloc, chain/inode/bitmap refill |
 | UFSD#INO | `src/ufsd#ino.c` | 85 | Inode I/O |
@@ -120,10 +165,10 @@ No Cross-Memory Services (PC/PT) are available on S/370. The IPC uses IEFSSREQ (
 | UFSD#FIL | `src/ufsd#fil.c` | 1464 | File operation dispatch |
 | UFSD#GFT | `src/ufsd#gft.c` | 119 | Global File Table |
 | UFSD#TRC | `src/ufsd#trc.c` | 109 | Trace ring buffer |
-| UFSDCLNP | `src/ufsdclnp.c` | 132 | Emergency cleanup (no-IPL recovery) |
+| UFSDCLNP | `src/ufsdclnp.c` | 198 | Emergency cleanup (no-IPL recovery) |
 | LIBUFS | `client/libufs.c` | 1010 | Client stub library |
 | LIBUFTST | `client/libufstst.c` | 345 | Integration test client |
-| **Total** | | **~8200** | Server + client |
+| **Total** | | **~7600** | Server + client |
 
 ### On-Disk Format
 
@@ -131,7 +176,7 @@ The UFS370 on-disk format is documented in [docs/ufsdisk-spec.md](ufsdisk-spec.m
 
 ## libufs API Reference
 
-Include `libufs.h` and link against the `LIBUFS` NCALIB member.
+Include `libufs.h` and link against the `libufs.a` archive (staged by `make deps`, autocalled by `ld370`).
 
 ```c
 #include "libufs.h"
@@ -173,7 +218,7 @@ char     buf[256];
 UINT32   n;
 
 /* Open for writing */
-fp = ufs_fopen(ufs, "/www/hello.txt", "w");
+fp = ufs_fopen(ufs, "/u/ibmuser/hello.txt", "w");
 if (fp == NULL) {
     return 1;
 }
@@ -182,7 +227,7 @@ ufs_fputs("Hello, World!\n", fp);
 ufs_fclose(&fp);
 
 /* Open for reading */
-fp = ufs_fopen(ufs, "/www/hello.txt", "r");
+fp = ufs_fopen(ufs, "/u/ibmuser/hello.txt", "r");
 if (fp == NULL) {
     return 1;
 }
@@ -218,8 +263,8 @@ ufs_fclose(&fp);
 UFSDDESC *ddesc;
 UFSDLIST *entry;
 
-/* List all entries under /www matching "*.html" */
-ddesc = ufs_diropen(ufs, "/www", "*.html");
+/* List all entries under /u/ibmuser matching "*.html" */
+ddesc = ufs_diropen(ufs, "/u/ibmuser", "*.html");
 if (ddesc == NULL) {
     return 1;
 }
@@ -241,7 +286,7 @@ ufs_dirclose(&ddesc);
 Use `NULL` as the pattern to list all entries:
 
 ```c
-ddesc = ufs_diropen(ufs, "/www", NULL);
+ddesc = ufs_diropen(ufs, "/u/ibmuser", NULL);
 ```
 
 ### Directory and File Operations
@@ -261,7 +306,7 @@ ufs_remove(ufs, "/u/ibmuser/old.txt");
 
 /* Stat a file or directory (metadata without open) */
 UFSDLIST info;
-if (ufs_stat(ufs, "/www/index.html", &info) == 0) {
+if (ufs_stat(ufs, "/u/ibmuser/index.html", &info) == 0) {
     /* info.filesize, info.attr, info.owner, info.mtime, ... */
 }
 ```
@@ -334,8 +379,8 @@ ufs_clearerr(fp);
 ```c
 /*
  * Copy a local MVS dataset member into a UFSD filesystem.
- * Compile with: cc -I./include -o copy copy.c
- * Link against: LIBUFS NCALIB member
+ * Build via mbt v2: declare "mvslovers/ufsd" in project.toml, run
+ * `make deps`, then `make` -- ld370 autocalls libufs.a from .mbt/deps.
  */
 #include <stdio.h>
 #include <string.h>
@@ -362,7 +407,7 @@ int main(void)
         return 1;
     }
 
-    dst = ufs_fopen(ufs, "/www/upload.bin", "wb");
+    dst = ufs_fopen(ufs, "/u/ibmuser/upload.bin", "wb");
     if (dst == NULL) {
         fprintf(stderr, "ufs_fopen: failed\n");
         fclose(src);
@@ -399,7 +444,7 @@ libufs functions follow the standard IBM OS/VS C linkage convention:
 
 ```asm
 *----------------------------------------------------------------*
-* UFSDEMO -- read /www/index.html using libufs                   *
+* UFSDEMO -- read /u/ibmuser/index.html using libufs                   *
 *----------------------------------------------------------------*
 UFSDEMO  CSECT
 UFSDEMO  AMODE 24
@@ -430,7 +475,7 @@ UFSDEMO  RMODE 24
          LA    R2,OPENMODE
          ST    R2,P_MODE          plist slot: mode ptr value
          LA    R1,PL_FOPEN        R1 -> parameter list
-         L     R15,=V(UFS_FOPEN)
+         L     R15,=V(UFS#FOPN)
          BALR  R14,R15
          LTR   R15,R15            NULL = open failed
          BZ    ERROUT
@@ -447,7 +492,7 @@ UFSDEMO  RMODE 24
          L     R2,FILHDL
          ST    R2,P_FP            plist slot: UFSFILE* value
          LA    R1,PL_FREAD
-         L     R15,=V(UFS_FREAD)
+         L     R15,=V(UFS#FRD)
          BALR  R14,R15
          ST    R15,NREAD          bytes read returned in R15
 *
@@ -456,7 +501,7 @@ UFSDEMO  RMODE 24
          LA    R2,FILHDL          address of UFSFILE* variable
          ST    R2,P_FPP           plist slot: UFSFILE** value
          LA    R1,PL_FCLOSE
-         L     R15,=V(UFS_FCLOSE)
+         L     R15,=V(UFS#FCLS)
          BALR  R14,R15
 *
 *-- ufsfree(&ufshdl) ------------------------------------------*
@@ -506,7 +551,7 @@ PL_FFREE  DC   X'80',AL3(P_UFSPP) -> UFS**   [VL]
 UFSHDL   DS    A              UFS session handle
 FILHDL   DS    A              UFSFILE handle
 NREAD    DS    F              bytes read
-FILEPATH DC    C'/www/index.html',X'00'
+FILEPATH DC    C'/u/ibmuser/index.html',X'00'
 OPENMODE DC    C'r',X'00'
 READBUF  DS    CL256
 SAVEAREA DS    18F
@@ -514,6 +559,8 @@ SAVEAREA DS    18F
 ```
 
 ### Notes for Assembler Callers
+
+**External entry-point names use the 8-character MVS convention, not the C names.** `ufs_fopen` links as `UFS#FOPN`, `ufs_fread` as `UFS#FRD`, `ufs_fclose` as `UFS#FCLS`, and so on — consult the `asm("…")` labels in `libufs.h` for the exact entry name of each function. `ufsnew` and `ufsfree` keep their C names (`UFSNEW`, `UFSFREE`). The `#` is a valid national character in `as370` symbols.
 
 **`ufsnew` has no parameters.** Set R1 to zero or leave it undefined; the function does not dereference R1.
 
