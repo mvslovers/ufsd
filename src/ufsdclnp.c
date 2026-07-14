@@ -83,19 +83,19 @@ main(int argc, char **argv)
 
     (void)argc;
 
-    wtof("UFSD140I UFSDCLNP starting");
+    wtof("UFSD140I UFSDCLNP STARTING");
 
     /* --- APF authorization (required for key-0 and SSCT ops) --- */
     rc = clib_apf_setup(argv[0]);
     if (rc) {
-        wtof("UFSD141E UFSDCLNP: APF setup failed RC=%d", rc);
+        wtof("UFSD141E UFSDCLNP: APF SETUP FAILED RC=%d", rc);
         return 8;
     }
 
     /* --- Locate UFSD subsystem --- */
     ssct = ssct_find("UFSD");
     if (!ssct) {
-        wtof("UFSD142I UFSDCLNP: subsystem UFSD not registered");
+        wtof("UFSD142I UFSDCLNP: SUBSYSTEM UFSD NOT REGISTERED");
         return 0;
     }
 
@@ -111,13 +111,13 @@ main(int argc, char **argv)
     ** "eye still valid" bail path, so clearing the eye now would strand the
     ** counter and defeat the drain in step 2. */
     if (__super(PSWKEY0, &savekey)) {
-        wtof("UFSD143E UFSDCLNP: cannot enter supervisor state");
+        wtof("UFSD143E UFSDCLNP: CANNOT ENTER SUPERVISOR STATE");
         return 8;
     }
     if (ssvt) {
         ssvt_reset(ssvt, UFSD_SSVT_ROUTER);
         ssvt_funcmap(ssvt, 0, UFSD_SSOBFUNC);
-        wtof("UFSD144I UFSDCLNP: SSVT function pointer cleared");
+        wtof("UFSD144I UFSDCLNP: SSVT FUNCTION POINTER CLEARED");
     }
     if (anchor_ok)
         anchor->flags &= ~UFSD_ANCHOR_ACTIVE;
@@ -130,8 +130,8 @@ main(int argc, char **argv)
     ** leaked and freed anyway (see file header). */
     if (anchor_ok && anchor->inflight) {
         if (!ufsdclnp_drain(anchor))
-            wtof("UFSD146W UFSDCLNP: %u client(s) still in flight after "
-                 "drain -- assuming leaked, freeing", anchor->inflight);
+            wtof("UFSD152W UFSDCLNP: %u CLIENT(S) STILL IN FLIGHT AFTER "
+                 "DRAIN -- ASSUMING LEAKED, FREEING", anchor->inflight);
     }
 
     /* --- Step 3: tear down under key-0 -- deregister the SSCT (frees the
@@ -139,21 +139,21 @@ main(int argc, char **argv)
     ** Order matters: the module references the pool blocks, so it goes
     ** first; the anchor goes last. */
     if (__super(PSWKEY0, &savekey)) {
-        wtof("UFSD143E UFSDCLNP: cannot enter supervisor state");
+        wtof("UFSD143E UFSDCLNP: CANNOT ENTER SUPERVISOR STATE");
         return 8;
     }
 
     ssct_remove(ssct);
     ssct_free(ssct);
     if (ssvt) ssvt_free(ssvt);
-    wtof("UFSD145I UFSDCLNP: SSCT deregistered");
+    wtof("UFSD145I UFSDCLNP: SSCT DEREGISTERED");
 
     if (anchor_ok) {
         /* Free UFSDSSIR CSA load module */
         if (anchor->ssir_lpa) {
             freemain(anchor->ssir_lpa);
             anchor->ssir_lpa = NULL;
-            wtof("UFSD146I UFSDCLNP: SSI router module freed");
+            wtof("UFSD146I UFSDCLNP: SSI ROUTER MODULE FREED");
         }
 
         /* Free trace ring buffer */
@@ -176,23 +176,23 @@ main(int argc, char **argv)
             anchor->free_head     = NULL;
         }
 
-        wtof("UFSD147I UFSDCLNP: CSA pools freed");
+        wtof("UFSD147I UFSDCLNP: CSA POOLS FREED");
 
         /* Invalidate the eye catcher BEFORE the FREEMAIN so a client still
         ** in the drain settle window bails on eye-mismatch instead of
         ** trusting a live-looking anchor.  Anchor goes last. */
         memset(anchor->eye, 0, sizeof(anchor->eye));
         freemain(anchor);
-        wtof("UFSD148I UFSDCLNP: anchor freed");
+        wtof("UFSD148I UFSDCLNP: ANCHOR FREED");
     } else if (anchor) {
-        wtof("UFSD148W UFSDCLNP: anchor eye mismatch at %08X",
+        wtof("UFSD153W UFSDCLNP: ANCHOR EYE MISMATCH AT %08X",
              (unsigned)anchor);
     } else {
-        wtof("UFSD148I UFSDCLNP: no anchor (ssctsuse=NULL)");
+        wtof("UFSD154I UFSDCLNP: NO ANCHOR (SSCTSUSE=NULL)");
     }
 
     __prob(savekey, NULL);
 
-    wtof("UFSD149I UFSDCLNP complete");
+    wtof("UFSD149I UFSDCLNP COMPLETE");
     return 0;
 }

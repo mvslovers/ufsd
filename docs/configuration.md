@@ -117,7 +117,7 @@ F UFSD,command
 
 | Command | Description |
 |---------|-------------|
-| `STATS` | Request counters, error count, POST bundles saved, free pool sizes, mounted filesystems with free block/inode counts |
+| `STATS` | Request counters, error count, POST bundles saved, in-flight client count, free pool sizes, mounted filesystems with free block/inode counts |
 | `SESSIONS` | List all active client sessions (userid, group, ASID, token, open FDs) |
 | `HELP` | Print a summary of available commands |
 

@@ -289,7 +289,7 @@ Via `/F UFSD,<command>` using CIB/QEDIT:
 |---------|-------------|
 | `/F UFSD,MOUNT DSN=x,PATH=y[,MODE=RO\|RW][,OWNER=z]` | Mount BDAM dataset on path |
 | `/F UFSD,UNMOUNT PATH=y` | Unmount path |
-| `/F UFSD,STATS` | Statistics (requests, errors, posts_saved, free counts) |
+| `/F UFSD,STATS` | Statistics (requests, errors, posts_saved, inflight, free counts) |
 | `/F UFSD,SESSIONS` | List active sessions |
 | `/F UFSD,SESSIONS PRUNE` | Release orphaned sessions (terminated ASIDs) |
 | `/F UFSD,TRACE ON\|OFF\|DUMP` | Control trace ring buffer |

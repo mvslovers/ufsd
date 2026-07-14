@@ -122,7 +122,7 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
 
     fp = fopen("DD:UFSDPRM", "r");
     if (!fp) {
-        wtof("UFSD100W Cannot open DD:UFSDPRM -- using defaults");
+        wtof("UFSD100W CANNOT OPEN DD:UFSDPRM -- USING DEFAULTS");
         return 8;
     }
 
@@ -168,8 +168,8 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
             UFSD_MOUNT_CFG *m;
 
             if (cfg->nmounts >= UFSD_CFG_MAX_MOUNTS) {
-                wtof("UFSD101W Parmlib: too many MOUNT statements "
-                     "(max %u)", (unsigned)UFSD_CFG_MAX_MOUNTS);
+                wtof("UFSD101W PARMLIB: TOO MANY MOUNT STATEMENTS "
+                     "(MAX %u)", (unsigned)UFSD_CFG_MAX_MOUNTS);
                 continue;
             }
 
@@ -178,13 +178,13 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
             m->mode = UFSD_MOUNT_RO;  /* default */
 
             if (!parse_param(p, "DSN", val, sizeof(val))) {
-                wtof("UFSD102W Parmlib: MOUNT missing DSN()");
+                wtof("UFSD102W PARMLIB: MOUNT MISSING DSN()");
                 continue;
             }
             strncpy(m->dsname, val, 44);
 
             if (!parse_param(p, "PATH", val, sizeof(val))) {
-                wtof("UFSD103W Parmlib: MOUNT missing PATH()");
+                wtof("UFSD103W PARMLIB: MOUNT MISSING PATH()");
                 continue;
             }
             strncpy(m->path, val, 127);
@@ -201,13 +201,13 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
             continue;
         }
 
-        wtof("UFSD104W Parmlib: unrecognized statement: %.40s", p);
+        wtof("UFSD104W PARMLIB: UNRECOGNIZED STATEMENT: %.40s", p);
     }
 
     fclose(fp);
 
     if (cfg->root_dsname[0] == '\0') {
-        wtof("UFSD105W Parmlib: ROOT statement missing");
+        wtof("UFSD105W PARMLIB: ROOT STATEMENT MISSING");
         return 8;
     }
 
@@ -226,19 +226,19 @@ ufsd_cfg_dump(const UFSD_CONFIG *cfg)
 
     if (!cfg) return;
 
-    wtof("UFSD110I Config: ROOT DSN=%s SIZE=%u BLKSIZE=%u",
+    wtof("UFSD110I CONFIG: ROOT DSN=%s SIZE=%u BLKSIZE=%u",
          cfg->root_dsname, cfg->root_size, cfg->root_blksize);
 
     for (i = 0; i < cfg->nmounts; i++) {
         const UFSD_MOUNT_CFG *m = &cfg->mounts[i];
 
         if (m->owner[0])
-            wtof("UFSD111I Config: MOUNT DSN=%s PATH=%s %s OWNER=%s",
+            wtof("UFSD111I CONFIG: MOUNT DSN=%s PATH=%s %s OWNER=%s",
                  m->dsname, m->path,
                  m->mode == UFSD_MOUNT_RW ? "RW" : "RO",
                  m->owner);
         else
-            wtof("UFSD111I Config: MOUNT DSN=%s PATH=%s %s",
+            wtof("UFSD111I CONFIG: MOUNT DSN=%s PATH=%s %s",
                  m->dsname, m->path,
                  m->mode == UFSD_MOUNT_RW ? "RW" : "RO");
     }

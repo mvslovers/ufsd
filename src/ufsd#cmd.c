@@ -68,8 +68,8 @@ ufsd_process_cib(UFSD_STC *ufsd, CIB *cib)
         } else if (strcmp(buf, "REBUILD") == 0) {
             cmd_rebuild(ufsd);
         } else {
-            wtof("UFSD021E Unknown command: %s", buf);
-            wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
+            wtof("UFSD021E UNKNOWN COMMAND: %s", buf);
+            wtof("UFSD020I COMMANDS: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
         }
         break;
 
@@ -105,6 +105,7 @@ cmd_stats(UFSD_STC *ufsd)
         wtof("UFSD014I REQUESTS SERVED: %u", anchor->stat_requests);
         wtof("UFSD015I ERRORS:          %u", anchor->stat_errors);
         wtof("UFSD017I POSTS SAVED:     %u", anchor->stat_posts_saved);
+        wtof("UFSD016I IN FLIGHT:       %u", anchor->inflight);
     }
 
     for (i = 0; i < ufsd->ndisks; i++) {
@@ -112,13 +113,13 @@ cmd_stats(UFSD_STC *ufsd)
         if (!d) continue;
         if (d->mount_mode == UFSD_MOUNT_RW && d->mount_owner[0])
             wtof("UFSD018I MOUNT %-12s DSN=%-20s RW(%.8s) "
-                 "freeblk=%u/%u freeinode=%u/%u",
+                 "FREEBLK=%u/%u FREEINODE=%u/%u",
                  d->mountpath, d->dsn, d->mount_owner,
                  d->sb.nfreeblock, d->sb.total_freeblock,
                  d->sb.nfreeinode, d->sb.total_freeinode);
         else
             wtof("UFSD018I MOUNT %-12s DSN=%-20s %-2s "
-                 "freeblk=%u/%u freeinode=%u/%u",
+                 "FREEBLK=%u/%u FREEINODE=%u/%u",
                  d->mountpath, d->dsn,
                  d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO",
                  d->sb.nfreeblock, d->sb.total_freeblock,
@@ -131,11 +132,11 @@ cmd_sessions(UFSD_STC *ufsd, const char *args)
 {
     if (args && strcmp(args, "PRUNE") == 0) {
         unsigned n = ufsd_sess_cleanup(ufsd->anchor);
-        wtof("UFSD053I SESSIONS PRUNE: %u stale session(s) released", n);
+        wtof("UFSD053I SESSIONS PRUNE: %u STALE SESSION(S) RELEASED", n);
         return;
     }
     if (args && *args) {
-        wtof("UFSD021E SESSIONS: syntax: SESSIONS  or  SESSIONS PRUNE");
+        wtof("UFSD021E SESSIONS: SYNTAX: SESSIONS  OR  SESSIONS PRUNE");
         return;
     }
     ufsd_sess_list(ufsd->anchor);
@@ -145,13 +146,13 @@ static void
 cmd_help(UFSD_STC *ufsd)
 {
     (void)ufsd;
-    wtof("UFSD020I Commands: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
+    wtof("UFSD020I COMMANDS: STATS, SESSIONS, MOUNT, UNMOUNT, TRACE, REBUILD, HELP, SHUTDOWN");
     wtof("UFSD020I   MOUNT DSN=dsn,PATH=/path[,MODE=RW][,OWNER=user]");
     wtof("UFSD020I   MOUNT LIST");
     wtof("UFSD020I   UNMOUNT PATH=/path");
     wtof("UFSD020I   TRACE ON|OFF|DUMP");
-    wtof("UFSD020I   SESSIONS PRUNE  -- release stale sessions (terminated ASIDs)");
-    wtof("UFSD020I   REBUILD  -- scan inodes, rebuild free block/inode cache");
+    wtof("UFSD020I   SESSIONS PRUNE  -- RELEASE STALE SESSIONS (TERMINATED ASIDS)");
+    wtof("UFSD020I   REBUILD  -- SCAN INODES, REBUILD FREE BLOCK/INODE CACHE");
 }
 
 static void
@@ -183,13 +184,13 @@ cmd_mount(UFSD_STC *ufsd, const char *args)
     unsigned    i;
 
     if (!args || !*args) {
-        wtof("UFSD021E MOUNT: syntax: MOUNT DSN=dsn,PATH=/path  or  MOUNT LIST");
+        wtof("UFSD021E MOUNT: SYNTAX: MOUNT DSN=dsn,PATH=/path  OR  MOUNT LIST");
         return;
     }
 
     /* MOUNT LIST -- show all mounted filesystems */
     if (strcmp(args, "LIST") == 0) {
-        wtof("UFSD068I %u filesystem(s) mounted:", ufsd->ndisks);
+        wtof("UFSD068I %u FILESYSTEM(S) MOUNTED:", ufsd->ndisks);
         for (i = 0; i < ufsd->ndisks; i++) {
             UFSD_DISK *d = ufsd->disks[i];
             if (!d) continue;
@@ -214,7 +215,7 @@ cmd_mount(UFSD_STC *ufsd, const char *args)
 
         /* Parse PATH= */
         p = strstr(args, "PATH=");
-        if (!p) { wtof("UFSD021E MOUNT: PATH= not found"); return; }
+        if (!p) { wtof("UFSD021E MOUNT: PATH= NOT FOUND"); return; }
         p += 5;
         pathlen = 0;
         while (*p && *p != ',' && pathlen < 127)
@@ -244,7 +245,7 @@ cmd_mount(UFSD_STC *ufsd, const char *args)
         return;
     }
 
-    wtof("UFSD021E MOUNT: DSN= not found");
+    wtof("UFSD021E MOUNT: DSN= NOT FOUND");
 }
 
 /* ============================================================
@@ -260,7 +261,7 @@ cmd_unmount(UFSD_STC *ufsd, const char *args)
     int         pathlen;
 
     if (!args || !*args) {
-        wtof("UFSD021E UNMOUNT: syntax: UNMOUNT PATH=/path");
+        wtof("UFSD021E UNMOUNT: SYNTAX: UNMOUNT PATH=/path");
         return;
     }
 
@@ -277,7 +278,7 @@ cmd_unmount(UFSD_STC *ufsd, const char *args)
     mountpath[pathlen] = '\0';
 
     if (pathlen == 0) {
-        wtof("UFSD021E UNMOUNT: PATH is empty");
+        wtof("UFSD021E UNMOUNT: PATH IS EMPTY");
         return;
     }
 
@@ -304,7 +305,7 @@ cmd_trace(UFSD_STC *ufsd, const char *args)
                 __prob(savekey, NULL);
             }
         }
-        wtof("UFSD083I Trace enabled");
+        wtof("UFSD083I TRACE ENABLED");
     } else if (strcmp(args, "OFF") == 0) {
         if (anchor) {
             if (!__super(PSWKEY0, &savekey)) {
@@ -312,11 +313,11 @@ cmd_trace(UFSD_STC *ufsd, const char *args)
                 __prob(savekey, NULL);
             }
         }
-        wtof("UFSD083I Trace disabled");
+        wtof("UFSD083I TRACE DISABLED");
     } else if (strcmp(args, "DUMP") == 0) {
         ufsd_trace_dump(anchor);
     } else {
-        wtof("UFSD021E TRACE: syntax: TRACE ON|OFF|DUMP");
+        wtof("UFSD021E TRACE: SYNTAX: TRACE ON|OFF|DUMP");
     }
 }
 
@@ -333,7 +334,7 @@ cmd_rebuild(UFSD_STC *ufsd)
     int      rc;
 
     if (ufsd->ndisks == 0) {
-        wtof("UFSD071W REBUILD: no disks mounted");
+        wtof("UFSD071W REBUILD: NO DISKS MOUNTED");
         return;
     }
 
@@ -341,16 +342,16 @@ cmd_rebuild(UFSD_STC *ufsd)
         UFSD_DISK *d = ufsd->disks[i];
         if (!d) continue;
         if (d->flags & UFSD_DISK_RDONLY) {
-            wtof("UFSD072I REBUILD: skipping %.8s (read-only)", d->ddname);
+            wtof("UFSD072I REBUILD: SKIPPING %.8s (READ-ONLY)", d->ddname);
             continue;
         }
-        wtof("UFSD073I REBUILD: scanning %.8s ...", d->ddname);
+        wtof("UFSD073I REBUILD: SCANNING %.8s ...", d->ddname);
         rc = ufsd_sb_rebuild_free(d);
         if (rc == UFSD_RC_OK)
-            wtof("UFSD074I REBUILD: %.8s done, freeblk=%u freeinode=%u",
+            wtof("UFSD074I REBUILD: %.8s DONE, FREEBLK=%u FREEINODE=%u",
                  d->ddname, d->sb.nfreeblock, d->sb.nfreeinode);
         else
-            wtof("UFSD075E REBUILD: %.8s failed RC=%d",
+            wtof("UFSD075E REBUILD: %.8s FAILED RC=%d",
                  d->ddname, rc);
     }
 }

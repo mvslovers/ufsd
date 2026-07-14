@@ -56,7 +56,7 @@ ufsd_sess_init(UFSD_ANCHOR *anchor)
     sessions = (UFSD_SESSION *)calloc(UFSD_MAX_SESSIONS,
                                       sizeof(UFSD_SESSION));
     if (!sessions) {
-        wtof("UFSD045E Cannot allocate session table");
+        wtof("UFSD045E CANNOT ALLOCATE SESSION TABLE");
         return 8;
     }
 
@@ -73,7 +73,7 @@ ufsd_sess_init(UFSD_ANCHOR *anchor)
     /* Store pointer in CSA anchor (key-0 write) */
     if (__super(PSWKEY0, &savekey)) {
         free(sessions);
-        wtof("UFSD046E Cannot enter supervisor state for session init");
+        wtof("UFSD046E CANNOT ENTER SUPERVISOR STATE FOR SESSION INIT");
         return 8;
     }
     anchor->sessions     = sessions;
@@ -197,7 +197,7 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
     /* Allocate per-session UFS handle */
     ufs = (UFSD_UFS *)calloc(1, sizeof(UFSD_UFS));
     if (!ufs) {
-        wtof("UFSD070E Cannot allocate UFS handle");
+        wtof("UFSD070E CANNOT ALLOCATE UFS HANDLE");
         return UFSD_RC_NOREQ;
     }
     memcpy(ufs->eye, "UFSD_UFS", 8);
@@ -344,7 +344,7 @@ ufsd_sess_list(UFSD_ANCHOR *anchor)
         }
 
         wtof("UFSD051I   #%u TOKEN=%08X ASID=%04X"
-             " OWNER=%-8.8s GROUP=%-8.8s FDs=%u/%u",
+             " OWNER=%-8.8s GROUP=%-8.8s FDS=%u/%u",
              i + 1U,
              sess->token,
              sess->client_asid,
@@ -418,8 +418,8 @@ ufsd_sess_cleanup(UFSD_ANCHOR *anchor)
             sess->ufs = NULL;
         }
 
-        wtof("UFSD052I CLEANUP: session #%u TOKEN=%08X ASID=%04X"
-             " (%.8s) released",
+        wtof("UFSD052I CLEANUP: SESSION #%u TOKEN=%08X ASID=%04X"
+             " (%.8s) RELEASED",
              i + 1U, sess->token, asid,
              sess->owner[0] ? sess->owner : "(none)");
 

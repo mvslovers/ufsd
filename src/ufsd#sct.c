@@ -28,14 +28,14 @@ ufsd_ssct_init(UFSD_ANCHOR *anchor)
     int             rc;
 
     if (__super(PSWKEY0, &savekey)) {
-        wtof("UFSD091E Cannot enter supervisor state for SSCT init");
+        wtof("UFSD091E CANNOT ENTER SUPERVISOR STATE FOR SSCT INIT");
         return -1;
     }
 
     ssvt = ssvt_new(UFSREQ_MAX);
     if (!ssvt) {
         __prob(savekey, NULL);
-        wtof("UFSD093E Cannot allocate SSVT");
+        wtof("UFSD093E CANNOT ALLOCATE SSVT");
         return -1;
     }
 
@@ -43,7 +43,7 @@ ufsd_ssct_init(UFSD_ANCHOR *anchor)
     if (!ssct) {
         ssvt_free(ssvt);
         __prob(savekey, NULL);
-        wtof("UFSD094E Cannot allocate SSCT");
+        wtof("UFSD094E CANNOT ALLOCATE SSCT");
         return -1;
     }
 
@@ -52,7 +52,7 @@ ufsd_ssct_init(UFSD_ANCHOR *anchor)
         ssct_free(ssct);
         ssvt_free(ssvt);
         __prob(savekey, NULL);
-        wtof("UFSD097E Cannot install SSCT, RC=%d", rc);
+        wtof("UFSD025E CANNOT INSTALL SSCT, RC=%d", rc);
         return -1;
     }
 
@@ -86,14 +86,14 @@ ufsd_ssi_load(UFSD_ANCHOR *anchor)
     if (!anchor || !anchor->ssvt) return -1;
 
     if (__super(PSWKEY0, &savekey)) {
-        wtof("UFSD098E Cannot enter supervisor for SSI load");
+        wtof("UFSD026E CANNOT ENTER SUPERVISOR FOR SSI LOAD");
         return -1;
     }
 
     rc = __loadhi("UFSDSSIR", &lpa, &epa, &size);
     if (rc) {
         __prob(savekey, NULL);
-        wtof("UFSD098E Cannot load UFSDSSIR into CSA, RC=%d", rc);
+        wtof("UFSD027E CANNOT LOAD UFSDSSIR INTO CSA, RC=%d", rc);
         return -1;
     }
 

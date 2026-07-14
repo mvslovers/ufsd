@@ -70,7 +70,7 @@ ufsd_sb_read(UFSD_DISK *disk)
         || disk->sb.nfreeblock > UFSD_SB_MAX_FREEBLOCK
         || disk->sb.nfreeinode > UFSD_SB_MAX_FREEINODE
         || disk->sb.ilist_sector != 2) {
-        wtof("UFSD062E Superblock validation failed for %s", disk->dsn);
+        wtof("UFSD062E SUPERBLOCK VALIDATION FAILED FOR %s", disk->dsn);
         return UFSD_RC_CORRUPT;
     }
 
@@ -274,8 +274,8 @@ inode_scan_refill(UFSD_DISK *disk)
 
     if (found > 0) {
         disk->sb.total_freeinode = found;
-        wtof("UFSD076I Free inode scan: found %u inodes "
-             "(cache refilled to %u)", found, disk->sb.nfreeinode);
+        wtof("UFSD076I FREE INODE SCAN: FOUND %u INODES "
+             "(CACHE REFILLED TO %u)", found, disk->sb.nfreeinode);
         return UFSD_RC_OK;
     }
 
@@ -446,8 +446,8 @@ sb_scan_refill(UFSD_DISK *disk)
     free(used);
 
     if (found > 0) {
-        wtof("UFSD070I Free block scan: found %u blocks "
-             "(cache refilled to %u)", found, disk->sb.nfreeblock);
+        wtof("UFSD070I FREE BLOCK SCAN: FOUND %u BLOCKS "
+             "(CACHE REFILLED TO %u)", found, disk->sb.nfreeblock);
         return UFSD_RC_OK;
     }
 
