@@ -78,7 +78,7 @@ ufsd_recover(SDWA *sdwa)
 
     ufsd = (UFSD_STC *)sdwa->SDWAPARM;
 
-    wtof("UFSD098E UFSD abend intercepted -- emergency shutdown");
+    wtof("UFSD098E UFSD ABEND INTERCEPTED -- EMERGENCY SHUTDOWN");
 
     if (ufsd) {
         ufsd->flags &= ~UFSD_ACTIVE;
@@ -162,8 +162,8 @@ ufsd_shutdown(UFSD_STC *ufsd, int mode)
         ** Clearing ANCHOR_ACTIVE alone does not stop that; only the SSVT
         ** entry does.  Same order as UFSDCLNP. */
         if (__super(PSWKEY0, &savekey)) {
-            wtof("UFSD097E Cannot enter supervisor state -- "
-                 "CSA retained, run UFSDCLNP before restart");
+            wtof("UFSD097E CANNOT ENTER SUPERVISOR STATE -- "
+                 "CSA RETAINED, RUN UFSDCLNP BEFORE RESTART");
             ufsd_ufs_term(ufsd);
             return;                       /* free nothing */
         }
@@ -186,15 +186,15 @@ ufsd_shutdown(UFSD_STC *ufsd, int mode)
         /* Under RTM we cannot drain and must not free: a foreign PSW may
         ** still be executing inside UFSDSSIR or touching the pools.
         ** Leave everything and percolate; UFSDCLNP reclaims on restart. */
-        wtof("UFSD097W Abend shutdown -- CSA retained, "
-             "run UFSDCLNP before restart");
+        wtof("UFSD097W ABEND SHUTDOWN -- CSA RETAINED, "
+             "RUN UFSDCLNP BEFORE RESTART");
         goto done;
     }
 
     /* Step 4: drain in-flight clients out of the router. */
     if (!ufsd_drain(anchor)) {
-        wtof("UFSD098W %u client(s) still in flight -- CSA retained, "
-             "run UFSDCLNP before restart", anchor->inflight);
+        wtof("UFSD098W %u CLIENT(S) STILL IN FLIGHT -- CSA RETAINED, "
+             "RUN UFSDCLNP BEFORE RESTART", anchor->inflight);
         goto done;                        /* free nothing */
     }
 
@@ -203,27 +203,27 @@ ufsd_shutdown(UFSD_STC *ufsd, int mode)
     ** the tables, pools, and finally the anchor. */
     if (anchor->ssct) {
         ufsd_ssct_free(anchor);
-        wtof("UFSD095I SSCT deregistered");
+        wtof("UFSD095I SSCT DEREGISTERED");
     }
     if (anchor->ssir_lpa) {
         ufsd_ssi_unload(anchor);
-        wtof("UFSD036I SSI router unloaded");
+        wtof("UFSD036I SSI ROUTER UNLOADED");
     }
     if (anchor->gfiles) {
         ufsd_gft_free(anchor);
-        wtof("UFSD048I Global file table freed");
+        wtof("UFSD048I GLOBAL FILE TABLE FREED");
     }
     if (anchor->sessions) {
         ufsd_sess_free(anchor);
-        wtof("UFSD046I Session table freed");
+        wtof("UFSD046I SESSION TABLE FREED");
     }
     ufsd_csa_free(anchor);
-    wtof("UFSD096I CSA freed");
+    wtof("UFSD096I CSA FREED");
     ufsd_anchor_free(anchor);             /* clears the eye catcher first */
     ufsd->anchor = NULL;
 
 done:
-    wtof("UFSD099I UFSD shutdown complete");
+    wtof("UFSD099I UFSD SHUTDOWN COMPLETE");
 }
 
 int
@@ -247,7 +247,7 @@ main(int argc, char **argv)
     /* --- Console interface ---------------------------------------- */
     com = __gtcom();
     if (!com) {
-        wtof("UFSD090E Unable to initialize console interface");
+        wtof("UFSD090E UNABLE TO INITIALIZE CONSOLE INTERFACE");
         return 8;
     }
 
@@ -257,7 +257,7 @@ main(int argc, char **argv)
     /* --- APF authorization --------------------------------------- */
     rc = clib_apf_setup(argv[0]);
     if (rc) {
-        wtof("UFSD091E APF setup failed RC=%d (STEPLIB not APF authorized?)",
+        wtof("UFSD091E APF SETUP FAILED RC=%d (STEPLIB NOT APF AUTHORIZED?)",
              rc);
         return 8;
     }
@@ -265,12 +265,12 @@ main(int argc, char **argv)
     /* --- ESTAE recovery ------------------------------------------ */
     __estae(ESTAE_CREATE, ufsd_recover, &ufsd);
 
-    wtof("UFSD000I UFSD %s starting", VERSION);
+    wtof("UFSD000I UFSD %s STARTING", VERSION);
 
     /* --- CSA anchor ---------------------------------------------- */
     anchor = ufsd_anchor_alloc();
     if (!anchor) {
-        wtof("UFSD092E Cannot allocate CSA anchor");
+        wtof("UFSD092E CANNOT ALLOCATE CSA ANCHOR");
         return 8;
     }
     ufsd.anchor = anchor;
@@ -293,14 +293,14 @@ main(int argc, char **argv)
         }
     }
 
-    wtof("UFSD030I CSA allocated: Anchor=%08X", (unsigned)anchor);
-    wtof("UFSD031I   Request Pool: %u blocks, %uK",
+    wtof("UFSD030I CSA ALLOCATED: ANCHOR=%08X", (unsigned)anchor);
+    wtof("UFSD031I   REQUEST POOL: %u BLOCKS, %uK",
          (unsigned)UFSD_REQ_POOL_COUNT,
          (UFSD_REQ_POOL_COUNT * (unsigned)sizeof(UFSREQ) + 511U) / 1024U);
-    wtof("UFSD032I   Buffer Pool:  %u blocks, %uK",
+    wtof("UFSD032I   BUFFER POOL:  %u BLOCKS, %uK",
          (unsigned)UFSD_BUF_POOL_COUNT,
          (UFSD_BUF_POOL_COUNT * (unsigned)sizeof(UFSBUF) + 511U) / 1024U);
-    wtof("UFSD033I   Trace Buffer: %u entries, %uK",
+    wtof("UFSD033I   TRACE BUFFER: %u ENTRIES, %uK",
          (unsigned)UFSD_TRACE_SIZE,
          (UFSD_TRACE_SIZE * (unsigned)sizeof(UFSD_TRACE) + 511U) / 1024U);
 
@@ -312,7 +312,7 @@ main(int argc, char **argv)
         ufsd.anchor = NULL;
         return 8;
     }
-    wtof("UFSD034I SSCT registered, subsystem name=UFSD");
+    wtof("UFSD034I SSCT REGISTERED, SUBSYSTEM NAME=UFSD");
 
     /* --- SSI router ------------------------------------------ */
     rc = ufsd_ssi_load(anchor);
@@ -323,7 +323,7 @@ main(int argc, char **argv)
         ufsd.anchor = NULL;
         return 8;
     }
-    wtof("UFSD035I SSI router loaded at %08X", (unsigned)anchor->ssir_lpa);
+    wtof("UFSD035I SSI ROUTER LOADED AT %08X", (unsigned)anchor->ssir_lpa);
 
     /* --- Session table (AP-1d) ----------------------------------- */
     rc = ufsd_sess_init(anchor);
@@ -335,7 +335,7 @@ main(int argc, char **argv)
         ufsd.anchor = NULL;
         return 8;
     }
-    wtof("UFSD045I Session table: %u slots", (unsigned)UFSD_MAX_SESSIONS);
+    wtof("UFSD045I SESSION TABLE: %u SLOTS", (unsigned)UFSD_MAX_SESSIONS);
 
     /* --- Global file table (AP-1e) --------------------------------- */
     rc = ufsd_gft_init(anchor);
@@ -348,7 +348,7 @@ main(int argc, char **argv)
         ufsd.anchor = NULL;
         return 8;
     }
-    wtof("UFSD047I Global file table: %u slots", (unsigned)UFSD_MAX_GFILES);
+    wtof("UFSD047I GLOBAL FILE TABLE: %u SLOTS", (unsigned)UFSD_MAX_GFILES);
 
     /* --- UFS disk init (AP-1d Step 2) ----------------------------- */
     rc = ufsd_ufs_init(&ufsd);
@@ -364,8 +364,8 @@ main(int argc, char **argv)
              (UFSD_BUF_POOL_COUNT * (unsigned)sizeof(UFSBUF)) +
              (UFSD_TRACE_SIZE * (unsigned)sizeof(UFSD_TRACE)) +
              (unsigned)sizeof(UFSD_ANCHOR) + 1023U) / 1024U;
-        wtof("UFSD001I UFSD %s ready -- %u disks, %uK CSA, "
-             "%u sessions, %u files",
+        wtof("UFSD001I UFSD %s READY -- %u DISKS, %uK CSA, "
+             "%u SESSIONS, %u FILES",
              VERSION, ufsd.ndisks, csa_kb,
              (unsigned)UFSD_MAX_SESSIONS, (unsigned)UFSD_MAX_GFILES);
     }

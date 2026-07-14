@@ -79,7 +79,7 @@ ufsd_trace_dump(UFSD_ANCHOR *anchor)
     unsigned    count;
 
     if (!anchor || !anchor->trace_buf) {
-        wtof("UFSD080W TRACE DUMP: trace buffer not available");
+        wtof("UFSD080W TRACE DUMP: TRACE BUFFER NOT AVAILABLE");
         return;
     }
 
@@ -91,7 +91,7 @@ ufsd_trace_dump(UFSD_ANCHOR *anchor)
         count++;
     }
 
-    wtof("UFSD080I TRACE DUMP: %u entr%s", count,
+    wtof("UFSD080I TRACE DUMP: %u ENTR%s", count,
          count == 1 ? "y" : "ies");
 
     count = 0;

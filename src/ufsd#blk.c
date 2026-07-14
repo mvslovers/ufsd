@@ -42,7 +42,7 @@ ufsd_blk_read(UFSD_DISK *disk, unsigned sector, void *buf)
     if (oscheck(&decb)) {
         if (!disk->io_error) {
             disk->io_error = 1;
-            wtof("UFSD063E I/O error on DSN=%s block=%u (read)",
+            wtof("UFSD063E I/O ERROR ON DSN=%s BLOCK=%u (READ)",
                  disk->dsn, sector);
         }
         return UFSD_RC_IO;
@@ -71,7 +71,7 @@ ufsd_blk_write(UFSD_DISK *disk, unsigned sector, void *buf)
     if (oscheck(&decb)) {
         if (!disk->io_error) {
             disk->io_error = 1;
-            wtof("UFSD063E I/O error on DSN=%s block=%u (write)",
+            wtof("UFSD063E I/O ERROR ON DSN=%s BLOCK=%u (WRITE)",
                  disk->dsn, sector);
         }
         return UFSD_RC_IO;

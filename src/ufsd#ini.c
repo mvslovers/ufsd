@@ -111,11 +111,11 @@ ufsd_dynalloc(const char *ddname, const char *dsname, unsigned mode)
     if (rc != 0) {
         msg = s99_errmsg((unsigned short)rb.error);
         if (msg)
-            wtof("UFSD120E DYNALLOC failed for DSN=%s "
+            wtof("UFSD120E DYNALLOC FAILED FOR DSN=%s "
                  "(S99ERR=%04X: %s)", dsname,
                  (unsigned)rb.error, msg);
         else
-            wtof("UFSD120E DYNALLOC failed for DSN=%s "
+            wtof("UFSD120E DYNALLOC FAILED FOR DSN=%s "
                  "(S99ERR=%04X)", dsname,
                  (unsigned)rb.error);
 
@@ -127,8 +127,8 @@ ufsd_dynalloc(const char *ddname, const char *dsname, unsigned mode)
     return 0;
 
 bad_setup:
-    wtof("UFSD120E DYNALLOC failed for DSN=%s "
-         "(text unit build error)", dsname);
+    wtof("UFSD120E DYNALLOC FAILED FOR DSN=%s "
+         "(TEXT UNIT BUILD ERROR)", dsname);
     if (txt) FreeTXT99Array(&txt);
     return 8;
 }
@@ -154,7 +154,7 @@ open_disk(const char *ddname)
 
     disk = (UFSD_DISK *)calloc(1, sizeof(UFSD_DISK));
     if (!disk) {
-        wtof("UFSD042E Cannot allocate disk handle for %s", ddname);
+        wtof("UFSD042E CANNOT ALLOCATE DISK HANDLE FOR %s", ddname);
         return NULL;
     }
 
@@ -165,7 +165,7 @@ open_disk(const char *ddname)
     /* Allocate BDAM DCB */
     dcb = osddcb(disk->ddname);
     if (!dcb) {
-        wtof("UFSD042E Cannot allocate DCB for %s", disk->ddname);
+        wtof("UFSD042E CANNOT ALLOCATE DCB FOR %s", disk->ddname);
         free(disk);
         return NULL;
     }
@@ -187,7 +187,7 @@ open_disk(const char *ddname)
 
     /* Open for BDAM UPDATE access (read + write) */
     if (osdopen(dcb, 0)) {
-        wtof("UFSD043E Cannot open %s", disk->ddname);
+        wtof("UFSD043E CANNOT OPEN %s", disk->ddname);
         free(dcb);
         free(disk);
         return NULL;
@@ -219,7 +219,7 @@ open_disk(const char *ddname)
         boot = (UFSBOOT_HDR *)buf;
         if (boot->type != (unsigned short)UFSD_DISK_TYPE_UFS ||
             (unsigned)(boot->type + boot->check) != 0xFFFFU) {
-            wtof("UFSD044E %s: not a valid UFS disk (type=%04X)",
+            wtof("UFSD044E %s: NOT A VALID UFS DISK (TYPE=%04X)",
                  disk->ddname, (unsigned)boot->type);
             free(buf);
             close_disk(disk);
@@ -415,11 +415,11 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
     if (!stc || !dsname || !mountpath) return 8;
 
     if (mountpath[0] != '/') {
-        wtof("UFSD065E MOUNT: path must be absolute");
+        wtof("UFSD065E MOUNT: PATH MUST BE ABSOLUTE");
         return 8;
     }
     if (stc->ndisks >= (unsigned)UFSD_MAX_DISKS) {
-        wtof("UFSD061E MOUNT: disk table full (%u slots)",
+        wtof("UFSD061E MOUNT: DISK TABLE FULL (%u SLOTS)",
              (unsigned)UFSD_MAX_DISKS);
         return 8;
     }
@@ -428,7 +428,7 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
     for (i = 0; i < stc->ndisks; i++) {
         if (stc->disks[i] &&
             strcmp(stc->disks[i]->mountpath, mountpath) == 0) {
-            wtof("UFSD067E MOUNT: %s already mounted", mountpath);
+            wtof("UFSD067E MOUNT: %s ALREADY MOUNTED", mountpath);
             return 8;
         }
     }
@@ -449,7 +449,7 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
 
     /* Read and validate superblock */
     if (ufsd_sb_read(disk) != UFSD_RC_OK) {
-        wtof("UFSD124E Superblock read/validation failed for DSN=%s",
+        wtof("UFSD124E SUPERBLOCK READ/VALIDATION FAILED FOR DSN=%s",
              disk->dsn);
         close_disk(disk);
         __dsfree(ddname);
@@ -476,12 +476,12 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
     stc->disks[stc->ndisks++] = disk;
 
     if (disk->mount_owner[0])
-        wtof("UFSD060I Mounted %s on %s (%s, OWNER=%s)",
+        wtof("UFSD060I MOUNTED %s ON %s (%s, OWNER=%s)",
              disk->dsn, disk->mountpath,
              mode == UFSD_MOUNT_RW ? "RW" : "RO",
              disk->mount_owner);
     else
-        wtof("UFSD060I Mounted %s on %s (%s)",
+        wtof("UFSD060I MOUNTED %s ON %s (%s)",
              disk->dsn, disk->mountpath,
              mode == UFSD_MOUNT_RW ? "RW" : "RO");
 
@@ -556,7 +556,7 @@ ufsd_ufs_init(UFSD_STC *stc)
 
     rc = ufsd_cfg_read(&cfg);
     if (rc != 0) {
-        wtof("UFSD061E Parmlib (DD:UFSDPRM) not found -- shutting down");
+        wtof("UFSD061E PARMLIB (DD:UFSDPRM) NOT FOUND -- SHUTTING DOWN");
         return 8;
     }
 
@@ -566,7 +566,7 @@ ufsd_ufs_init(UFSD_STC *stc)
     rc = ufsd_disk_mount_dyn(stc, cfg.root_dsname, "/",
                              UFSD_MOUNT_RW, "");
     if (rc != 0) {
-        wtof("UFSD061E Cannot mount root filesystem -- shutting down");
+        wtof("UFSD061E CANNOT MOUNT ROOT FILESYSTEM -- SHUTTING DOWN");
         return 8;
     }
 
@@ -610,26 +610,26 @@ ufsd_ufs_init(UFSD_STC *stc)
         pdisk->mount_mode = saved_mode;
 
         if (rc != UFSD_RC_OK && rc != UFSD_RC_EXIST)
-            wtof("UFSD122W Cannot create mount point %s (rc=%d)",
+            wtof("UFSD122W CANNOT CREATE MOUNT POINT %s (RC=%d)",
                  m->path, rc);
 
         /* Mount the child filesystem */
         rc = ufsd_disk_mount_dyn(stc, m->dsname, m->path,
                                  m->mode, m->owner);
         if (rc != 0)
-            wtof("UFSD123W Cannot mount DSN=%s on %s",
+            wtof("UFSD123W CANNOT MOUNT DSN=%s ON %s",
                  m->dsname, m->path);
     }
 
     /* Root is now RO for clients — all mountpoints are created */
     root->mount_mode = UFSD_MOUNT_RO;
 
-    wtof("UFSD040I %u filesystem(s) mounted", stc->ndisks);
+    wtof("UFSD040I %u FILESYSTEM(S) MOUNTED", stc->ndisks);
     for (i = 0; i < stc->ndisks; i++) {
         UFSD_DISK *d = stc->disks[i];
         if (!d) continue;
         if (d->flags & UFSD_DISK_ROOT)
-            wtof("UFSD041I   %s DSN=%s (root, %s)",
+            wtof("UFSD041I   %s DSN=%s (ROOT, %s)",
                  d->mountpath, d->dsn,
                  d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO");
         else if (d->mount_owner[0])
@@ -668,10 +668,10 @@ ufsd_ufs_term(UFSD_STC *stc)
         if ((d->flags & UFSD_DISK_OPEN) &&
             !(d->flags & UFSD_DISK_RDONLY)) {
             if (ufsd_sb_write(d))
-                wtof("UFSD130W Superblock writeback failed for DSN=%s",
+                wtof("UFSD130W SUPERBLOCK WRITEBACK FAILED FOR DSN=%s",
                      d->dsn);
             else
-                wtof("UFSD131I Superblock written for DSN=%s", d->dsn);
+                wtof("UFSD131I SUPERBLOCK WRITTEN FOR DSN=%s", d->dsn);
         }
         /* Save ddname before close_disk frees the struct */
         memcpy(ddname, d->ddname, 9);
@@ -701,7 +701,7 @@ ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
     if (!stc || !mountpath) return 8;
 
     if (mountpath[0] == '/' && mountpath[1] == '\0') {
-        wtof("UFSD132E UNMOUNT: cannot unmount root filesystem");
+        wtof("UFSD132E UNMOUNT: CANNOT UNMOUNT ROOT FILESYSTEM");
         return 8;
     }
 
@@ -715,21 +715,21 @@ ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
     }
 
     if (found < 0) {
-        wtof("UFSD133E UNMOUNT: no filesystem mounted on %s", mountpath);
+        wtof("UFSD133E UNMOUNT: NO FILESYSTEM MOUNTED ON %s", mountpath);
         return 8;
     }
 
     disk = stc->disks[found];
-    wtof("UFSD064I Unmounting %s from %s", disk->dsn, disk->mountpath);
+    wtof("UFSD064I UNMOUNTING %s FROM %s", disk->dsn, disk->mountpath);
 
     /* Write superblock back to disk for RW filesystems */
     if ((disk->flags & UFSD_DISK_OPEN) &&
         !(disk->flags & UFSD_DISK_RDONLY)) {
         if (ufsd_sb_write(disk))
-            wtof("UFSD130W Superblock writeback failed for DSN=%s",
+            wtof("UFSD130W SUPERBLOCK WRITEBACK FAILED FOR DSN=%s",
                  disk->dsn);
         else
-            wtof("UFSD131I Superblock written for DSN=%s", disk->dsn);
+            wtof("UFSD131I SUPERBLOCK WRITTEN FOR DSN=%s", disk->dsn);
     }
 
     /* Save ddname, close, DYNFREE if applicable */
