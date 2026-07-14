@@ -92,7 +92,6 @@ UFSD is part of the [mvslovers](https://github.com/mvslovers) open-source ecosys
 
 | Project | Description |
 |---------|-------------|
-| [crent370](https://github.com/mvslovers/crent370) | C runtime library for MVS 3.8j |
 | [ufsd](https://github.com/mvslovers/ufsd) | Cross-address-space UFS filesystem daemon (this project) |
 | [ufsd-utils](https://github.com/mvslovers/ufsd-utils) | Host-side CLI for creating and managing UFS disk images |
 | [httpd](https://github.com/mvslovers/httpd) | Multi-threaded HTTP/1.1 server |
