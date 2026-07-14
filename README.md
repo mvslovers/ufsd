@@ -1,3 +1,4 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mvslovers/mbt)
 # UFSD
 
 **UFSD** is a cross-address-space virtual filesystem daemon for IBM MVS 3.8j, running on Hercules-emulated mainframe systems.
