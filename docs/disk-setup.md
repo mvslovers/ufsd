@@ -48,10 +48,10 @@ Options:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--size` | — | Image size (e.g. `1M`, `500K`, `50M`) |
+| `--size` | `10M` | Image size (e.g. `1M`, `500K`, `50M`) |
 | `--blksize` | 4096 | Block size (512, 1024, 2048, 4096, 8192) |
 | `--inodes` | 10% | Percentage of blocks reserved for inodes |
-| `--owner` | `$USER` | Root directory owner (RACF userid) |
+| `--owner` | `$USER` → `HERC01` | Root directory owner (RACF userid); uppercased `$USER`, or `HERC01` if unset |
 | `--group` | `ADMIN` | Root directory group |
 
 ## Step 2: Populate Content
@@ -69,7 +69,15 @@ ufsd-utils cp -r ./wwwroot/ webroot.img:/
 ufsd-utils mkdir webroot.img:/css
 ```
 
-Files are automatically converted from ASCII to EBCDIC (IBM-1047). Binary files are copied as-is when using `--binary`.
+Text files are converted from ASCII to EBCDIC (IBM-1047), but the conversion is auto-detected from the file **extension** against a fixed allowlist (`.html`, `.htm`, `.txt`, `.css`, `.js`, `.xml`, `.json`, `.csv`, `.sh`, `.c`, `.h`, `.s`, `.md`, `.cfg`, `.conf`, `.toml`, `.yaml`, `.yml`, `.ini`, `.log`, `.jcl`, `.proc`). A file whose extension is **not** on the list (for example `.tmpl`, or a file with no extension) is copied as-is — still ASCII — and will be unreadable on MVS. Override the auto-detection explicitly:
+
+- `-t` forces text conversion (ASCII → EBCDIC), regardless of extension.
+- `-b` forces binary (copy the bytes verbatim, no conversion).
+
+```sh
+ufsd-utils cp -t config.tmpl webroot.img:/config.tmpl   # force ASCII -> EBCDIC
+ufsd-utils cp -b logo.png     webroot.img:/logo.png      # copy bytes verbatim
+```
 
 Verify the contents:
 
@@ -103,7 +111,7 @@ The upload command uses the zOSMF REST API. Authentication is configured via env
 
 ```sh
 export MVS_HOST=192.168.1.x
-export MVS_PORT=8080
+export MVS_PORT=1080
 export MVS_USER=IBMUSER
 export MVS_PASS=SYS1
 ```
@@ -121,13 +129,13 @@ ufsd-utils upload webroot.img --dsn HTTPD.WEBROOT --replace
 Add the dataset to your Parmlib member (`UFSDPRMx`):
 
 ```
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)      MODE(RO)
 ```
 
 If UFSD is already running, mount dynamically without restart:
 
 ```
-/F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/www,MODE=RW
+/F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/wwwroot,MODE=RO
 ```
 
 ## MVS-Side Dataset Allocation
@@ -139,7 +147,7 @@ If you prefer to allocate the dataset manually on MVS (instead of using `ufsd-ut
 | DSORG | PS | Physical Sequential |
 | RECFM | U | Undefined record format |
 | BLKSIZE | 4096 | Must match the image's block size |
-| Space | Tracks or Cylinders | Calculated from image size |
+| Space | Blocks | Number of blocks in the image (matches the ISPF panel below) |
 
 **ISPF 3.2 panel values:**
 

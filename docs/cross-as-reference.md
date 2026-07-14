@@ -20,10 +20,55 @@ reference for cross-AS mechanics on MVS 3.8j under Hercules.
 | Operation | Mechanism | State | Notes |
 |-----------|-----------|-------|-------|
 | ufsdssir wakes STC | `__xmpost(server_ascb, &server_ecb, 0)` | supervisor | before `__prob` |
-| ufsdssir WAITs for reply | `WAIT ECB=(&local_ecb)` | problem | key-8 local ECB |
+| ufsdssir WAITs for reply | `ecb_timed_wait(&local_ecb, …)` retry loop | problem | key-8 local ECB; liveness-checked (see below) |
 | STC wakes client | `__xmpost(client_ascb, client_ecb_ptr, 0)` | supervisor | inside key-0 window |
 | client_ecb location | local stack var in ufsdssir | key-8 | **NOT** in CSA |
 | server_ecb location | `anchor->server_ecb` in CSA | key-0 | STC WAITs in supervisor |
+
+---
+
+## Reply-Wait Liveness and In-Flight Drain (post-AP-1c)
+
+The plain blocking `WAIT` above was later replaced by a timed,
+liveness-checked wait so a client parked in `ufsdssir` cannot hang
+forever if the STC shuts down or abends while its request is
+outstanding. The cross-AS state/key rules are unchanged — only the WAIT
+mechanism evolved (`src/ufsd#ssi.c`).
+
+**Timed wait loop.** Instead of one blocking `WAIT`, the router loops on
+`ecb_timed_wait(ecbp, UFSD_WAIT_INTERVAL, UFSD_TIMEOUT_CODE)`, where
+`UFSD_WAIT_INTERVAL` = 500 hundredths (5 s) and `UFSD_TIMEOUT_CODE` =
+X'0FFFF' is a sentinel post code, chosen distinct from the STC's normal
+reply (post code 0). A normal reply
+(`(*ecbp & ECB_VALUE_MASK) != UFSD_TIMEOUT_CODE`) breaks the loop; a timer
+pop drives the liveness check. Still key-8 local ECB, still in problem
+state — only the SVC 1 `WAIT` became a timed `STIMER`+`WAIT`.
+
+**Liveness check on timeout.** The router revalidates the anchor eye
+catcher (`memcmp(anchor->eye, "UFSDANCR", 8)`) and re-tests
+`UFSD_ANCHOR_ACTIVE`. Freed CSA (SP=241) is reused, not zeroed, so the
+flag alone cannot be trusted after an emergency shutdown — a stale high
+bit would loop forever on an ECB nobody will post, so the eye catcher is
+revalidated first.
+- Eye valid **and** ACTIVE set: server alive, no reply yet — clear the
+  ECB and re-issue the timed wait.
+- Server gone or quiescing: return `UFSD_RC_CORRUPT`. If the eye catcher
+  is still valid (a clean shutdown retains the anchor), give the
+  in-flight count back first — open a dedicated key-0 window and
+  `__udec(&anchor->inflight)` — so the drain can complete. If the eye
+  catcher is gone (anchor already freed by the emergency path / UFSDCLNP),
+  the counter no longer exists: do NOT write to it.
+
+**In-flight drain protocol** (`anchor->inflight`, key-0 CSA). Every
+client executing inside `ufsdssir` is counted: `__uinc(&anchor->inflight)`
+right after `free_pop` (inside the entry key-0 window), and
+`__udec(&anchor->inflight)` on every exit path from the router. Shutdown
+(`ufsd_shutdown`) and the emergency cleanup task (UFSDCLNP) clear
+`UFSD_ANCHOR_ACTIVE`, then drain `inflight` to zero before freeing the
+SSI router module and the CSA pools. This quiesces in-flight clients so
+CSA is never freed out from under a request still copying its result. A
+drain that times out means "retain CSA" rather than risk freeing storage
+a client may still touch.
 
 ---
 
@@ -37,7 +82,7 @@ client's own ECB via inline `WAIT ECB=(%0)`.
 
 ## Abend 2: S0C4 / INTC=0x0010 — segment translation at ufsdssir entry
 
-**Root cause:** crent370's `iefssreq` passes R1 = SSOB address directly (MVS SSI
+**Root cause:** libc370's `iefssreq` passes R1 = SSOB address directly (MVS SSI
 convention). C calling convention expects R1 = pointer to parameter list.
 Declaring `ufsdssir(SSOB *ssob)` caused dereference of raw SSOB as C plist.
 
@@ -94,4 +139,4 @@ MVS routes system-internal SSI calls (job-step notifications) through ufsdssir
 which rejects them. After `/P UFSD` (deregisters SSCT), `S UFSD` works again.
 
 If UFSD abends without cleanup, SSCT remains registered until IPL. ESTAE exit
-is mandatory (see concept.md section 4.8).
+is mandatory (see concept.md, "SSI Router").

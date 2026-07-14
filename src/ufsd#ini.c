@@ -538,7 +538,7 @@ find_parent_disk(UFSD_STC *stc, const char *path)
 ** ufsd_ufs_init
 **
 ** AP-3a: Read parmlib configuration, mount root filesystem
-** (auto-create if missing), create mount-point directories,
+** (must already exist; not auto-created), create mount-point directories,
 ** then mount all configured filesystems.
 **
 ** Parmlib (DD:UFSDPRM) is required.  Returns 8 if missing.

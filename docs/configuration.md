@@ -8,7 +8,7 @@ UFSD is configured through a Parmlib member, referenced by the `UFSDPRM` DD card
 /* Lines between slash-star are comments */
 
 ROOT     DSN(UFSD.ROOT)
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)      MODE(RO)
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
 ```
 
@@ -57,7 +57,7 @@ UFSD enforces access control at three levels, applied in order:
 
 **Level 3 — RACF/RAKF per-file permissions.** Not implemented. There are no per-file or per-inode permission checks. The `mode` bits stored in inodes are informational only and not enforced by UFSD. Full RACF/RAKF integration with per-operation RACHECK is planned for a future release.
 
-The check is applied in `do_fopen` (write mode), `do_mkdir`, `do_rmdir`, `do_remove`, and `do_fwrite` — five call sites, one helper function:
+The check is applied in `do_fopen` (write mode), `do_mkdir`, `do_rmdir`, `do_remove`, and `do_fwrite` — six call sites (five functions; `do_fopen` calls the check twice), one helper function:
 
 ```c
 int ufsd_check_write(UFSD_DISK *disk, UFSD_SESSION *sess);
@@ -70,7 +70,7 @@ Each BDAM dataset is mounted on a path in a unified directory tree:
 
 ```
 /                        UFSD.ROOT              RO   (root filesystem)
-/www                     HTTPD.WEBROOT          RW   (web content)
+/wwwroot                 HTTPD.WEBROOT          RO   (web content)
 /u/ibmuser               IBMUSER.UFSHOME        RW   OWNER(IBMUSER)
 /u/mvsce01               MVSCE01.UFSHOME        RW   OWNER(MVSCE01)
 /tmp                     UFSD.SCRATCH           RW   (shared scratch)
@@ -90,7 +90,7 @@ ROOT     DSN(UFSD.ROOT)
 
 ```
 ROOT     DSN(UFSD.ROOT)
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)      MODE(RO)
 MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 ```
 
@@ -98,7 +98,7 @@ MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 
 ```
 ROOT     DSN(UFSD.ROOT)
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)      MODE(RO)
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
 MOUNT    DSN(MVSCE01.UFSHOME)    PATH(/u/mvsce01)    MODE(RW) OWNER(MVSCE01)
 MOUNT    DSN(MVSCE02.UFSHOME)    PATH(/u/mvsce02)    MODE(RW) OWNER(MVSCE02)
@@ -147,15 +147,17 @@ Dynamic mounts are not persisted — they are lost on UFSD restart. To make them
 | `SESSIONS PRUNE` | Release sessions for terminated address spaces (stale ASID detection via ASVT walk) |
 | `SHUTDOWN` | Orderly shutdown (same as `/P UFSD`) |
 
+A normal `SHUTDOWN` or `/P UFSD` frees CSA cleanly. After an abnormal (abend) shutdown, CSA may be retained — run `UFSDCLNP` before restarting. See `docs/recovery.md`.
+
 ### Examples
 
 ```
 F UFSD,STATS
 F UFSD,SESSIONS
-F UFSD,MOUNT DSN=HTTPD.WEBROOT,PATH=/www,MODE=RW
+F UFSD,MOUNT DSN=PROJECT.DATA,PATH=/proj,MODE=RW
 F UFSD,MOUNT DSN=IBMUSER.UFSHOME,PATH=/u/ibmuser,MODE=RW,OWNER=IBMUSER
 F UFSD,MOUNT LIST
-F UFSD,UNMOUNT PATH=/www
+F UFSD,UNMOUNT PATH=/proj
 F UFSD,TRACE ON
 F UFSD,TRACE DUMP
 F UFSD,REBUILD
@@ -171,8 +173,8 @@ The STC procedure is provided in `samplib/ufsd`. Copy it to `SYS2.PROCLIB(UFSD)`
 //            D='SYS2.PARMLIB'
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
 //STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
+//UFSDPRM  DD  DISP=SHR,DSN=&D(&M),FREE=CLOSE
 //SYSUDUMP DD  SYSOUT=*
-//UFSDPRM  DD  DSN=&D(&M),DISP=SHR,FREE=CLOSE
 ```
 
 ### Symbolic Parameters
