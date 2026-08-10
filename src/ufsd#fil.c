@@ -282,8 +282,19 @@ blk_alloc_at(UFSD_DISK *disk, UFSD_DINODE *dino,
 }
 
 /* Free all data blocks of an inode, including indirect blocks.
-** Does NOT free the inode itself. */
-static void
+** Does NOT free the inode itself.
+**
+** Returns UFSD_RC_OK, or UFSD_RC_IO when the indirect block cannot be
+** read.  In that case addr[UFSD_NADDR_SINDIRECT] is deliberately left
+** intact and the indirect block itself is not freed: the data blocks
+** behind it stay reachable from the inode, so a MODIFY REBUILD scan
+** still counts them as used.  Freeing the indirect block and zeroing
+** the pointer is what would make them unreachable for good.
+**
+** Callers report the failure instead of continuing.  The direct blocks
+** freed before the failure are already in the superblock cache, and the
+** disk is left in a state MODIFY REBUILD reconciles. */
+static int
 blk_free_all(UFSD_DISK *disk, UFSD_DINODE *dino)
 {
     unsigned  i;
@@ -302,21 +313,27 @@ blk_free_all(UFSD_DISK *disk, UFSD_DINODE *dino)
     /* Free single indirect block and its data blocks */
     if (dino->addr[UFSD_NADDR_SINDIRECT] != 0) {
         ibuf = (char *)malloc(disk->blksize);
-        if (ibuf) {
-            if (ufsd_blk_read(disk, dino->addr[UFSD_NADDR_SINDIRECT], ibuf)
-                == UFSD_RC_OK) {
-                ind  = (unsigned *)ibuf;
-                nind = (unsigned)disk->blksize / 4U;
-                for (i = 0; i < nind; i++) {
-                    if (ind[i] != 0)
-                        ufsd_sb_free_block(disk, ind[i]);
-                }
-            }
+        if (!ibuf) return UFSD_RC_IO;
+
+        if (ufsd_blk_read(disk, dino->addr[UFSD_NADDR_SINDIRECT], ibuf)
+            != UFSD_RC_OK) {
             free(ibuf);
+            return UFSD_RC_IO;
         }
+
+        ind  = (unsigned *)ibuf;
+        nind = (unsigned)disk->blksize / 4U;
+        for (i = 0; i < nind; i++) {
+            if (ind[i] != 0)
+                ufsd_sb_free_block(disk, ind[i]);
+        }
+        free(ibuf);
+
         ufsd_sb_free_block(disk, dino->addr[UFSD_NADDR_SINDIRECT]);
         dino->addr[UFSD_NADDR_SINDIRECT] = 0;
     }
+
+    return UFSD_RC_OK;
 }
 
 /* ============================================================
@@ -528,7 +545,9 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
     rc = ufsd_dir_remove(disk, parent_ino, dir_name);
     if (rc != UFSD_RC_OK) return rc;
 
-    blk_free_all(disk, &dino);
+    rc = blk_free_all(disk, &dino);
+    if (rc != UFSD_RC_OK) return rc;
+
     ufsd_sb_free_inode(disk, dir_ino);
 
     return ufsd_sb_write(disk);
@@ -637,7 +656,13 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
 
     if (dino.nlink > 0) dino.nlink--;
     if (dino.nlink == 0) {
-        blk_free_all(disk, &dino);
+        /* The directory entry is already gone at this point.  Report the
+        ** failure anyway rather than claiming a clean unlink: the blocks
+        ** we could not release stay attributed to the inode until a
+        ** MODIFY REBUILD runs. */
+        rc = blk_free_all(disk, &dino);
+        if (rc != UFSD_RC_OK) return rc;
+
         ufsd_sb_free_inode(disk, file_ino);
     } else {
         ufsd_ino_write(disk, file_ino, &dino);
@@ -703,7 +728,11 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             if ((dino.mode & UFSD_IFMT) == UFSD_IFDIR) return UFSD_RC_ISDIR;
             wrc = ufsd_check_write(disk, sess);
             if (wrc != UFSD_RC_OK) return wrc;
-            blk_free_all(disk, &dino);
+            /* Fail before the inode is stamped as empty: on error the
+            ** file keeps both its blocks and its size. */
+            rc = blk_free_all(disk, &dino);
+            if (rc != UFSD_RC_OK) return rc;
+
             dino.filesize = 0;
             ufsd_stamp(&dino);
             if (ufsd_ino_write(disk, file_ino, &dino) != UFSD_RC_OK)

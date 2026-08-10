@@ -353,6 +353,8 @@ static int
 sb_scan_refill(UFSD_DISK *disk)
 {
     unsigned char *used;
+    char          *ibuf;
+    unsigned      *ind;
     unsigned       bitmap_bytes;
     unsigned       vol;
     unsigned       ipb;
@@ -370,6 +372,17 @@ sb_scan_refill(UFSD_DISK *disk)
     bitmap_bytes = (vol + 7U) / 8U;
     used = (unsigned char *)calloc(1U, bitmap_bytes);
     if (!used) return UFSD_RC_IO;
+
+    /* One indirect block buffer for the whole scan instead of one per
+    ** inode: fewer allocations, and no chance of running out of storage
+    ** half way through.  Both buffers are hard requirements — a scan that
+    ** cannot read an indirect block leaves the blocks it points to
+    ** unmarked, and those blocks then get handed out as free. */
+    ibuf = (char *)malloc(disk->blksize);
+    if (!ibuf) {
+        free(used);
+        return UFSD_RC_IO;
+    }
 
     /* Mark metadata blocks as used */
     /* Block 0 (boot) and block 1 (superblock) */
@@ -404,23 +417,24 @@ sb_scan_refill(UFSD_DISK *disk)
         /* Single indirect block + its entries */
         if (dino.addr[UFSD_NADDR_DIRECT] != 0
             && dino.addr[UFSD_NADDR_DIRECT] < vol) {
-            char     *ibuf;
-            unsigned *ind;
-
             blk = dino.addr[UFSD_NADDR_DIRECT];
             used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
 
-            ibuf = (char *)malloc(disk->blksize);
-            if (ibuf) {
-                if (ufsd_blk_read(disk, blk, ibuf) == UFSD_RC_OK) {
-                    ind = (unsigned *)ibuf;
-                    for (i = 0; i < (unsigned)disk->blksize / 4U; i++) {
-                        if (ind[i] != 0 && ind[i] < vol)
-                            used[ind[i] / 8U] |=
-                                (unsigned char)(1U << (ind[i] % 8U));
-                    }
-                }
+            /* No WTO here: alloc_block runs this scan on every write once
+            ** the cache is empty, and the cache stays empty after a
+            ** failure — a message would repeat per request.  The operator
+            ** path reports it once (UFSD075E from MODIFY REBUILD). */
+            if (ufsd_blk_read(disk, blk, ibuf) != UFSD_RC_OK) {
                 free(ibuf);
+                free(used);
+                return UFSD_RC_IO;
+            }
+
+            ind = (unsigned *)ibuf;
+            for (i = 0; i < (unsigned)disk->blksize / 4U; i++) {
+                if (ind[i] != 0 && ind[i] < vol)
+                    used[ind[i] / 8U] |=
+                        (unsigned char)(1U << (ind[i] % 8U));
             }
         }
     }
@@ -443,6 +457,7 @@ sb_scan_refill(UFSD_DISK *disk)
     ** (Not persisted to disk — only valid for this session.) */
     disk->sb.unused3 = i;
 
+    free(ibuf);
     free(used);
 
     if (found > 0) {
@@ -471,7 +486,12 @@ ufsd_sb_rebuild_free(UFSD_DISK *disk)
 
     if (!disk) return UFSD_RC_IO;
 
-    /* Rebuild free block cache */
+    /* Rebuild free block cache.  When the scan gives up it does so before
+    ** touching the cache, which leaves nfreeblock at the 0 set here: the
+    ** in-memory cache is empty and nothing is written to disk, so the
+    ** superblock on the volume keeps the map it had.  Allocations fail
+    ** with NOSPACE until the next successful scan — safe, and far better
+    ** than persisting a map built from a partial scan. */
     disk->sb.nfreeblock = 0;
     disk->sb.unused3    = 0;  /* reset scan position */
     rc = sb_scan_refill(disk);

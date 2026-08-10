@@ -209,24 +209,32 @@ open_disk(const char *ddname)
     if (disk->blksize == 0)
         disk->blksize = 4096;       /* safe fallback */
 
-    /* Read and validate boot block (sector 0) */
+    /* Read and validate boot block (sector 0).
+    ** Without the buffer the magic check cannot run, so refuse the mount:
+    ** returning the handle anyway would mount an unverified dataset and
+    ** then write UFS metadata into it. */
     buf = (char *)calloc(1, (unsigned)disk->blksize);
-    if (buf) {
-        memset(&decb, 0, sizeof(decb));
-        osdread(&decb, dcb, buf, (int)disk->blksize, 0);
-        oscheck(&decb);
-
-        boot = (UFSBOOT_HDR *)buf;
-        if (boot->type != (unsigned short)UFSD_DISK_TYPE_UFS ||
-            (unsigned)(boot->type + boot->check) != 0xFFFFU) {
-            wtof("UFSD044E %s: NOT A VALID UFS DISK (TYPE=%04X)",
-                 disk->ddname, (unsigned)boot->type);
-            free(buf);
-            close_disk(disk);
-            return NULL;
-        }
-        free(buf);
+    if (!buf) {
+        wtof("UFSD049E %s: NO STORAGE FOR BOOT BLOCK (%u BYTES)",
+             disk->ddname, (unsigned)disk->blksize);
+        close_disk(disk);
+        return NULL;
     }
+
+    memset(&decb, 0, sizeof(decb));
+    osdread(&decb, dcb, buf, (int)disk->blksize, 0);
+    oscheck(&decb);
+
+    boot = (UFSBOOT_HDR *)buf;
+    if (boot->type != (unsigned short)UFSD_DISK_TYPE_UFS ||
+        (unsigned)(boot->type + boot->check) != 0xFFFFU) {
+        wtof("UFSD044E %s: NOT A VALID UFS DISK (TYPE=%04X)",
+             disk->ddname, (unsigned)boot->type);
+        free(buf);
+        close_disk(disk);
+        return NULL;
+    }
+    free(buf);
 
     return disk;
 }
