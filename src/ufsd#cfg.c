@@ -2,13 +2,12 @@
 **
 ** AP-3a: Read and parse SYS1.PARMLIB(UFSDPRMx) via DD:UFSDPRM.
 **
-** Config syntax (comments delimited by slash-star):
-**   ROOT   DSN(SYS1.UFSD.ROOT) SIZE(1M) BLKSIZE(4096)
+** Config syntax (comments delimited by slash-star, or a leading '#'):
+**   ROOT   DSN(SYS1.UFSD.ROOT) BLKSIZE(4096)
 **   MOUNT  DSN(HTTPD.WEBROOT)  PATH(/www) MODE(RO)
 **   MOUNT  DSN(USER.HOME)      PATH(/u/USER) MODE(RW) OWNER(USER)
 **
 ** ufsd_cfg_read   read config from DD:UFSDPRM
-** ufsd_cfg_dump   WTO summary of parsed config
 */
 
 #include "ufsd.h"
@@ -143,6 +142,13 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
         while (isspace((unsigned char)*p)) p++;
         if (*p == '\0') continue;
 
+        /* Full-line comment: '#' as the first non-blank character.
+        ** Deliberately NOT honoured anywhere else on the line: the
+        ** national characters @ # $ are legal in MVS dataset names and
+        ** qualifiers, so DSN(SYS1.MY#LIB) -- and a PATH holding a '#' --
+        ** must survive intact.  A trailing comment would truncate both. */
+        if (*p == '#') continue;
+
         /* Start of block comment */
         if (p[0] == '/' && p[1] == '*') {
             if (!strstr(p + 2, "*/"))
@@ -154,8 +160,6 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
         if (strncmp(p, "ROOT", 4) == 0 && isspace((unsigned char)p[4])) {
             if (parse_param(p, "DSN", val, sizeof(val)))
                 strncpy(cfg->root_dsname, val, 44);
-            if (parse_param(p, "SIZE", val, sizeof(val)))
-                cfg->root_size = parse_size(val);
             if (parse_param(p, "BLKSIZE", val, sizeof(val)))
                 cfg->root_blksize = parse_size(val);
             if (cfg->root_blksize == 0)
@@ -212,34 +216,4 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
     }
 
     return 0;
-}
-
-/* ============================================================
-** ufsd_cfg_dump
-**
-** WTO summary of parsed configuration.
-** ============================================================ */
-void
-ufsd_cfg_dump(const UFSD_CONFIG *cfg)
-{
-    unsigned i;
-
-    if (!cfg) return;
-
-    wtof("UFSD110I CONFIG: ROOT DSN=%s SIZE=%u BLKSIZE=%u",
-         cfg->root_dsname, cfg->root_size, cfg->root_blksize);
-
-    for (i = 0; i < cfg->nmounts; i++) {
-        const UFSD_MOUNT_CFG *m = &cfg->mounts[i];
-
-        if (m->owner[0])
-            wtof("UFSD111I CONFIG: MOUNT DSN=%s PATH=%s %s OWNER=%s",
-                 m->dsname, m->path,
-                 m->mode == UFSD_MOUNT_RW ? "RW" : "RO",
-                 m->owner);
-        else
-            wtof("UFSD111I CONFIG: MOUNT DSN=%s PATH=%s %s",
-                 m->dsname, m->path,
-                 m->mode == UFSD_MOUNT_RW ? "RW" : "RO");
-    }
 }

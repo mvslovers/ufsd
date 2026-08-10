@@ -45,15 +45,51 @@
 **   (unconditional) fallback.
 */
 
+/* Build stamp (Issue #51).  All three are injected by project.toml:
+** VERSION from the project version, COMMIT from `git rev-parse --short
+** HEAD` (with "-dirty" appended when a TRACKED file differs from HEAD),
+** COMMIT_DIRTY as the matching 0/1 flag.  The fallbacks keep a build
+** outside make -- or outside a git checkout -- compiling. */
 #ifndef VERSION
 #define VERSION "1.0.0-dev"
 #endif
+#ifndef COMMIT
+#define COMMIT "unknown"
+#endif
+#ifndef COMMIT_DIRTY
+#define COMMIT_DIRTY 0
+#endif
 
 #include "ufsd.h"
+#include <ctype.h>
 #include <string.h>
 #include <clibos.h>
-#include <clibwto.h>
 #include <clibstae.h>
+#include <clibver.h>
+#include <clibwto.h>
+
+/* upcase -- copy `src` into `dst` in upper case, NUL-terminated, writing
+** at most `n` bytes including the NUL.  Returns `dst` so a call can be
+** used directly as a wtof() argument.
+**
+** The console house style is upper case, but every build stamp arrives in
+** lower case: VERSION and COMMIT carry the project version and a hex
+** commit hash, and libc370_version() returns a whole sentence of its own
+** ("libc370 v1.0.2-dev (22b4870)").  toupper() is the libc370 one, so the
+** mapping is EBCDIC-correct -- do not hand-roll a range test here. */
+static const char *
+upcase(char *dst, unsigned n, const char *src)
+{
+    unsigned i;
+
+    if (n == 0) return dst;
+
+    for (i = 0; i + 1U < n && src[i]; i++)
+        dst[i] = (char)toupper((unsigned char)src[i]);
+    dst[i] = '\0';
+
+    return dst;
+}
 
 /* ============================================================
 ** ufsd_recover
@@ -269,6 +305,7 @@ main(int argc, char **argv)
     unsigned     *ecblist[3]; /* WAIT ECBLIST: up to 2 entries + sentinel */
     unsigned      count;
     int           rc;
+    char          vers[24];   /* VERSION, upper case -- UFSD000I + UFSD001I */
 
     (void)argc;
 
@@ -297,7 +334,24 @@ main(int argc, char **argv)
     /* --- ESTAE recovery ------------------------------------------ */
     __estae(ESTAE_CREATE, ufsd_recover, &ufsd);
 
-    wtof("UFSD000I UFSD %s STARTING", VERSION);
+    /* --- Startup banner ------------------------------------------- */
+    /* Which UFSD, built from which source, against which C runtime.  A
+    ** deploy/relink mismatch (sysroot says X, the STC runs Y) then cannot
+    ** hide, and a build carrying uncommitted changes says so instead of
+    ** passing itself off as the commit it was branched from.  The commit
+    ** buffers are scoped: they are dead the moment the banner is out. */
+    upcase(vers, sizeof(vers), VERSION);
+    {
+        char commit[24];
+        char stamp[48];
+
+        wtof("UFSD000I UFSD %s (%s) STARTING",
+             vers, upcase(commit, sizeof(commit), COMMIT));
+        wtof("UFSD005I %s", upcase(stamp, sizeof(stamp), libc370_version()));
+#if COMMIT_DIRTY
+        wtof("UFSD006W BUILT FROM A MODIFIED WORKING TREE");
+#endif
+    }
 
     /* --- Predecessor reclaim (Issue #49) -------------------------- */
     /* After an abend the ESTAE path frees nothing: SSCT, router module
@@ -421,7 +475,7 @@ main(int argc, char **argv)
              (unsigned)sizeof(UFSD_ANCHOR) + 1023U) / 1024U;
         wtof("UFSD001I UFSD %s READY -- %u DISKS, %uK CSA, "
              "%u SESSIONS, %u FILES",
-             VERSION, ufsd.ndisks, csa_kb,
+             vers, ufsd.ndisks, csa_kb,
              (unsigned)UFSD_MAX_SESSIONS, (unsigned)UFSD_MAX_GFILES);
     }
 

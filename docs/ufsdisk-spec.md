@@ -450,10 +450,11 @@ the root disk (one `ddname=NAME  path  type` entry per line).
 **UFSD (current):** UFSD does **not** read `/etc/fstab`. Mounts are
 configured in a PARMLIB member `SYS1.PARMLIB(UFSDPRMx)` (or `SYS2`, per
 the standard PARMLIB search order), read via `DD:UFSDPRM` at startup.
-The member uses keyword statements; comments are `/* … */` blocks:
+The member uses keyword statements; comments are `/* … */` blocks or a
+line starting with `#`:
 
 ```
-ROOT   DSN(UFSD.ROOT)       SIZE(1M)  BLKSIZE(4096)
+ROOT   DSN(UFSD.ROOT)       BLKSIZE(4096)
 MOUNT  DSN(HTTPD.WEBROOT)   PATH(/wwwroot) MODE(RO)
 MOUNT  DSN(USER.HOME)       PATH(/u/USER)  MODE(RW) OWNER(USER)
 ```
