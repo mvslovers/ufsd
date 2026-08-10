@@ -1,0 +1,85 @@
+//UFSFMT   JOB (ACCT),'FORMAT UFS DISK',CLASS=A,MSGCLASS=X,
+//             MSGLEVEL=(1,1)
+//*
+//* UFSFMT - Allocate and format a UFS370 filesystem on MVS
+//*
+//* Creates a disk UFSD can mount without any host-side tooling.
+//* Change MIKEG1.UFSHOME, the SPACE quantity, OWNER and GROUP to
+//* suit, then submit.
+//*
+//* ------------------------------------------------------------------
+//* Step 1 -- allocate the disk dataset.
+//*
+//* Primary extent only.  UFSFMT formats the primary extent and
+//* ignores secondary allocations, so do not specify one: those
+//* blocks would never be formatted and never be reachable.
+//*
+//* MVS rounds the allocation up to a track boundary, so the disk
+//* may end up slightly larger than requested.  At BLKSIZE=4096 a
+//* track typically holds 4 blocks on 3350, 10 on 3380 and 12 on
+//* 3390.  UFSFMT formats whatever the primary extent actually
+//* provides and reports the real count as UFSFMT26I.
+//*
+//* ------------------------------------------------------------------
+//* SPACE planning (BLKSIZE=4096, INODES=10.0)
+//*
+//*    SPACE     Raw   Inode    Max    Usable
+//*   blocks    size  blocks  files      size
+//*   ------  ------  ------  -----  --------
+//*       64   0.25M       2     62     0.23M
+//*      128   0.50M       2     62     0.48M
+//*      256   1.00M       2     62     0.98M  <- root disk
+//*      512   2.00M       2     62     1.98M
+//*     1280   5.00M       4    126     4.97M  <- user home
+//*     2560  10.00M       8    254     9.96M  <- web content
+//*     5120  20.00M      16    510    19.93M
+//*    12800  50.00M      40   1278    49.83M
+//*
+//* Up to 512 blocks the 2-block minimum for the inode list applies,
+//* so any disk of 2 MB or less holds at most 62 files no matter how
+//* much space is free.  Subdirectories consume an inode too.
+//*
+//* INODES is not a percentage of the volume: it is a percentage of
+//* the blocks that would be needed to index everything.  At
+//* BLKSIZE=4096 the default 10.0 works out to roughly one inode per
+//* 10 blocks, i.e. one file per 40 KB.
+//*
+//* Maximum file size is 4.06 MB (single indirect blocks).
+//* ------------------------------------------------------------------
+//*
+//ALLOC    EXEC PGM=IEFBR14
+//DISKFILE DD  DSN=MIKEG1.UFSHOME,DISP=(NEW,CATLG),
+//             UNIT=SYSDA,SPACE=(4096,256),
+//             DCB=(DSORG=PS,RECFM=U,BLKSIZE=4096)
+//*
+//* ------------------------------------------------------------------
+//* Step 2 -- format it as a UFS370 filesystem.
+//*
+//* The dataset must be DISP=OLD: UFSFMT refuses a DISP=SHR
+//* allocation rather than wipe a dataset someone else may be
+//* reading.  An existing UFS370 filesystem is not overwritten
+//* unless FORCE is given.
+//*
+//* SYSIN is optional -- omit it or use DUMMY to take every default
+//* (BLKSIZE 4096, INODES 10.0, OWNER HERC01, GROUP ADMIN).  The
+//* report always shows the values actually used.
+//*
+//* Comments use slash-star and star-slash, and must not start in
+//* column 1 of an instream SYSIN -- that would end the input.
+//* Columns 73-80 are ignored.  PARM= is not supported.
+//* ------------------------------------------------------------------
+//*
+//FORMAT   EXEC PGM=UFSFMT
+//STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
+//DISKFILE DD  DISP=OLD,DSN=MIKEG1.UFSHOME
+//SYSPRINT DD  SYSOUT=*
+//SYSTERM  DD  SYSOUT=*
+//SYSUDUMP DD  SYSOUT=*
+//SYSIN    DD  *
+   /* UFS370 filesystem for MIKEG1, mounted at /u/mikeg1 */
+   BLKSIZE  4096
+   INODES   10.0
+   OWNER    HERC01
+   GROUP    ADMIN
+/*
+//
