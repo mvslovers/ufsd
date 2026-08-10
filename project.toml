@@ -26,10 +26,11 @@ ac = 1
 sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c"]
 
 # UFSDCLNP — cleanup utility (all defaults: entry=@@CRT0, startup=crt0)
+# Wraps the shared reclaim routine (ufsd#rcl.c, also part of UFSD).
 [[module]]
 name = "UFSDCLNP"
 ac = 1
-sources = ["src/ufsdclnp.c"]
+sources = ["src/ufsdclnp.c", "src/ufsd#rcl.c"]
 
 # ── Tests ────────────────────────────────────────────────
 [[test]]

@@ -26,53 +26,50 @@ UFSD099I UFSD SHUTDOWN COMPLETE
 (One `UFSD131I` per RW-mounted filesystem; RO mounts are not written back. If a
 client is still in flight when the stop is issued, a short drain delay precedes
 `UFSD095I`; if the drain does not reach zero within its ceiling the daemon
-issues `UFSD098W` and retains the CSA instead — run `/S UFSDCLNP` in that case.)
+issues `UFSD098W` and retains the CSA instead — the next `/S UFSD` reclaims it
+automatically.)
 
 ## Recovery after Abend
 
-If UFSD abends (S0C4, S222 from `/C`, etc.), the ESTAE handler runs in emergency mode (`UFSD_SHUT_ABEND`): it nulls the SSVT function entry and clears `UFSD_ANCHOR_ACTIVE` — stopping new SSI dispatches and letting parked clients bail — then percolates for the MVS dump. It deliberately frees **nothing**: under RTM there is no reliable way to tell whether another address space is still executing inside the router module or the CSA pools, and freeing them then is exactly the S0C4 being recovered from. SSCT, SSI router, and CSA pools are therefore left allocated and reclaimed by UFSDCLNP on the next start — this is by design, not a defect (see [CSA Retained after /C or Abend](#csa-retained-after-c-cancel-or-abend-by-design)).
-
-**Symptoms of stale resources:**
-
-- `/S UFSD` fails with `IEF612I PROCEDURE NOT FOUND` (JES2 proc name still locked after abend)
-- A new UFSD instance starts but fails to register the SSCT ("subsystem already registered")
-- Clients get S0C4 when calling `ufsnew()` (stale CSA pointers)
+If UFSD abends (S0C4, S222 from `/C`, etc.), the ESTAE handler runs in emergency mode (`UFSD_SHUT_ABEND`): it nulls the SSVT function entry and clears `UFSD_ANCHOR_ACTIVE` — stopping new SSI dispatches and letting parked clients bail — then percolates for the MVS dump. It deliberately frees **nothing**: under RTM there is no reliable way to tell whether another address space is still executing inside the router module or the CSA pools, and freeing them then is exactly the S0C4 being recovered from. SSCT, SSI router, and CSA pools are therefore left allocated; the final console message states this (`UFSD097W … CSA RETAINED, RECLAIMED AT NEXT START`). This is by design, not a defect (see [CSA Retained after /C or Abend](#csa-retained-after-c-cancel-or-abend-by-design)).
 
 ### Recovery Procedure
 
-1. Run the UFSDCLNP emergency cleanup:
+Restart UFSD:
 
-   ```
-   /S UFSDCLNP
-   ```
+```
+/S UFSD
+```
 
-   Console output:
+Startup detects the orphaned predecessor itself (`ufsd_reclaim()`, shared with UFSDCLNP) and reclaims it before registering — quiesce, drain, deregister, free — so no separate cleanup step is needed. Console output of a start over an orphan:
 
-   ```
-   UFSD140I UFSDCLNP STARTING
-   UFSD144I UFSDCLNP: SSVT FUNCTION POINTER CLEARED
-   UFSD145I UFSDCLNP: SSCT DEREGISTERED
-   UFSD146I UFSDCLNP: SSI ROUTER MODULE FREED
-   UFSD147I UFSDCLNP: CSA POOLS FREED
-   UFSD148I UFSDCLNP: ANCHOR FREED
-   UFSD149I UFSDCLNP COMPLETE
-   ```
+```
+UFSD000I UFSD 1.1.0 STARTING
+UFSD144I RECLAIM: SSVT FUNCTION POINTER CLEARED
+UFSD145I RECLAIM: SSCT DEREGISTERED
+UFSD146I RECLAIM: SSI ROUTER MODULE FREED
+UFSD147I RECLAIM: CSA POOLS FREED
+UFSD148I RECLAIM: ANCHOR FREED
+UFSD004I ORPHANED PREDECESSOR RECLAIMED -- CSA RECOVERED
+UFSD030I CSA ALLOCATED: ANCHOR=...
+```
 
-   (If clients were parked in the router when UFSD died, a short drain delay
-   precedes `UFSD145I` while they bail; a count still standing after the
-   ceiling yields `UFSD152W … ASSUMING LEAKED, FREEING` and cleanup proceeds.)
+(If clients were parked in the router when UFSD died, a short drain delay
+precedes `UFSD145I` while they bail; a count still standing after the
+ceiling yields `UFSD152W … ASSUMING LEAKED, FREEING` and reclaim proceeds.)
 
-2. Restart UFSD:
+Startup refuses to reclaim a predecessor whose anchor is still flagged ACTIVE (`UFSD002E UFSD ALREADY REGISTERED AND ACTIVE`) — every shutdown path clears the flag before the STC ends, so a set flag means a UFSD instance is (or appears to be) still running. If the instance is genuinely gone (e.g. after a FORCE, where the ESTAE never ran), use the standalone fallback, which reclaims unconditionally:
 
-   ```
-   /S UFSD
-   ```
+```
+/S UFSDCLNP
+/S UFSD
+```
 
-If JES2 still refuses the proc name, wait for the old job to be purged (check `$DA` or `$DQ` for stuck entries), or use `$PJ` to purge it manually.
+If JES2 refuses the proc name after an abend, wait for the old job to be purged (check `$DA` or `$DQ` for stuck entries), or use `$PJ` to purge it manually.
 
 ### UFSDCLNP Details
 
-UFSDCLNP is a standalone program that locates the UFSD anchor in CSA via the SSCT chain, then tears down all resources:
+UFSDCLNP is a standalone program wrapping the same shared reclaim routine (`ufsd_reclaim()`, `src/ufsd#rcl.c`) that UFSD startup runs. It locates the UFSD anchor in CSA via the SSCT chain, then tears down all resources:
 
 1. Nulls the SSVT function pointer (no new SSI dispatches) and clears `UFSD_ANCHOR_ACTIVE` (a client parked in the router bails on its next timeout)
 2. **Drains `anchor->inflight` to zero** — keeping the eye catcher and the router module present — so a parked client bails `RC_CORRUPT` and leaves the module *before* it is freed (best-effort, ~12 s ceiling; see below)
@@ -97,13 +94,13 @@ Copy the UFSDCLNP STC procedure from `samplib/ufsdclnp` to `SYS2.PROCLIB(UFSDCLN
 
 After `/C UFSD` or any abend, the ESTAE handler runs in `UFSD_SHUT_ABEND` mode: it nulls the SSVT function entry and clears `UFSD_ANCHOR_ACTIVE` (so `iefssreq` stops routing new clients into UFSDSSIR and any parked client bails on its next router timeout), then percolates. It **frees nothing** — under RTM a foreign PSW may still be executing inside the router module or touching the CSA pools, and freeing them then is the very S0C4 this behaviour prevents.
 
-So `/S UFSDCLNP` is the **designed** recovery step after `/C` or an abend, not a workaround. UFSDCLNP nulls the SSVT entry (idempotent), clears `UFSD_ANCHOR_ACTIVE`, then **drains `anchor->inflight` to zero before it frees anything** — keeping the eye catcher and the router module present throughout. A client still parked in the router revalidates the (still-valid) eye catcher on its next timeout, sees the cleared flag, and bails `RC_CORRUPT`, decrementing the counter as it leaves. Only once the count reaches zero does UFSDCLNP deregister the SSCT and free the router module, pools, and anchor (invalidating the eye catcher just before the anchor FREEMAIN). This closes the window — present before #39 — where freeing the router out from under a parked client faulted that client's address space (`S0C4`; contained by a client-side ESTAE such as HTTPD's, fatal to a bare libufs batch client).
+The **designed** recovery after `/C` or an abend is simply the next `/S UFSD`: startup runs the shared reclaim routine (`ufsd_reclaim()`, `src/ufsd#rcl.c`) before registering. It nulls the SSVT entry (idempotent), clears `UFSD_ANCHOR_ACTIVE`, then **drains `anchor->inflight` to zero before it frees anything** — keeping the eye catcher and the router module present throughout. A client still parked in the router revalidates the (still-valid) eye catcher on its next timeout, sees the cleared flag, and bails `RC_CORRUPT`, decrementing the counter as it leaves. Only once the count reaches zero does the reclaim deregister the SSCT and free the router module, pools, and anchor (invalidating the eye catcher just before the anchor FREEMAIN). This closes the window — present before #39 — where freeing the router out from under a parked client faulted that client's address space (`S0C4`; contained by a client-side ESTAE such as HTTPD's, fatal to a bare libufs batch client). The same routine backs the standalone `/S UFSDCLNP`.
 
-The drain is **best-effort**, ceiling ~12 s (two `UFSD_WAIT_INTERVAL`s, so a live parked client gets two wake-and-bail chances). A count still standing after that is almost certainly leaked — a client that faulted or was cancelled while in-flight never runs its decrement — so UFSDCLNP warns (`UFSD152W`) and frees anyway rather than strand the CSA. So a genuinely stuck worker does not hang the cleanup indefinitely; worst case UFSDCLNP waits ~12 s, then reclaims.
+The drain is **best-effort**, ceiling ~12 s (two `UFSD_WAIT_INTERVAL`s, so a live parked client gets two wake-and-bail chances). A count still standing after that is almost certainly leaked — a client that faulted or was cancelled while in-flight never runs its decrement — so the reclaim warns (`UFSD152W`) and frees anyway rather than strand the CSA. So a genuinely stuck worker does not hang the cleanup indefinitely; worst case the reclaim waits ~12 s, then frees.
 
-A clean `/P UFSD` (or `/F UFSD,SHUTDOWN`) runs in `UFSD_SHUT_NORMAL` mode instead: it nulls the SSVT entry, clears `UFSD_ANCHOR_ACTIVE`, then **drains** `anchor->inflight` to zero and frees the CSA itself — no UFSDCLNP needed after a normal stop. If the drain does not reach zero within its ceiling (~10 s), UFSD issues `UFSD098W` and retains the CSA rather than freeing storage a client may still be executing; run `/S UFSDCLNP` in that case.
+A clean `/P UFSD` (or `/F UFSD,SHUTDOWN`) runs in `UFSD_SHUT_NORMAL` mode instead: it nulls the SSVT entry, clears `UFSD_ANCHOR_ACTIVE`, then **drains** `anchor->inflight` to zero and frees the CSA itself — nothing left behind after a normal stop. If the drain does not reach zero within its ceiling (~10 s), UFSD issues `UFSD098W` and retains the CSA rather than freeing storage a client may still be executing; the next `/S UFSD` reclaims it.
 
-**TSK-71** (ESTAE handler "incomplete" after `/C`) is closed by this: the retained CSA is intended, and UFSDCLNP is the supported recovery path.
+**TSK-71**: the retained CSA after `/C` or an abend is intended; since #49 the next `/S UFSD` reclaims it automatically, and the abend path's final WTO states the CSA state (`UFSD097W`) instead of a misleading `SHUTDOWN COMPLETE`.
 
 ### No Per-File Permission System
 
@@ -131,6 +128,9 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 |---------|----------|-------------|
 | UFSD000I | I | UFSD starting (version) |
 | UFSD001I | I | Ready — version + CSA/session/file summary |
+| UFSD002E | E | Predecessor SSCT found with ACTIVE anchor — refusing to start (run UFSDCLNP if orphaned) |
+| UFSD003E | E | Predecessor reclaim failed (supervisor state) — startup fails |
+| UFSD004I | I | Orphaned predecessor reclaimed at startup — CSA recovered |
 | UFSD030I | I | CSA anchor allocated |
 | UFSD031I–033I | I | Pool sizes (request pool / buffer pool / trace buffer) |
 | UFSD034I | I | SSCT registered |
@@ -150,11 +150,11 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | UFSD046I | I | Session table freed |
 | UFSD048I | I | Global file table freed |
 | UFSD096I | I | CSA freed |
-| UFSD097E | E | Cannot enter supervisor state at shutdown — CSA retained, run UFSDCLNP |
-| UFSD097W | W | Abend shutdown — CSA retained, run UFSDCLNP before restart |
+| UFSD097E | E | Cannot enter supervisor state at shutdown — CSA retained, run UFSDCLNP (ACTIVE flag stays set, so startup will refuse the orphan) |
+| UFSD097W | W | Abend shutdown — CSA retained, reclaimed at next start (final message of the abend path) |
 | UFSD098E | E | Abend intercepted — emergency shutdown |
-| UFSD098W | W | Client(s) still in flight at shutdown — CSA retained, run UFSDCLNP |
-| UFSD099I | I | Shutdown complete |
+| UFSD098W | W | Client(s) still in flight at shutdown — CSA retained, reclaimed at next start |
+| UFSD099I | I | Shutdown complete (normal shutdown only; not issued on the abend path) |
 
 ### Configuration and Mounts (060–079, 120–129)
 
@@ -175,22 +175,26 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | UFSD110I | I | Sessions list (from /F UFSD,SESSIONS) |
 | UFSD111I | I | Session pruned (stale ASID) |
 
-### UFSDCLNP (140–149, 152–154)
+### Reclaim and UFSDCLNP (140–149, 152–154)
+
+Messages 143–148 and 152–154 come from the shared reclaim routine
+(`RECLAIM:` prefix) and appear both during UFSD startup (over an orphaned
+predecessor) and under standalone UFSDCLNP.
 
 | Message | Severity | Description |
 |---------|----------|-------------|
 | UFSD140I | I | UFSDCLNP starting |
 | UFSD141E | E | APF setup failed (STEPLIB not APF-authorized?) |
 | UFSD142I | I | Subsystem UFSD not registered — nothing to do (RC 0) |
-| UFSD143E | E | Cannot enter supervisor state |
-| UFSD144I | I | SSVT function pointer cleared |
-| UFSD145I | I | SSCT deregistered |
-| UFSD146I | I | SSI router module freed |
-| UFSD147I | I | CSA pools freed |
-| UFSD148I | I | Anchor freed |
+| UFSD143E | E | Reclaim: cannot enter supervisor state |
+| UFSD144I | I | Reclaim: SSVT function pointer cleared |
+| UFSD145I | I | Reclaim: SSCT deregistered |
+| UFSD146I | I | Reclaim: SSI router module freed |
+| UFSD147I | I | Reclaim: CSA pools freed |
+| UFSD148I | I | Reclaim: anchor freed |
 | UFSD149I | I | UFSDCLNP complete |
-| UFSD152W | W | Client(s) still in flight after the drain ceiling — assumed leaked, CSA freed anyway |
-| UFSD153W | W | Anchor eye-catcher mismatch — anchor not freed |
-| UFSD154I | I | No anchor (ssctsuse=NULL) — nothing to free |
+| UFSD152W | W | Reclaim: client(s) still in flight after the drain ceiling — assumed leaked, CSA freed anyway |
+| UFSD153W | W | Reclaim: anchor eye-catcher mismatch — anchor not freed |
+| UFSD154I | I | Reclaim: no anchor (ssctsuse=NULL) — nothing to free |
 
 > **Note:** The message numbers listed here reflect the current codebase. Exact numbers may differ slightly — consult the source for authoritative message IDs.
