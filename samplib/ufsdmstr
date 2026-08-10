@@ -1,29 +1,12 @@
 //UFSD     PROC M=UFSDPRM0,
 //            D='SYS2.PARMLIB'
-//*
-//* UFSD - MSTR-Subsystem Companion of SYS2.PROCLIB(UFSD)  (issue #49)
-//*
-//* Installation:
-//*   Copy to SYS1.PROCLIB(UFSD)  -- the member name must stay UFSD.
-//*
-//* Why this exists: while a UFSD subsystem (SSCT) is registered --
-//* i.e. after an abend or /C left an orphan behind -- MVS converts
-//* 'S UFSD' under the MASTER subsystem, whose IEFPDSI concatenation
-//* knows only SYS1.PROCLIB.  Without this member that start dies
-//* with IEF612I PROCEDURE NOT FOUND and the startup auto-reclaim
-//* never runs.  After a clean stop no SSCT exists, the start goes
-//* through JES2, and SYS2.PROCLIB(UFSD) is used as usual.
-//*
-//* Keep in sync with SYS2.PROCLIB(UFSD).  Differences are deliberate:
-//* SYSOUT is not available to a task started under the master
-//* subsystem, so SYSUDUMP is DUMMY and SYSPRINT/SYSTERM are present
-//* as DUMMY to keep the C runtime from allocating a SYSOUT for
-//* stdout/stderr (S013-C0 otherwise).  All operational output goes
-//* to the console via WTO anyway.
-//*
+//* MSTR COMPANION FOR THE POST-ABEND /S UFSD (ISSUE #49) -- INSTALL
+//* AS SYS1.PROCLIB(UFSD).  WHY IT EXISTS, WHY NO SYSOUT DDS, AND THE
+//* UFSD.SYSUDUMP ALLOCATION: SEE DOCS/RECOVERY.MD.  KEPT SHORT: THE
+//* MSTR CONVERTER ECHOES EVERY LINE OF THIS MEMBER TO THE CONSOLE.
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
 //STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
 //UFSDPRM  DD  DISP=SHR,DSN=&D(&M),FREE=CLOSE
 //SYSPRINT DD  DUMMY
 //SYSTERM  DD  DUMMY
-//SYSUDUMP DD  DUMMY
+//SYSUDUMP DD  DSN=UFSD.SYSUDUMP,DISP=SHR

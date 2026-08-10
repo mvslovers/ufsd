@@ -92,6 +92,17 @@ UFSDCLNP is safe to run when UFSD is not registered — it reports "nothing to d
 
 Copy the UFSDCLNP STC procedure from `samplib/ufsdclnp` to `SYS2.PROCLIB(UFSDCLNP)`, and the MSTR companion procedure from `samplib/ufsdmstr` to `SYS1.PROCLIB(UFSD)` (required for the post-abend `/S UFSD` — see [Recovery Procedure](#recovery-procedure)).
 
+The companion needs a dump data set, since SYSOUT is not available under the master subsystem (and SYSPRINT/SYSTERM are DUMMY there for the same reason — the C runtime would otherwise dynalloc a SYSOUT for stdout and abend S013-C0):
+
+```
+//DUMP DD DSN=UFSD.SYSUDUMP,DISP=(NEW,CATLG),UNIT=SYSDA,
+//     SPACE=(TRK,(150,30)),DCB=(RECFM=VBA,LRECL=125,BLKSIZE=1632)
+```
+
+Note that JES2's `PROC00` concatenation searches `SYS1.PROCLIB` first, so once the companion is installed it serves **all** starts, not just the MSTR-converted ones — `SYS2.PROCLIB(UFSD)` is shadowed. That is why the companion's `SYSUDUMP` points at the data set instead of `DUMMY`. This whole arrangement is interim: renaming the subsystem so it no longer collides with the STC name (#55) removes the MSTR path and the companion entirely.
+
+The MSTR converter echoes every line of the companion member to the console (`IEF196I`) on each MSTR-converted start — the member is deliberately kept short because of that. Such starts occur only when an SSCT named UFSD is registered: the one reclaim start after an abend, or an accidental second `S UFSD` while the server runs (refused with `UFSD002E`).
+
 ## Known Issues
 
 ### CSA Retained after /C CANCEL or Abend (by design)
