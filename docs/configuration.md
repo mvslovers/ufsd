@@ -6,31 +6,35 @@ UFSD is configured through a Parmlib member, referenced by the `UFSDPRM` DD card
 
 ```
 /* Lines between slash-star are comments */
+# ... and so is a line starting with a hash
 
 ROOT     DSN(UFSD.ROOT)
 MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)      MODE(RO)
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
 ```
 
-Comments are delimited by `/*` and `*/` (block comments, like JCL). Blank lines are ignored. Statements can span one line only.
+Comments come in two forms. `/*` … `*/` delimits a block comment (like JCL), and a `#` as the **first non-blank character** comments out the rest of that line — the usual way to disable a `MOUNT` temporarily.
+
+A `#` anywhere else on the line is **not** a comment and is treated as data. This is deliberate: the national characters `@ # $` are legal in MVS dataset names and qualifiers, so `DSN(SYS1.MY#LIB)` and a `PATH` containing a `#` must survive intact. There are no trailing comments.
+
+Blank lines are ignored. Statements can span one line only.
 
 ## ROOT Statement
 
 Defines the root filesystem, always mounted at `/`.
 
 ```
-ROOT     DSN(dataset.name) [SIZE(n)] [BLKSIZE(n)]
+ROOT     DSN(dataset.name) [BLKSIZE(n)]
 ```
 
 | Parameter | Values | Default | Description |
 |-----------|--------|---------|-------------|
 | `DSN(name)` | dataset name | — | **Required.** BDAM dataset for the root filesystem. |
-| `SIZE(n)` | `500K`, `1M`, etc. | — | Root disk size (used for auto-creation in a future release). |
 | `BLKSIZE(n)` | 512–8192 | `4096` | Block size in bytes. |
 
 The root filesystem is always read-only for clients. UFSD temporarily sets it read-write during startup to create mount-point directories, then switches it to read-only before accepting client requests.
 
-A size of 1 MB is sufficient for the root (it only holds mount-point directories).
+UFSD mounts what already exists; it never allocates or formats a disk. When you allocate the root dataset, 1 MB is enough — it holds nothing but mount-point directories. See [disk-setup.md](disk-setup.md) for allocating and formatting it.
 
 ## MOUNT Statement
 

@@ -197,7 +197,6 @@ struct ufsd_mount_cfg {
 
 struct ufsd_config {
     char             root_dsname[45];
-    unsigned         root_size;       /* bytes (from SIZE param)  */
     unsigned         root_blksize;    /* block size (default 4096)*/
     unsigned         nmounts;
     UFSD_MOUNT_CFG   mounts[UFSD_CFG_MAX_MOUNTS];
@@ -611,7 +610,6 @@ int           ufsd_disk_umount(UFSD_STC *stc,
 
 /* ufsd#cfg.c (AP-3a) -- parmlib configuration */
 int           ufsd_cfg_read(UFSD_CONFIG *cfg)                        asm("UFSD@CFR");
-void          ufsd_cfg_dump(const UFSD_CONFIG *cfg)                  asm("UFSD@CFD");
 
 /* ufsd#blk.c (AP-1e) -- BDAM block I/O */
 int  ufsd_blk_read(UFSD_DISK *disk, unsigned sector, void *buf)      asm("UFSD@BRD");

@@ -45,7 +45,9 @@ Startup detects the orphaned predecessor itself (`ufsd_reclaim()`, shared with U
 
 **Prerequisite: `SYS1.PROCLIB(UFSD)` must be installed** (`samplib/ufsdmstr`). While a UFSD SSCT is registered, MVS converts `S UFSD` under the **master subsystem** — the subsystem name matches — and the master's `IEFPDSI` knows only `SYS1.PROCLIB`. Without the companion member the start fails with `IEF612I PROCEDURE NOT FOUND` before any UFSD code runs (this is the real mechanism behind the long-observed "proc not found after abend" symptom). After a clean stop no SSCT exists and the start goes through JES2 and `SYS2.PROCLIB(UFSD)` as usual.
 
-Console output of a start over an orphan (MVS-verified 2026-08-10):
+Console output of a start over an orphan (MVS-verified 2026-08-10, captured
+before the #51 banner change — `UFSD000I` now also carries the build commit
+and is followed by `UFSD005I`; the reclaim sequence itself is unchanged):
 
 ```
 UFSD000I UFSD 1.1.0 STARTING
@@ -141,11 +143,13 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 
 | Message | Severity | Description |
 |---------|----------|-------------|
-| UFSD000I | I | UFSD starting (version) |
+| UFSD000I | I | UFSD starting — version + build commit (`-DIRTY` when built from a modified tree) |
 | UFSD001I | I | Ready — version + CSA/session/file summary |
 | UFSD002E | E | Predecessor SSCT found with ACTIVE anchor — refusing to start (run UFSDCLNP if orphaned) |
 | UFSD003E | E | Predecessor reclaim failed (supervisor state) — startup fails |
 | UFSD004I | I | Orphaned predecessor reclaimed at startup — CSA recovered |
+| UFSD005I | I | libc370 version + commit this module was linked against |
+| UFSD006W | W | Built from a modified working tree — issued only by a `-DIRTY` build |
 | UFSD030I | I | CSA anchor allocated |
 | UFSD031I–033I | I | Pool sizes (request pool / buffer pool / trace buffer) |
 | UFSD034I | I | SSCT registered |
@@ -153,8 +157,7 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | UFSD045I | I | Session table allocated |
 | UFSD047I | I | Global file table allocated |
 | UFSD040I | I | Mount summary (n filesystems mounted) |
-| UFSD041I | I | Individual mount detail (path, DSN, mode, owner) |
-| UFSD060I | I | Mounted DSN on path |
+| UFSD060I | I | Mounted DSN on path — mode `RW`/`RO`, or `ROOT` for `/` |
 | UFSD090E | E | Cannot initialize console interface (startup fails) |
 | UFSD091E | E | APF setup failed — STEPLIB not APF-authorized (startup fails) |
 | UFSD092E | E | Cannot allocate CSA anchor (startup fails) |
@@ -176,19 +179,23 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | Message | Severity | Description |
 |---------|----------|-------------|
 | UFSD061E | E | Parmlib not found |
-| UFSD062I | I | Parmlib config dump (ROOT/MOUNT listing) |
 | UFSD076I | I | Inode cache refill complete |
 | UFSD122W | W | Cannot create mount point |
 | UFSD123W | W | Cannot mount dataset |
 
-### Sessions and Operations (100–119)
+### Parmlib Parser (100–105)
+
+Issued by the `DD:UFSDPRM` parser at startup. A rejected statement is
+skipped; the rest of the member is still processed.
 
 | Message | Severity | Description |
 |---------|----------|-------------|
-| UFSD100I | I | Session opened |
-| UFSD101I | I | Session closed |
-| UFSD110I | I | Sessions list (from /F UFSD,SESSIONS) |
-| UFSD111I | I | Session pruned (stale ASID) |
+| UFSD100W | W | Cannot open DD:UFSDPRM — using defaults |
+| UFSD101W | W | Too many MOUNT statements — the rest are ignored |
+| UFSD102W | W | MOUNT without DSN() — statement skipped |
+| UFSD103W | W | MOUNT without PATH() — statement skipped |
+| UFSD104W | W | Unrecognized statement (first 40 characters echoed) |
+| UFSD105W | W | ROOT statement missing — startup fails |
 
 ### Reclaim and UFSDCLNP (140–149, 152–154)
 

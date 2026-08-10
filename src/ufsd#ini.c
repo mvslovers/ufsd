@@ -483,15 +483,28 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
 
     stc->disks[stc->ndisks++] = disk;
 
-    if (disk->mount_owner[0])
-        wtof("UFSD060I MOUNTED %s ON %s (%s, OWNER=%s)",
-             disk->dsn, disk->mountpath,
-             mode == UFSD_MOUNT_RW ? "RW" : "RO",
-             disk->mount_owner);
-    else
-        wtof("UFSD060I MOUNTED %s ON %s (%s)",
-             disk->dsn, disk->mountpath,
-             mode == UFSD_MOUNT_RW ? "RW" : "RO");
+    /* Report the root as (ROOT), not (RW).  Root is mounted RW purely so
+    ** ufsd_ufs_init can create the mount-point directories, and is flipped
+    ** to RO before any client can reach it -- printing RW here would state
+    ** the opposite of what clients see.  The test is on the mount path,
+    ** not on UFSD_DISK_ROOT: that flag is set by our caller, after this
+    ** WTO.  Only '/' can be the root, and a second mount on '/' is already
+    ** rejected as a duplicate above. */
+    {
+        const char *modestr;
+
+        if (strcmp(disk->mountpath, "/") == 0)
+            modestr = "ROOT";
+        else
+            modestr = (mode == UFSD_MOUNT_RW) ? "RW" : "RO";
+
+        if (disk->mount_owner[0])
+            wtof("UFSD060I MOUNTED %s ON %s (%s, OWNER=%s)",
+                 disk->dsn, disk->mountpath, modestr, disk->mount_owner);
+        else
+            wtof("UFSD060I MOUNTED %s ON %s (%s)",
+                 disk->dsn, disk->mountpath, modestr);
+    }
 
     return 0;
 }
@@ -568,8 +581,6 @@ ufsd_ufs_init(UFSD_STC *stc)
         return 8;
     }
 
-    ufsd_cfg_dump(&cfg);
-
     /* Mount root filesystem via DYNALLOC */
     rc = ufsd_disk_mount_dyn(stc, cfg.root_dsname, "/",
                              UFSD_MOUNT_RW, "");
@@ -632,24 +643,11 @@ ufsd_ufs_init(UFSD_STC *stc)
     /* Root is now RO for clients — all mountpoints are created */
     root->mount_mode = UFSD_MOUNT_RO;
 
+    /* Count only.  Each disk already announced itself with UFSD060I as it
+    ** was mounted, so a second pass over the same list would just repeat
+    ** it; /F UFSD,MOUNT LIST prints the live state (path, DSN, mode,
+    ** owner) on demand. */
     wtof("UFSD040I %u FILESYSTEM(S) MOUNTED", stc->ndisks);
-    for (i = 0; i < stc->ndisks; i++) {
-        UFSD_DISK *d = stc->disks[i];
-        if (!d) continue;
-        if (d->flags & UFSD_DISK_ROOT)
-            wtof("UFSD041I   %s DSN=%s (ROOT, %s)",
-                 d->mountpath, d->dsn,
-                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO");
-        else if (d->mount_owner[0])
-            wtof("UFSD041I   %s DSN=%s (%s, OWNER=%s)",
-                 d->mountpath, d->dsn,
-                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO",
-                 d->mount_owner);
-        else
-            wtof("UFSD041I   %s DSN=%s (%s)",
-                 d->mountpath, d->dsn,
-                 d->mount_mode == UFSD_MOUNT_RW ? "RW" : "RO");
-    }
 
     return 0;
 }

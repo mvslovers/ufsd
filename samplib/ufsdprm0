@@ -14,3 +14,7 @@ MOUNT    DSN(MVSCE02.UFSHOME)    PATH(/u/mvsce02)    MODE(RW) OWNER(MVSCE02)
 
 /* Shared scratch area, writable by any authenticated user */
 MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
+
+/* A '#' in the first non-blank column comments a line out.  It must be
+   first: '#' is legal inside a dataset name, so it is data anywhere else. */
+# MOUNT    DSN(UFSD.ARCHIVE)      PATH(/archive)      MODE(RO)

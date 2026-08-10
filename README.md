@@ -80,7 +80,7 @@ The server is configured through a Parmlib member referenced by the `UFSDPRM` DD
 
 | Statement | Parameters | Description |
 |-----------|-----------|-------------|
-| `ROOT` | `DSN` [, `SIZE`, `BLKSIZE`] | Root filesystem (always mounted at `/`, read-only for clients) |
+| `ROOT` | `DSN` [, `BLKSIZE`] | Root filesystem (always mounted at `/`, read-only for clients) |
 | `MOUNT` | `DSN`, `PATH`, `MODE`, `OWNER` | Additional filesystem mount |
 
 | Parameter | Values | Default | Description |
