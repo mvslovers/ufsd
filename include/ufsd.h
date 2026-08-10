@@ -531,11 +531,29 @@ int  ufsd_process_cib(UFSD_STC *ufsd, CIB *cib);
 **                   in-flight clients is unknown, and freeing CSA
 **                   that a foreign PSW may be executing is exactly
 **                   the S0C4 this fix is meant to prevent.
-**                   UFSDCLNP reclaims on the next start. */
+**                   The next start reclaims the CSA (ufsd_reclaim,
+**                   #49); UFSDCLNP is the standalone fallback. */
 #define UFSD_SHUT_NORMAL  0
 #define UFSD_SHUT_ABEND   1
 
 void ufsd_shutdown(UFSD_STC *ufsd, int mode);
+
+/* ufsd#rcl.c (#49) -- orphaned predecessor reclaim, shared by UFSD
+** startup and the standalone UFSDCLNP utility.
+**
+** Finds a registered "UFSD" SSCT and, unless its anchor is still
+** flagged ACTIVE (every shutdown path clears the flag before the STC
+** ends, so a set flag means a live server), quiesces and frees it:
+** null the SSVT entry, clear ANCHOR_ACTIVE, drain inflight with the
+** router module still present, then deregister and free all CSA.
+** `force` skips the ACTIVE check (UFSDCLNP emergency semantics).
+** Caller must be APF authorized and not under RTM. */
+#define UFSD_RECLAIM_NONE     0     /* no UFSD SSCT registered           */
+#define UFSD_RECLAIM_DONE     1     /* orphaned predecessor reclaimed    */
+#define UFSD_RECLAIM_ACTIVE   2     /* predecessor looks live; untouched */
+#define UFSD_RECLAIM_FAIL   (-1)    /* cannot enter supervisor state     */
+
+int ufsd_reclaim(int force)                                          asm("UFSD@RCL");
 
 /* ufsd#csa.c (AP-1b) */
 UFSD_ANCHOR *ufsd_anchor_alloc(void)                                 asm("UFSD@ANA");

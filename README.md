@@ -22,7 +22,7 @@ Client Address Space          UFSD STC Address Space
 ## Known Limitations
 
 - **No per-file permission system.** Access control is mount-level only (RO/RW mode + OWNER restriction). There are no per-file or per-inode permission checks. Full RACF/RAKF integration is planned for a future release.
-- After `/C UFSD`, the ESTAE handler may not fully deregister the SSI — run UFSDCLNP before restarting
+- After `/C UFSD` the ESTAE deliberately retains the SSI registration and CSA; the next `/S UFSD` reclaims them automatically (UFSDCLNP remains the standalone fallback)
 - No symbolic links, hard links, or file locking
 - Maximum file size: 4.06 MB (single indirect blocks)
 - On-disk format is not finalized — images may not be portable across future versions

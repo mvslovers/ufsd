@@ -33,8 +33,16 @@
 **     still be executing.
 **   - UFSD_SHUT_ABEND (ESTAE): nulls the entry + clears the flag only,
 **     then percolates for the MVS dump.  Under RTM the state of
-**     in-flight clients is unknown, so nothing is freed.  UFSDCLNP
-**     reclaims the CSA on the next start.
+**     in-flight clients is unknown, so nothing is freed.  The next
+**     start reclaims the CSA (see below).
+**
+** Startup auto-reclaim (Issue #49):
+**   main() calls ufsd_reclaim() (ufsd#rcl.c) before registering: an
+**   orphaned predecessor -- SSCT still chained, CSA still allocated
+**   after an abend -- is quiesced, drained, and freed, so after /C a
+**   plain /S UFSD suffices.  A predecessor still flagged ACTIVE is a
+**   running server and startup refuses; UFSDCLNP stays the standalone
+**   (unconditional) fallback.
 */
 
 #ifndef VERSION
@@ -59,12 +67,23 @@
 **      into UFSDSSIR and parked clients bail on their next timeout.
 **      CSA is NOT freed: under RTM a foreign PSW may still be inside
 **      the router or the pools, and freeing it is the very S0C4 we
-**      are recovering from.  UFSDCLNP reclaims the CSA on next start.
+**      are recovering from.  The next start reclaims the CSA
+**      (ufsd_reclaim); UFSDCLNP is the standalone fallback.
 **   2. Percolate (SDWACWT = 0): MVS produces the SVC dump and
 **      terminates the address space normally.
 **
-** SDWAPARM holds &ufsd (the STC block on main's stack), set via
-** __estae(ESTAE_CREATE, ufsd_recover, &ufsd).
+** SDWAPARM is the address of the two-word {recovery fp, udata}
+** pair that __estae(ESTAE_CREATE, ufsd_recover, &ufsd) stored for
+** the ESTAE PARAM= operand -- NOT the udata word itself.  &ufsd
+** (the STC block on main's stack) is the pair's second word.
+**
+** Reading SDWAPARM as the STC block directly (as this routine did
+** until #49) made the whole quiesce a silent no-op: the "STC
+** block" was really the param pair, its ->anchor fell into the
+** zeroed slots behind it, and ufsd_shutdown() took the !anchor
+** path -- printing SHUTDOWN COMPLETE while SSVT entry, ACTIVE
+** flag, and CSA all survived untouched.  The eye catcher check
+** guards against any future drift in that plumbing.
 **
 ** ufsd_shutdown() deletes the ESTAE as its first action, so
 ** this routine is never called re-entrantly.
@@ -72,17 +91,22 @@
 static void
 ufsd_recover(SDWA *sdwa)
 {
-    UFSD_STC *ufsd;
+    UFSD_STC  *ufsd;
+    void     **param;
 
     if (!sdwa) return;
 
-    ufsd = (UFSD_STC *)sdwa->SDWAPARM;
+    param = (void **)sdwa->SDWAPARM;
+    ufsd  = param ? (UFSD_STC *)param[1] : NULL;
 
     wtof("UFSD098E UFSD ABEND INTERCEPTED -- EMERGENCY SHUTDOWN");
 
-    if (ufsd) {
+    if (ufsd && memcmp(ufsd->eye, "**UFSD**", 8) == 0) {
         ufsd->flags &= ~UFSD_ACTIVE;
         ufsd_shutdown(ufsd, UFSD_SHUT_ABEND);
+    } else {
+        wtof("UFSD096E RECOVERY: STC BLOCK NOT FOUND -- NOTHING QUIESCED, "
+             "CSA RETAINED");
     }
 
     /* Percolate: let MVS produce the abend dump and terminate */
@@ -162,6 +186,9 @@ ufsd_shutdown(UFSD_STC *ufsd, int mode)
         ** Clearing ANCHOR_ACTIVE alone does not stop that; only the SSVT
         ** entry does.  Same order as UFSDCLNP. */
         if (__super(PSWKEY0, &savekey)) {
+            /* ANCHOR_ACTIVE stays set on this path, so the next start's
+            ** ufsd_reclaim() sees a live-looking predecessor and refuses
+            ** -- only UFSDCLNP (force) reclaims this one. */
             wtof("UFSD097E CANNOT ENTER SUPERVISOR STATE -- "
                  "CSA RETAINED, RUN UFSDCLNP BEFORE RESTART");
             ufsd_ufs_term(ufsd);
@@ -185,16 +212,21 @@ ufsd_shutdown(UFSD_STC *ufsd, int mode)
     if (mode == UFSD_SHUT_ABEND) {
         /* Under RTM we cannot drain and must not free: a foreign PSW may
         ** still be executing inside UFSDSSIR or touching the pools.
-        ** Leave everything and percolate; UFSDCLNP reclaims on restart. */
+        ** Leave everything and percolate; the next start reclaims.
+        ** This must be the LAST WTO of the abend path: during S222
+        ** termination only the first and the last message reliably
+        ** reach the console, so a trailing SHUTDOWN COMPLETE would
+        ** survive in place of this one and misstate the CSA state
+        ** (issue #49). */
         wtof("UFSD097W ABEND SHUTDOWN -- CSA RETAINED, "
-             "RUN UFSDCLNP BEFORE RESTART");
-        goto done;
+             "RECLAIMED AT NEXT START");
+        return;
     }
 
     /* Step 4: drain in-flight clients out of the router. */
     if (!ufsd_drain(anchor)) {
         wtof("UFSD098W %u CLIENT(S) STILL IN FLIGHT -- CSA RETAINED, "
-             "RUN UFSDCLNP BEFORE RESTART", anchor->inflight);
+             "RECLAIMED AT NEXT START", anchor->inflight);
         goto done;                        /* free nothing */
     }
 
@@ -266,6 +298,29 @@ main(int argc, char **argv)
     __estae(ESTAE_CREATE, ufsd_recover, &ufsd);
 
     wtof("UFSD000I UFSD %s STARTING", VERSION);
+
+    /* --- Predecessor reclaim (Issue #49) -------------------------- */
+    /* After an abend the ESTAE path frees nothing: SSCT, router module
+    ** and pools survive the address space (see ufsd_shutdown).  Regis-
+    ** tering fresh over that orphan would chain a SECOND SSCT named
+    ** UFSD and leak the old CSA -- so reclaim first, and do it before
+    ** the new CSA is allocated to keep the peak footprint down.
+    ** Startup is the safe point for the full teardown: normal task,
+    ** timed WAITs allowed, no RTM.  A predecessor still flagged ACTIVE
+    ** is a running server (or one whose ESTAE never ran): refuse to
+    ** start over it. */
+    rc = ufsd_reclaim(0);
+    if (rc == UFSD_RECLAIM_ACTIVE) {
+        wtof("UFSD002E UFSD ALREADY REGISTERED AND ACTIVE -- NOT "
+             "STARTING (IF ORPHANED, RUN UFSDCLNP)");
+        return 8;
+    }
+    if (rc == UFSD_RECLAIM_FAIL) {
+        wtof("UFSD003E PREDECESSOR RECLAIM FAILED -- NOT STARTING");
+        return 8;
+    }
+    if (rc == UFSD_RECLAIM_DONE)
+        wtof("UFSD004I ORPHANED PREDECESSOR RECLAIMED -- CSA RECOVERED");
 
     /* --- CSA anchor ---------------------------------------------- */
     anchor = ufsd_anchor_alloc();
