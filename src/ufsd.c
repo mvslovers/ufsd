@@ -72,8 +72,18 @@
 **   2. Percolate (SDWACWT = 0): MVS produces the SVC dump and
 **      terminates the address space normally.
 **
-** SDWAPARM holds &ufsd (the STC block on main's stack), set via
-** __estae(ESTAE_CREATE, ufsd_recover, &ufsd).
+** SDWAPARM is the address of the two-word {recovery fp, udata}
+** pair that __estae(ESTAE_CREATE, ufsd_recover, &ufsd) stored for
+** the ESTAE PARAM= operand -- NOT the udata word itself.  &ufsd
+** (the STC block on main's stack) is the pair's second word.
+**
+** Reading SDWAPARM as the STC block directly (as this routine did
+** until #49) made the whole quiesce a silent no-op: the "STC
+** block" was really the param pair, its ->anchor fell into the
+** zeroed slots behind it, and ufsd_shutdown() took the !anchor
+** path -- printing SHUTDOWN COMPLETE while SSVT entry, ACTIVE
+** flag, and CSA all survived untouched.  The eye catcher check
+** guards against any future drift in that plumbing.
 **
 ** ufsd_shutdown() deletes the ESTAE as its first action, so
 ** this routine is never called re-entrantly.
@@ -81,17 +91,22 @@
 static void
 ufsd_recover(SDWA *sdwa)
 {
-    UFSD_STC *ufsd;
+    UFSD_STC  *ufsd;
+    void     **param;
 
     if (!sdwa) return;
 
-    ufsd = (UFSD_STC *)sdwa->SDWAPARM;
+    param = (void **)sdwa->SDWAPARM;
+    ufsd  = param ? (UFSD_STC *)param[1] : NULL;
 
     wtof("UFSD098E UFSD ABEND INTERCEPTED -- EMERGENCY SHUTDOWN");
 
-    if (ufsd) {
+    if (ufsd && memcmp(ufsd->eye, "**UFSD**", 8) == 0) {
         ufsd->flags &= ~UFSD_ACTIVE;
         ufsd_shutdown(ufsd, UFSD_SHUT_ABEND);
+    } else {
+        wtof("UFSD096E RECOVERY: STC BLOCK NOT FOUND -- NOTHING QUIESCED, "
+             "CSA RETAINED");
     }
 
     /* Percolate: let MVS produce the abend dump and terminate */

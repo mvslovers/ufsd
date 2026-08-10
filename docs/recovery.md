@@ -41,7 +41,11 @@ Restart UFSD:
 /S UFSD
 ```
 
-Startup detects the orphaned predecessor itself (`ufsd_reclaim()`, shared with UFSDCLNP) and reclaims it before registering — quiesce, drain, deregister, free — so no separate cleanup step is needed. Console output of a start over an orphan:
+Startup detects the orphaned predecessor itself (`ufsd_reclaim()`, shared with UFSDCLNP) and reclaims it before registering — quiesce, drain, deregister, free — so no separate cleanup step is needed.
+
+**Prerequisite: `SYS1.PROCLIB(UFSD)` must be installed** (`samplib/ufsdmstr`). While a UFSD SSCT is registered, MVS converts `S UFSD` under the **master subsystem** — the subsystem name matches — and the master's `IEFPDSI` knows only `SYS1.PROCLIB`. Without the companion member the start fails with `IEF612I PROCEDURE NOT FOUND` before any UFSD code runs (this is the real mechanism behind the long-observed "proc not found after abend" symptom). After a clean stop no SSCT exists and the start goes through JES2 and `SYS2.PROCLIB(UFSD)` as usual.
+
+Console output of a start over an orphan (MVS-verified 2026-08-10):
 
 ```
 UFSD000I UFSD 1.1.0 STARTING
@@ -65,7 +69,7 @@ Startup refuses to reclaim a predecessor whose anchor is still flagged ACTIVE (`
 /S UFSD
 ```
 
-If JES2 refuses the proc name after an abend, wait for the old job to be purged (check `$DA` or `$DQ` for stuck entries), or use `$PJ` to purge it manually.
+(`IEF612I` on `/S UFSD` after an abend is **not** a JES2 stuck-job problem — it is the master-subsystem conversion described above, and installing `SYS1.PROCLIB(UFSD)` resolves it.)
 
 ### UFSDCLNP Details
 
@@ -86,7 +90,7 @@ UFSDCLNP is safe to run when UFSD is not registered — it reports "nothing to d
 
 ### Installation
 
-Copy the UFSDCLNP STC procedure from `samplib/ufsdclnp` to `SYS2.PROCLIB(UFSDCLNP)`.
+Copy the UFSDCLNP STC procedure from `samplib/ufsdclnp` to `SYS2.PROCLIB(UFSDCLNP)`, and the MSTR companion procedure from `samplib/ufsdmstr` to `SYS1.PROCLIB(UFSD)` (required for the post-abend `/S UFSD` — see [Recovery Procedure](#recovery-procedure)).
 
 ## Known Issues
 
