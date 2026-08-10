@@ -98,6 +98,34 @@ path_req(unsigned func, unsigned token, const char *path)
 }
 
 /* ============================================================
+** release_req
+**
+** Hand a server-side resource back on a failure path: SESS_CLOSE
+** (handle_len 0) or DIRCLOSE/FCLOSE (handle_len 4).  Both session
+** and file slots are finite server-side, so dropping one without
+** this leaks it until the server restarts.
+**
+** Best effort by design: the caller is already returning an error
+** and has nothing useful to do with a second failure.
+** ============================================================ */
+static void
+release_req(unsigned func, unsigned token,
+            unsigned handle, unsigned handle_len)
+{
+    UFSSSOB  ufsssob;
+
+    memset(&ufsssob, 0, sizeof(ufsssob));
+    memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
+    ufsssob.func     = func;
+    ufsssob.token    = token;
+    if (handle_len == 4U)
+        *(unsigned *)ufsssob.data = handle;
+    ufsssob.data_len = handle_len;
+
+    libufs_issue(&ufsssob);
+}
+
+/* ============================================================
 ** Session lifecycle
 ** ============================================================ */
 
@@ -118,7 +146,13 @@ ufsnew(void)
     if (ufsssob.data_len < (unsigned)sizeof(unsigned)) return NULL;
 
     ufs = (UFS *)calloc(1, sizeof(UFS));
-    if (!ufs) return NULL;
+    if (!ufs) {
+        /* SESS_OPEN already took one of the server's finite session
+        ** slots.  Give it back -- nothing else ever will, the token
+        ** only existed in the response we are about to discard. */
+        release_req(UFSREQ_SESS_CLOSE, *(unsigned *)ufsssob.data, 0U, 0U);
+        return NULL;
+    }
 
     memcpy(ufs->eye,      "LIBUFSUFS", 8);
     ufs->token        = *(unsigned *)ufsssob.data;
@@ -407,6 +441,27 @@ dirlist_cmp(const void *a, const void *b)
     return strcmp(ea->name, eb->name);
 }
 
+/* ============================================================
+** diropen_fail
+**
+** Roll back a half-built directory descriptor: close the server
+** handle, free whatever was allocated locally, and record why via
+** ufs_last_rc -- ftpd's LIST handler reports from it, so leaving
+** it at the value of some earlier call would name the wrong error.
+**
+** Always returns NULL so callers can "return diropen_fail(...)".
+** ddesc and entries may be NULL.
+** ============================================================ */
+static UFSDDESC *
+diropen_fail(UFS *ufs, UFSDDESC *ddesc, UFSDLIST *entries, unsigned fd)
+{
+    release_req(UFSREQ_DIRCLOSE, ufs->token, fd, 4U);
+    if (entries) free(entries);
+    if (ddesc)   free(ddesc);
+    ufs->last_rc = UFSD_RC_IO;
+    return NULL;
+}
+
 /* Read one raw DIRREAD entry from the server, populate a UFSDLIST */
 static int
 dirread_one(UFSDDESC *ddesc, UFSDLIST *out)
@@ -495,7 +550,8 @@ ufs_diropen(UFS *ufs, const char *path, const char *pattern)
     if (fd < 0) return NULL;
 
     ddesc = (UFSDDESC *)calloc(1, sizeof(UFSDDESC));
-    if (!ddesc) return NULL;
+    if (!ddesc)
+        return diropen_fail(ufs, NULL, NULL, (unsigned)fd);
 
     memcpy(ddesc->eye, "LIBUFSDD", 8);
     ddesc->token = ufs->token;
@@ -505,17 +561,24 @@ ufs_diropen(UFS *ufs, const char *path, const char *pattern)
     cap     = 32;
     n       = 0;
     entries = (UFSDLIST *)malloc(cap * sizeof(UFSDLIST));
-    if (!entries) { free(ddesc); return NULL; }
+    if (!entries)
+        return diropen_fail(ufs, ddesc, NULL, (unsigned)fd);
 
     for (;;) {
+        /* dirread_one separates the two: 0 is end of directory, a
+        ** negative rc is a failed read.  Stopping on both would hand
+        ** back a partial directory that looks complete. */
         rc = dirread_one(ddesc, &entry);
-        if (rc <= 0) break;
+        if (rc == 0) break;
+        if (rc < 0)
+            return diropen_fail(ufs, ddesc, entries, (unsigned)fd);
 
         if (n >= cap) {
             UFSDLIST *tmp;
             cap *= 2;
             tmp = (UFSDLIST *)realloc(entries, cap * sizeof(UFSDLIST));
-            if (!tmp) break;
+            if (!tmp)
+                return diropen_fail(ufs, ddesc, entries, (unsigned)fd);
             entries = tmp;
         }
         entries[n++] = entry;
@@ -677,7 +740,15 @@ ufs_fopen(UFS *ufs, const char *path, const char *mode_str)
 
     ufs->last_rc = UFSD_RC_OK;
     fp = (UFSFILE *)calloc(1, sizeof(UFSFILE));
-    if (!fp) return NULL;
+    if (!fp) {
+        /* FOPEN already took one of the server's global file slots.
+        ** last_rc was set to OK three lines up; leaving it there would
+        ** give the caller a NULL return with a success code. */
+        release_req(UFSREQ_FCLOSE, ufs->token,
+                    (unsigned)*(int *)ufsssob.data, 4U);
+        ufs->last_rc = UFSD_RC_IO;
+        return NULL;
+    }
 
     memcpy(fp->eye, "LIBUFSFP", 8);
     fp->token = ufs->token;
