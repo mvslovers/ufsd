@@ -54,7 +54,12 @@ MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 
 ### Disk Setup
 
-Each mounted filesystem lives in a BDAM dataset. Use `ufsd-utils` to create and upload disk images. See [docs/disk-setup.md](docs/disk-setup.md) for the complete workflow.
+Each mounted filesystem lives in a BDAM dataset, and there are two ways to create one:
+
+- **On MVS**, with the `UFSFMT` batch utility. No host toolchain, nothing to upload — allocate the dataset and format it in a single job (`samplib/ufsfmt`). This is the route for the root disk and for any empty filesystem.
+- **On a host**, with [`ufsd-utils`](https://github.com/mvslovers/ufsd-utils), when the disk should arrive with content already on it: create an image, fill it with `cp -r`, then upload.
+
+Both produce the same on-disk layout. See [docs/disk-setup.md](docs/disk-setup.md) for the complete workflow.
 
 ### Starting and Stopping
 

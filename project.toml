@@ -32,10 +32,23 @@ name = "UFSDCLNP"
 ac = 1
 sources = ["src/ufsdclnp.c", "src/ufsd#rcl.c"]
 
+# UFSFMT — disk format utility (batch, unauthorized: plain BSAM/BDAM I/O)
+[[module]]
+name = "UFSFMT"
+ac = 0
+sources = ["src/ufsfmt.c", "src/ufsfmtg.c"]
+
 # ── Tests ────────────────────────────────────────────────
 [[test]]
 name = "LIBUFTST"
+host = false          # MVS-only: drives the server through the SSI
 sources = ["client/libufstst.c", "client/libufs.c"]
+
+# TSTUFSG — UFSFMT geometry: the counters #50 fixes. Portable C, so it
+# runs natively via `make test-host` as well as on the target.
+[[test]]
+name = "TSTUFSG"
+sources = ["test/mvs/tstufsg.c", "src/ufsfmtg.c"]
 
 # ── Library (consumed by HTTPD and others) ───────────────
 [lib]
