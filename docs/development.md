@@ -54,6 +54,15 @@ Other targets: `make all` (modules + library), `make modules`, the test targets
 `compile_commands.json` for clangd), and `make clean` / `distclean`.
 `VERBOSE=1 make` echoes the full cc370/as370/ld370/ar370 commands.
 
+**Run `make clean` after a version bump.** The version in the startup banner
+(`UFSD000I` / `UFSD001I`) comes from `-DVERSION`, which `project.toml` puts on
+the compile line from `VERSION`. Changing `VERSION` invalidates no object file,
+so an incremental build keeps whatever string `ufsd.o` was compiled with and the
+server reports the old version — while every other module in the load library is
+current. A deploy can therefore be entirely correct and still be contradicted by
+the banner. Do not use the banner alone to confirm which build is running; a
+string that only exists in the new code is the reliable check.
+
 ### Project Structure
 
 ```

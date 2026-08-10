@@ -45,6 +45,7 @@ CLAUDE.md
 # Build system
 .env
 *.jcl
+!tests/jcl/*.jcl
 .build-warnings
 .mbt/
 build/
