@@ -99,6 +99,8 @@ UFSFMT07I   Created . . . . . 2026-06-14 09:22:41
 
 The probe is best effort: on a dataset that has never been written, the read of sector 0 simply fails and the format proceeds, which is the case with nothing to protect.
 
+It reads the disk, not the catalog, so a *freshly allocated* dataset can trigger it too: deleting a dataset frees its tracks without erasing them, and a new allocation that lands on the same tracks still has the old boot block under it. `UFSFMT05E` on a dataset you just created means the space was recycled, not that anything is wrong — specify `FORCE`.
+
 ### The report
 
 ```

@@ -142,6 +142,9 @@ struct ufsfmt_parms {
 #define KW_VERBOSE  0x0080U
 #define KW_HELP     0x0100U
 
+/* The keywords that stand alone; everything else is followed by a value. */
+#define KW_FLAGS    (KW_FORCE | KW_QUIET | KW_VERBOSE | KW_HELP)
+
 /* SYSIN control statements are read as card images: columns 73-80 are
 ** a sequence field by MVS convention and are never parameter text. */
 #define UFSFMT_CARD_COLS  72
@@ -635,11 +638,13 @@ parse_sysin(UFSFMT_PARMS *p)
     unsigned seen;
     unsigned pending;
     unsigned kw;
+    int      discard;
     int      in_comment;
     int      rc;
 
     seen       = 0;
     pending    = KW_NONE;
+    discard    = 0;
     in_comment = 0;
     rc         = 0;
 
@@ -666,6 +671,15 @@ parse_sysin(UFSFMT_PARMS *p)
                 continue;
             }
 
+            /* Value of a keyword that was already rejected.  Swallow
+            ** it: reporting "512" as an unknown keyword on the line
+            ** after "BLKSIZE specified twice" buries the real error in
+            ** a second one that is not a mistake the user made. */
+            if (discard) {
+                discard = 0;
+                continue;
+            }
+
             /* Keywords are matched uppercase; lower case in SYSIN is
             ** accepted because a card punched from a PC editor often
             ** is not folded. */
@@ -689,8 +703,10 @@ parse_sysin(UFSFMT_PARMS *p)
             }
             if (seen & kw) {
                 err("UFSFMT12E KEYWORD \"%s\" SPECIFIED MORE "
-                            "THAN ONCE\n", tok);
+                    "THAN ONCE\n", tok);
                 rc = 8;
+                if (!(kw & KW_FLAGS))
+                    discard = 1;
                 continue;
             }
             seen |= kw;
@@ -883,11 +899,11 @@ probe_disk(const UFSFMT_PARMS *p, UFSFMT_FOUND *found)
 ** why a secondary quantity must not be allocated -- its blocks would
 ** never be formatted and never be reachable.
 **
-** Termination is taken from two independent signals: WRITE refusing
-** the request, and CHECK failing (an SB37 for a dataset out of space
-** abends there, and oscheck() catches it).  Only a block that passed
-** both is counted, so the reported size can never exceed what is
-** really on disk.
+** Termination comes from CHECK: when the primary extent is full the
+** end-of-volume routine abends D37 (or B37 with a secondary defined),
+** and oscheck() catches it through its ESTAE.  Only a block whose
+** CHECK succeeded is counted, so the reported size can never exceed
+** what is really on disk.
 **
 ** Returns 0 on success, 8 on error.  Fills dsn from the JFCB.
 ** ============================================================ */
@@ -900,7 +916,6 @@ fill_disk(const UFSFMT_PARMS *p, char *dsn, unsigned *blocks)
     JFCB     jfcb;
     unsigned count;
     int      i;
-    int      rc;
 
     *blocks = 0;
 
@@ -950,7 +965,15 @@ fill_disk(const UFSFMT_PARMS *p, char *dsn, unsigned *blocks)
     dcb->dcbblksi = (unsigned short)p->blksize;
     dcb->dcblrecl = dcb->dcbblksi;
 
-    if (osbopen(dcb, 0, "load")) {
+    /* Plain BSAM output, not load mode.  MACRF=(WL) is the create-BDAM
+    ** interface and wants the SD/SZ form of WRITE; libc370's oswrite
+    ** issues SF, and the mismatch leaves the DECB unposted, so the
+    ** first CHECK waits for a completion that never arrives -- the job
+    ** sits in the format step burning no CPU until it is cancelled.
+    ** Sequential output writes the same blocks, and BDAM addresses
+    ** them afterwards by relative block number regardless of how they
+    ** got there (the same way UFSD reads an uploaded image). */
+    if (osbopen(dcb, 0, "w")) {
         err("UFSFMT22E CANNOT OPEN DD %s FOR OUTPUT\n", p->ddname);
         free(buf);
         free(dcb);
@@ -961,9 +984,15 @@ fill_disk(const UFSFMT_PARMS *p, char *dsn, unsigned *blocks)
     for (;;) {
         memset(&decb, 0, sizeof(decb));
 
-        rc = oswrite(&decb, dcb, buf, (int)p->blksize);
-        if (rc > 4) break;                  /* end of extent          */
-        if (oscheck(&decb)) break;          /* SB37 / I/O error       */
+        oswrite(&decb, dcb, buf, (int)p->blksize);
+
+        /* CHECK carries the verdict, and it is the only thing that
+        ** does: what BSAM leaves in R15 after a sequential WRITE is
+        ** not a status, and was measured to be an arbitrary negative
+        ** value on writes that completed perfectly well.  Believing it
+        ** would end the loop early and silently build a filesystem
+        ** smaller than the extent it was given. */
+        if (oscheck(&decb)) break;      /* D37: primary extent full */
 
         count++;
         if (count >= UFSFMT_BLOCK_LIMIT) {
@@ -1263,7 +1292,11 @@ report(const UFSFMT_PARMS *p, const UFSFMT_GEOM *g, const char *dsn)
 
     data_blocks = g->total_blocks - g->datablock_start;
 
-    printf("\n");
+    /* A blank line has to carry a character: SYSPRINT records are
+    ** written with carriage control, and an empty one is folded into
+    ** the record that follows -- which would push the message id off
+    ** column 1, where operators and automation look for it. */
+    printf(" \n");
     printf("UFSFMT80I Format summary\n");
     printf("UFSFMT81I   Dataset . . . . . %s\n", dsn[0] ? dsn : p->ddname);
     printf("UFSFMT82I   Block size  . . . %u\n", g->blksize);
@@ -1274,7 +1307,7 @@ report(const UFSFMT_PARMS *p, const UFSFMT_GEOM *g, const char *dsn)
     printf("UFSFMT85I   Data blocks . . . %-14u(%u free)\n",
            data_blocks, g->total_freeblock);
     printf("UFSFMT86I   Root owner  . . . %s/%s\n", p->owner, p->group);
-    printf("\n");
+    printf(" \n");
     printf("UFSFMT90I Add to your UFSD parmlib member:\n");
     printf("UFSFMT91I   MOUNT    DSN(%s) PATH(/your/mount/point) "
            "MODE(RW) OWNER(%s)\n",
