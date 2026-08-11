@@ -39,7 +39,7 @@ ufsd_ssct_init(UFSD_ANCHOR *anchor)
         return -1;
     }
 
-    ssct = ssct_new("UFSD", ssvt, (void *)anchor);
+    ssct = ssct_new(UFSD_SSNAME, ssvt, (void *)anchor);
     if (!ssct) {
         ssvt_free(ssvt);
         __prob(savekey, NULL);

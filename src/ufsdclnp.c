@@ -49,7 +49,7 @@ main(int argc, char **argv)
 
     rc = ufsd_reclaim(1);
     if (rc == UFSD_RECLAIM_NONE) {
-        wtof("UFSD142I UFSDCLNP: SUBSYSTEM UFSD NOT REGISTERED");
+        wtof("UFSD142I UFSDCLNP: SUBSYSTEM %s NOT REGISTERED", UFSD_SSNAME);
         return 0;
     }
     if (rc != UFSD_RECLAIM_DONE)

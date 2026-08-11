@@ -415,7 +415,7 @@ main(int argc, char **argv)
         ufsd.anchor = NULL;
         return 8;
     }
-    wtof("UFSD034I SSCT REGISTERED, SUBSYSTEM NAME=UFSD");
+    wtof("UFSD034I SSCT REGISTERED, SUBSYSTEM NAME=%s", UFSD_SSNAME);
 
     /* --- SSI router ------------------------------------------ */
     rc = ufsd_ssi_load(anchor);
