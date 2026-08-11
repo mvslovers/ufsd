@@ -54,14 +54,15 @@ Other targets: `make all` (modules + library), `make modules`, the test targets
 `compile_commands.json` for clangd), and `make clean` / `distclean`.
 `VERBOSE=1 make` echoes the full cc370/as370/ld370/ar370 commands.
 
-**Run `make clean` after a version bump.** The version in the startup banner
-(`UFSD000I` / `UFSD001I`) comes from `-DVERSION`, which `project.toml` puts on
-the compile line from `VERSION`. Changing `VERSION` invalidates no object file,
-so an incremental build keeps whatever string `ufsd.o` was compiled with and the
-server reports the old version — while every other module in the load library is
-current. A deploy can therefore be entirely correct and still be contradicted by
-the banner. Do not use the banner alone to confirm which build is running; a
-string that only exists in the new code is the reliable check.
+**The startup banner is generated, and stays current on its own.** The version
+and commit in `UFSD000I` / `UFSD001I` come from `.mbt/buildstamp.h`, which mbt
+regenerates at every `make` (`MBT_VERSION`, `MBT_COMMIT`, `MBT_COMMIT_DIRTY`;
+`ufsd.c` includes it as `<buildstamp.h>`). Because it is a header, `-MMD` makes
+it a prerequisite of `ufsd.o`, so a version bump or a new commit recompiles that
+one object — no `make clean` needed. And because mbt rewrites the file only when
+a value actually changed, an unchanged commit recompiles nothing. `UFSD006W`
+follows the same stamp: it appears when the build carried uncommitted *tracked*
+changes.
 
 ### Project Structure
 
