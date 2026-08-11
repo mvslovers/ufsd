@@ -4,25 +4,14 @@ version = "1.1.0-dev"
 type = "application"
 
 [build]
-# -DVERSION feeds ufsd.c's `#ifndef VERSION` (otherwise the hardcoded
-# fallback). v1's mbt injected it automatically; v2 does not.
-#
-# -DCOMMIT / -DCOMMIT_DIRTY are the build stamp behind UFSD000I/UFSD006W.
-# "-dirty" counts TRACKED modifications only (--untracked-files=no): stray
-# notes and generated files are not a provenance difference. Outside a git
-# checkout -- a source tarball -- the hash degrades to "unknown" rather
-# than failing the build.
-#
-# Caveat: both are baked into ufsd.o, which mbt recompiles only when
-# ufsd.c or one of its headers changes, so a local incremental build made
-# after a commit can still carry the previous hash. Release and CI builds
-# start from a clean tree, so a packaged banner is always accurate; `make
-# clean` restores it locally. The general fix belongs in mbt.mk.
+# The build stamp behind UFSD000I/UFSD006W is no longer injected here: mbt
+# generates .mbt/buildstamp.h and puts it on the include path, so ufsd.c
+# gets MBT_VERSION / MBT_COMMIT / MBT_COMMIT_DIRTY from `#include
+# <buildstamp.h>` (mbt#59). As a header it is a real prerequisite via -MMD,
+# so a new commit recompiles the banner TU instead of leaving it stamped
+# with the previous hash.
 cflags = [
     "-I", "include",
-    '-DVERSION=\"$(PROJECT_VERSION)\"',
-    '-DCOMMIT=\"$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(shell git status --porcelain --untracked-files=no 2>/dev/null | grep -q . && echo -dirty)\"',
-    '-DCOMMIT_DIRTY=$(shell git status --porcelain --untracked-files=no 2>/dev/null | grep -q . && echo 1 || echo 0)',
 ]
 
 # ── Load modules ─────────────────────────────────────────
