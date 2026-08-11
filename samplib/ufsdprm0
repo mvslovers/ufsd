@@ -5,7 +5,7 @@
 ROOT     DSN(UFSD.ROOT)
 
 /* Read-only web content */
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/wwwroot)          MODE(RO)
+MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
 
 /* User home directory, writable only by IBMUSER */
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
@@ -17,4 +17,4 @@ MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 
 /* A '#' in the first non-blank column comments a line out.  It must be
    first: '#' is legal inside a dataset name, so it is data anywhere else. */
-# MOUNT    DSN(UFSD.ARCHIVE)      PATH(/archive)      MODE(RO)
+# MOUNT    DSN(UFSD.ARCHIVE)      PATH(/archive)     MODE(RO)
