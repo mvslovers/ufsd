@@ -1,10 +1,9 @@
-//UFSFMT   JOB (ACCT),'FORMAT UFS DISK',CLASS=A,MSGCLASS=X,
-//             MSGLEVEL=(1,1)
+//UFSFMT   JOB (ACCT),'FORMAT UFS DISK',CLASS=A,MSGCLASS=H,
+//             MSGLEVEL=(1,1),NOTIFY=&SYSUID
 //*
 //* UFSFMT - Allocate and format a UFS370 filesystem on MVS
 //*
-//* Creates a disk UFSD can mount without any host-side tooling.
-//* Change MIKEG1.UFSHOME, the SPACE quantity, OWNER and GROUP to
+//* Change IBMUSER.UFSHOME, the SPACE quantity, OWNER and GROUP to
 //* suit, then submit.
 //*
 //* ------------------------------------------------------------------
@@ -48,8 +47,8 @@
 //* ------------------------------------------------------------------
 //*
 //ALLOC    EXEC PGM=IEFBR14
-//DISKFILE DD  DSN=MIKEG1.UFSHOME,DISP=(NEW,CATLG),
-//             UNIT=SYSDA,SPACE=(4096,256),
+//DISKFILE DD  DSN=IBMUSER.UFSHOME,DISP=(NEW,CATLG),
+//             UNIT=SYSDA,SPACE=(4096,1280),
 //             DCB=(DSORG=PS,RECFM=U,BLKSIZE=4096)
 //*
 //* ------------------------------------------------------------------
@@ -71,15 +70,15 @@
 //*
 //FORMAT   EXEC PGM=UFSFMT
 //STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
-//DISKFILE DD  DISP=OLD,DSN=MIKEG1.UFSHOME
+//DISKFILE DD  DISP=OLD,DSN=IBMUSER.UFSHOME
 //SYSPRINT DD  SYSOUT=*
 //SYSTERM  DD  SYSOUT=*
 //SYSUDUMP DD  SYSOUT=*
 //SYSIN    DD  *
-   /* UFS370 filesystem for MIKEG1, mounted at /u/mikeg1 */
+   /* UFS370 filesystem for IBMUSER, mounted at /u/ibmuser */
    BLKSIZE  4096
    INODES   10.0
-   OWNER    HERC01
-   GROUP    ADMIN
+   OWNER    IBMUSER
+   GROUP    USER
 /*
 //
