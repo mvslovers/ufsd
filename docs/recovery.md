@@ -43,7 +43,7 @@ Restart UFSD:
 
 Startup detects the orphaned predecessor itself (`ufsd_reclaim()`, shared with UFSDCLNP) and reclaims it before registering — quiesce, drain, deregister, free — so no separate cleanup step is needed.
 
-**Prerequisite: `SYS1.PROCLIB(UFSD)` must be installed** (`samplib/ufsdmstr`). While a UFSD SSCT is registered, MVS converts `S UFSD` under the **master subsystem** — the subsystem name matches — and the master's `IEFPDSI` knows only `SYS1.PROCLIB`. Without the companion member the start fails with `IEF612I PROCEDURE NOT FOUND` before any UFSD code runs (this is the real mechanism behind the long-observed "proc not found after abend" symptom). After a clean stop no SSCT exists and the start goes through JES2 and `SYS2.PROCLIB(UFSD)` as usual.
+No prerequisite beyond the STC procedure itself. The start goes through JES2 and `SYS2.PROCLIB(UFSD)` whether or not an orphan is present, because the subsystem is named `UFS1` and the procedure `UFSD` — see [Why the subsystem is not called UFSD](#why-the-subsystem-is-not-called-ufsd).
 
 Console output of a start over an orphan (MVS-verified 2026-08-10, captured
 before the #51 banner change — `UFSD000I` now also carries the build commit
@@ -71,8 +71,6 @@ Startup refuses to reclaim a predecessor whose anchor is still flagged ACTIVE (`
 /S UFSD
 ```
 
-(`IEF612I` on `/S UFSD` after an abend is **not** a JES2 stuck-job problem — it is the master-subsystem conversion described above, and installing `SYS1.PROCLIB(UFSD)` resolves it.)
-
 ### UFSDCLNP Details
 
 UFSDCLNP is a standalone program wrapping the same shared reclaim routine (`ufsd_reclaim()`, `src/ufsd#rcl.c`) that UFSD startup runs. It locates the UFSD anchor in CSA via the SSCT chain, then tears down all resources:
@@ -92,18 +90,25 @@ UFSDCLNP is safe to run when UFSD is not registered — it reports "nothing to d
 
 ### Installation
 
-Copy the UFSDCLNP STC procedure from `samplib/ufsdclnp` to `SYS2.PROCLIB(UFSDCLNP)`, and the MSTR companion procedure from `samplib/ufsdmstr` to `SYS1.PROCLIB(UFSD)` (required for the post-abend `/S UFSD` — see [Recovery Procedure](#recovery-procedure)).
+Copy the UFSDCLNP STC procedure from `samplib/ufsdclnp` to `SYS2.PROCLIB(UFSDCLNP)`. Nothing has to be installed in `SYS1.PROCLIB`.
 
-The companion needs a dump data set, since SYSOUT is not available under the master subsystem (and SYSPRINT/SYSTERM are DUMMY there for the same reason — the C runtime would otherwise dynalloc a SYSOUT for stdout and abend S013-C0):
+## Why the Subsystem is not called UFSD
 
-```
-//DUMP DD DSN=UFSD.SYSUDUMP,DISP=(NEW,CATLG),UNIT=SYSDA,
-//     SPACE=(TRK,(150,30)),DCB=(RECFM=VBA,LRECL=125,BLKSIZE=1632)
-```
+The MVS subsystem is named **`UFS1`** (`UFSD_SSNAME`, `include/ufsd.h`); only the started task keeps the name `UFSD`. `F UFSD,…` and `P UFSD` address the jobname and are unaffected.
 
-Note that JES2's `PROC00` concatenation searches `SYS1.PROCLIB` first, so once the companion is installed it serves **all** starts, not just the MSTR-converted ones — `SYS2.PROCLIB(UFSD)` is shadowed. That is why the companion's `SYSUDUMP` points at the data set instead of `DUMMY`. This whole arrangement is interim: renaming the subsystem so it no longer collides with the STC name (#55) removes the MSTR path and the companion entirely.
+The two must differ. While a subsystem of the same name is registered, MVS converts `S <name>` onto the **master-subsystem** start path, and the master's `IEFPDSI` knows only `SYS1.PROCLIB` — so with a subsystem named `UFSD`, every start issued over a registered SSCT (the reclaim start after an abend, or a second start while the server runs) either failed with `IEF612I PROCEDURE NOT FOUND` before any UFSD code ran, or had to be served by a companion member in `SYS1.PROCLIB`. That companion then shadowed `SYS2.PROCLIB(UFSD)` for *all* starts, because JES2's `PROC00` concatenation searches `SYS1.PROCLIB` first. This is the anti-pattern IBM later codified as "do not assign a subsystem the same name as a started procedure"; the non-JES products avoid it by naming (DB2 `DSN1`, MQ `MQ01`).
 
-The MSTR converter echoes every line of the companion member to the console (`IEF196I`) on each MSTR-converted start — the member is deliberately kept short because of that. Such starts occur only when an SSCT named UFSD is registered: the one reclaim start after an abend, or an accidental second `S UFSD` while the server runs (refused with `UFSD002E`).
+Note that the name is compiled into every client through the statically linked libufs, so server and consumers (HTTPD, FTPD, mvsMF, HTTPLUA, HTTPREXX) must be deployed together.
+
+### Upgrading from a pre-2.0.0 UFSD
+
+The rename is not backward compatible in either direction — an old client cannot find `UFS1`, and a 2.x server does not see an SSCT named `UFSD`. On a system that ran a pre-2.0.0 UFSD:
+
+1. Stop the server cleanly (`/P UFSD`). If it is already gone but left an orphan behind, run `/S UFSDCLNP` **with the old load modules still installed** — its reclaim looks for the old name, and once the new modules are in place nothing will find that SSCT again. An IPL clears it just as well.
+2. Delete `SYS1.PROCLIB(UFSD)` if the MSTR companion was installed. It is no longer needed, and left in place it keeps shadowing `SYS2.PROCLIB(UFSD)` — the server then starts from the wrong member, silently, with `SYSPRINT`/`SYSTERM` on `DUMMY` and dumps going somewhere other than the spool. Verify with `/S UFSD` that no `IEF196I` JCL echo appears.
+3. Deploy the new UFSD **and** every rebuilt consumer, then start.
+
+A leftover `UFSD.SYSUDUMP` data set from the companion can be deleted; the STC procedure uses `SYSUDUMP SYSOUT=*` again.
 
 ## Known Issues
 
@@ -207,7 +212,7 @@ predecessor) and under standalone UFSDCLNP.
 |---------|----------|-------------|
 | UFSD140I | I | UFSDCLNP starting |
 | UFSD141E | E | APF setup failed (STEPLIB not APF-authorized?) |
-| UFSD142I | I | Subsystem UFSD not registered — nothing to do (RC 0) |
+| UFSD142I | I | Subsystem UFS1 not registered — nothing to do (RC 0) |
 | UFSD143E | E | Reclaim: cannot enter supervisor state |
 | UFSD144I | I | Reclaim: SSVT function pointer cleared |
 | UFSD145I | I | Reclaim: SSCT deregistered |

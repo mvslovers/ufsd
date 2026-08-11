@@ -17,11 +17,7 @@
 //*
 //* Recovery:    After an abend (/C or S0Cx) the SSCT and CSA remain
 //*              allocated by design; the next /S UFSD reclaims them.
-//*              NOTE: that start converts under the MASTER subsystem
-//*              (the orphaned SSCT redirects it), so the UFSDMSTR
-//*              companion MUST be installed as SYS1.PROCLIB(UFSD) --
-//*              without it the start fails with IEF612I.  UFSDCLNP
-//*              remains the standalone fallback (see SAMPLIB).
+//*              UFSDCLNP is the standalone fallback (see SAMPLIB).
 //*
 //UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
 //STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB

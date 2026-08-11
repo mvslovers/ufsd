@@ -134,9 +134,19 @@ WAIT on `&local_ecb` (key 8) works. `__xmpost` (CVT0PT01) posts it cross-AS.
 
 ## Known Behavior: double start
 
-While UFSD is registered, `S UFSD` fails with IEF612I PROCEDURE NOT FOUND.
-MVS routes system-internal SSI calls (job-step notifications) through ufsdssir
-which rejects them. After `/P UFSD` (deregisters SSCT), `S UFSD` works again.
+A second `S UFSD` while the server runs starts normally through JES2 and is
+then refused by UFSD itself: startup's reclaim finds a predecessor whose
+anchor is still flagged ACTIVE and stops with `UFSD002E UFSD ALREADY
+REGISTERED AND ACTIVE`.
 
-If UFSD abends without cleanup, SSCT remains registered until IPL. ESTAE exit
-is mandatory (see concept.md, "SSI Router").
+Until #55 this failed earlier and more confusingly, with `IEF612I PROCEDURE
+NOT FOUND` — not because the router rejected anything (the long-held theory
+here), but because the subsystem was named `UFSD` like the procedure, which
+put the start on the master-subsystem path. The subsystem is now `UFS1`; see
+`docs/recovery.md`, "Why the Subsystem is not called UFSD".
+
+If UFSD abends, SSCT and CSA stay allocated by design — the next `/S UFSD`
+reclaims them (#49), UFSDCLNP is the standalone fallback. The ESTAE exit is
+still mandatory: without it the abend leaves the SSVT entry live, and
+clients keep being dispatched into a router whose address space is gone
+(see concept.md, "SSI Router").

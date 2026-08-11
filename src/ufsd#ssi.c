@@ -19,7 +19,7 @@
 **
 ** Flow:
 **   1. Validate SSOB + UFSSSOB extension
-**   2. Find UFSD_ANCHOR via ssct_find("UFSD")->ssctsuse
+**   2. Find UFSD_ANCHOR via ssct_find(UFSD_SSNAME)->ssctsuse
 **   3. CS-pop one UFSREQ from the free pool
 **   4. Fill UFSREQ fields from UFSSSOB
 **   5. CS-enqueue UFSREQ at req_tail (req_lock spin)
@@ -196,7 +196,7 @@ ufsdssir(void)
     }
 
     /* --- Locate CSA anchor via SSCT --- */
-    ssct = ssct_find("UFSD");
+    ssct = ssct_find(UFSD_SSNAME);
     if (!ssct) {
         ssob->SSOBRETN = UFSD_RC_CORRUPT;
         return;

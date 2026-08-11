@@ -54,7 +54,7 @@ libufs_issue(UFSSSOB *ufsssob)
     memset(&ssib, 0, sizeof(ssib));
     memcpy(ssib.SSIBID,   "SSIB", 4);
     ssib.SSIBLEN = (unsigned short)sizeof(ssib);
-    memcpy(ssib.SSIBSSNM, "UFSD", 4);
+    memcpy(ssib.SSIBSSNM, UFSD_SSNAME, 4);
 
     memset(&ssob, 0, sizeof(ssob));
     memcpy(ssob.SSOBID, SSOBID_EYE, 4);

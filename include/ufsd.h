@@ -489,6 +489,26 @@ struct ufsd_gfile {
 #define UFSD_SSOBFUNC   128U    /* SSOB function code for all UFSD ops */
 #define UFSD_SSVT_ROUTER  1U   /* SSVT index of the thin router        */
 
+/* MVS subsystem name, in the SSCT and in every client's SSIBSSNM (#55).
+**
+** It must NOT match the STC procedure name.  While a subsystem of the same
+** name is registered, MVS converts `S <name>` onto the master-subsystem
+** start path, whose IEFPDSI knows only SYS1.PROCLIB -- so the start either
+** fails with IEF612I or has to be served by a companion member installed
+** there, which then shadows SYS2.PROCLIB for every start.  This is the
+** anti-pattern IBM later codified as "do not assign a subsystem the same
+** name as a started procedure"; the non-JES products avoid it by naming
+** (DB2 DSN1, MQ MQ01), and so do we.  The STC keeps the name UFSD, so
+** `F UFSD,...` and `P UFSD` address the jobname and are unaffected.
+**
+** Deliberately not "UFSS": that is UFSSSOB_EYE above, and the same four
+** bytes in two roles is a trap in a storage dump.
+**
+** Changing this breaks every client binary -- SSIBSSNM is compiled into
+** libufs, which is linked statically into httpd, ftpd, mvsmf, httplua and
+** httprexx.  Server and consumers must be deployed together. */
+#define UFSD_SSNAME     "UFS1"
+
 typedef struct ufsssob  UFSSSOB;
 struct ufsssob {
     char            eye[4];         /* "UFSS"                           */
@@ -540,7 +560,7 @@ void ufsd_shutdown(UFSD_STC *ufsd, int mode);
 /* ufsd#rcl.c (#49) -- orphaned predecessor reclaim, shared by UFSD
 ** startup and the standalone UFSDCLNP utility.
 **
-** Finds a registered "UFSD" SSCT and, unless its anchor is still
+** Finds a registered UFSD_SSNAME SSCT and, unless its anchor is still
 ** flagged ACTIVE (every shutdown path clears the flag before the STC
 ** ends, so a set flag means a live server), quiesces and frees it:
 ** null the SSVT entry, clear ANCHOR_ACTIVE, drain inflight with the

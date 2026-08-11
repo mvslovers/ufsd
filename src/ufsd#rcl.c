@@ -71,7 +71,7 @@ ufsd_rcl_drain(UFSD_ANCHOR *anchor)
 /* ============================================================
 ** ufsd_reclaim
 **
-** Find a registered "UFSD" SSCT and reclaim it: quiesce, drain,
+** Find a registered UFSD_SSNAME SSCT and reclaim it: quiesce, drain,
 ** deregister, free all CSA.  Caller must be APF authorized and
 ** in a normal task environment (timed WAITs; not under RTM).
 **
@@ -86,7 +86,7 @@ ufsd_reclaim(int force)
     unsigned char   savekey;
     int             anchor_ok;
 
-    ssct = ssct_find("UFSD");
+    ssct = ssct_find(UFSD_SSNAME);
     if (!ssct)
         return UFSD_RECLAIM_NONE;
 
