@@ -100,9 +100,9 @@ The two must differ. While a subsystem of the same name is registered, MVS conve
 
 Note that the name is compiled into every client through the statically linked libufs, so server and consumers (HTTPD, FTPD, mvsMF, HTTPLUA, HTTPREXX) must be deployed together.
 
-### Upgrading from a pre-2.0.0 UFSD
+### Upgrading from UFSD 1.0.0
 
-The rename is not backward compatible in either direction — an old client cannot find `UFS1`, and a 2.x server does not see an SSCT named `UFSD`. On a system that ran a pre-2.0.0 UFSD:
+The rename is not backward compatible in either direction — a 1.0.0 client cannot find `UFS1`, and a 1.1.0 server does not see an SSCT named `UFSD`. On a system that ran UFSD 1.0.0:
 
 1. Stop the server cleanly (`/P UFSD`). If it is already gone but left an orphan behind, run `/S UFSDCLNP` **with the old load modules still installed** — its reclaim looks for the old name, and once the new modules are in place nothing will find that SSCT again. An IPL clears it just as well.
 2. Delete `SYS1.PROCLIB(UFSD)` if the MSTR companion was installed. It is no longer needed, and left in place it keeps shadowing `SYS2.PROCLIB(UFSD)` — the server then starts from the wrong member, silently, with `SYSPRINT`/`SYSTERM` on `DUMMY` and dumps going somewhere other than the spool. Verify with `/S UFSD` that no `IEF196I` JCL echo appears.
