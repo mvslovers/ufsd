@@ -64,7 +64,9 @@ UFSD030I CSA ALLOCATED: ANCHOR=...
 precedes `UFSD145I` while they bail; a count still standing after the
 ceiling yields `UFSD152W … ASSUMING LEAKED, FREEING` and reclaim proceeds.)
 
-Startup refuses to reclaim a predecessor whose anchor is still flagged ACTIVE (`UFSD002E UFSD ALREADY REGISTERED AND ACTIVE`) — every shutdown path clears the flag before the STC ends, so a set flag means a UFSD instance is (or appears to be) still running. If the instance is genuinely gone (e.g. after a FORCE, where the ESTAE never ran), use the standalone fallback, which reclaims unconditionally:
+This covers the FORCE case too. A UFSD killed before its ESTAE could run leaves `UFSD_ANCHOR_ACTIVE` set, which used to make startup refuse; since #53 the reclaim looks the anchor's `server_ascb` up in the ASVT, finds no such address space, and reclaims the orphan anyway. `/S UFSD` is the answer to every abnormal end of a UFSD instance.
+
+What startup still refuses is a predecessor that is genuinely **running** (`UFSD155W` names its ASCB, then `UFSD002E UFSD ALREADY REGISTERED AND ACTIVE`) — as it must; two servers cannot own the same CSA. The one remaining case for the standalone utility is an anchor flagged ACTIVE whose ASCB cannot be checked at all (`UFSD156W`), which needs the `force` only UFSDCLNP passes:
 
 ```
 /S UFSDCLNP
@@ -86,7 +88,29 @@ The drain (step 2) mirrors the clean-`/P` path and closes the window where freei
 
 UFSDCLNP is safe to run when UFSD is not registered — it reports "nothing to do" and exits RC=0.
 
-**Important:** Do not run UFSDCLNP while UFSD is *healthy and active*. It clears `UFSD_ANCHOR_ACTIVE` and frees the CSA, which pulls the storage out from under the running STC — an S0C4 in UFSD itself. The drain protects in-flight *clients* during recovery; it does not detect a live server. UFSDCLNP is for the post-abend case where the STC is already gone.
+### The Liveness Guard (#53)
+
+Steps 1–6 are exactly what must never happen to a *running* UFSD: clearing `UFSD_ANCHOR_ACTIVE` and freeing the CSA pulls the storage out from under the live STC. Before #53, UFSDCLNP had no way to tell the two apart and did it anyway.
+
+It now refuses. Before touching anything, the reclaim takes the STC's ASCB from the anchor (`server_ascb`, recorded at startup for cross-AS POST) and looks it up in the ASVT. Only an ASCB that belongs to no currently assigned address space is treated as an orphan's:
+
+| Anchor state | `/S UFSD` (reclaim) | `/S UFSDCLNP` (`force`) |
+|---|---|---|
+| ACTIVE clear — a shutdown path ran | reclaims | reclaims |
+| ACTIVE, ASCB assigned in the ASVT | refuses (`UFSD155W` + `UFSD002E`) | refuses (`UFSD155W` + `UFSD157W`, RC 8) |
+| ACTIVE, ASCB in no ASVT entry — killed before the ESTAE ran | reclaims | reclaims |
+| ACTIVE, ASCB is the reclaiming address space's own | reclaims | reclaims |
+| ACTIVE, no ASCB to look up | refuses (`UFSD156W` + `UFSD002E`) | reclaims |
+
+So `force` no longer means "unconditionally": it covers only the last row. A running server is off limits to UFSDCLNP as well, and there is no override — stop it first.
+
+Row four is what makes the FORCE recovery work at all, and it is not a corner case. An ASCB block goes back to SQA when its address space ends, and the address space created next — usually the restart itself — can be handed the same block. Measured on mvsdev: UFSD ran in ASCB `00FD40D0`, was killed, and the restart came up in `00FD40D0` again. Without excluding the caller's own ASCB, that restart would find the predecessor's address in the ASVT, assigned to itself, and refuse — and so would UFSDCLNP, leaving only an IPL. The exclusion cannot hide a live server: two address spaces alive at the same time never share an ASCB address.
+
+Row three is rarer than it looks, because MVS makes it hard to produce: `FORCE` is rejected for a cancelable address space (`IEE838I … CANCELABLE - ISSUE CANCEL BEFORE FORCE`), and a `CANCEL` reaches UFSD's ESTAE, which clears the flag on its way out. The state therefore arises from a UFSD hung badly enough that the CANCEL never completes, or from the `UFSD097E` path where shutdown cannot enter supervisor state.
+
+The comparison is on the ASCB address alone; nothing is read out of the ASCB itself, because SQA storage of an ended address space can be reused and a jobname read out of a reused block would be another address space's. That leaves one residual error, and it is the harmless one: if the ASCB address has been handed to some *third* address space, a genuinely dead UFSD looks alive and cleanup is refused. Check with `D A,L` — if no UFSD address space is listed, the SSCT is an orphan the guard cannot recognize, and an IPL is the way out.
+
+**A hung but living UFSD is not a UFSDCLNP case.** The guard sees an assigned ASCB and refuses regardless of whether the server still answers. Take the address space down first (`/P UFSD`, then `/C UFSD`, then FORCE), and only then reclaim — after a FORCE, `/S UFSD` already does it.
 
 ### Installation
 
@@ -104,7 +128,7 @@ Note that the name is compiled into every client through the statically linked l
 
 The rename is not backward compatible in either direction — a 1.0.0 client cannot find `UFS1`, and a 1.1.0 server does not see an SSCT named `UFSD`. On a system that ran UFSD 1.0.0:
 
-1. Stop the server cleanly (`/P UFSD`). If it is already gone but left an orphan behind, run `/S UFSDCLNP` **with the old load modules still installed** — its reclaim looks for the old name, and once the new modules are in place nothing will find that SSCT again. An IPL clears it just as well.
+1. Stop the server cleanly (`/P UFSD`) — the stop is not optional, since UFSDCLNP refuses while the address space is still there (see [The Liveness Guard](#the-liveness-guard-53)). If it is already gone but left an orphan behind, run `/S UFSDCLNP` **with the old load modules still installed** — its reclaim looks for the old name, and once the new modules are in place nothing will find that SSCT again. An IPL clears it just as well.
 2. Delete `SYS1.PROCLIB(UFSD)` if the MSTR companion was installed. It is no longer needed, and left in place it keeps shadowing `SYS2.PROCLIB(UFSD)` — the server then starts from the wrong member, silently, with `SYSPRINT`/`SYSTERM` on `DUMMY` and dumps going somewhere other than the spool. Verify with `/S UFSD` that no `IEF196I` JCL echo appears.
 3. Deploy the new UFSD **and** every rebuilt consumer, then start.
 
@@ -150,7 +174,7 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 |---------|----------|-------------|
 | UFSD000I | I | UFSD starting — version + build commit (`-DIRTY` when built from a modified tree) |
 | UFSD001I | I | Ready — version + CSA/session/file summary |
-| UFSD002E | E | Predecessor SSCT found with ACTIVE anchor — refusing to start (run UFSDCLNP if orphaned) |
+| UFSD002E | E | Predecessor SSCT belongs to a running UFSD (`UFSD155W`) or to an anchor whose ASCB cannot be checked (`UFSD156W`) — refusing to start |
 | UFSD003E | E | Predecessor reclaim failed (supervisor state) — startup fails |
 | UFSD004I | I | Orphaned predecessor reclaimed at startup — CSA recovered |
 | UFSD005I | I | libc370 version + commit this module was linked against |
@@ -202,9 +226,9 @@ skipped; the rest of the member is still processed.
 | UFSD104W | W | Unrecognized statement (first 40 characters echoed) |
 | UFSD105W | W | ROOT statement missing — startup fails |
 
-### Reclaim and UFSDCLNP (140–149, 152–154)
+### Reclaim and UFSDCLNP (140–149, 152–157)
 
-Messages 143–148 and 152–154 come from the shared reclaim routine
+Messages 143–148 and 152–156 come from the shared reclaim routine
 (`RECLAIM:` prefix) and appear both during UFSD startup (over an orphaned
 predecessor) and under standalone UFSDCLNP.
 
@@ -223,5 +247,8 @@ predecessor) and under standalone UFSDCLNP.
 | UFSD152W | W | Reclaim: client(s) still in flight after the drain ceiling — assumed leaked, CSA freed anyway |
 | UFSD153W | W | Reclaim: anchor eye-catcher mismatch — anchor not freed |
 | UFSD154I | I | Reclaim: no anchor (ssctsuse=NULL) — nothing to free |
+| UFSD155W | W | Reclaim: the server's ASCB is an assigned address space — UFSD is running, nothing reclaimed (verify with `D A,L`) |
+| UFSD156W | W | Reclaim: anchor flagged ACTIVE but its ASCB cannot be checked — nothing reclaimed (UFSDCLNP passes `force` and reclaims) |
+| UFSD157W | W | UFSDCLNP: cleanup suppressed, stop UFSD first (RC 8; follows UFSD155W) |
 
 > **Note:** The message numbers listed here reflect the current codebase. Exact numbers may differ slightly — consult the source for authoritative message IDs.

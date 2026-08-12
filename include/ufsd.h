@@ -560,16 +560,42 @@ void ufsd_shutdown(UFSD_STC *ufsd, int mode);
 /* ufsd#rcl.c (#49) -- orphaned predecessor reclaim, shared by UFSD
 ** startup and the standalone UFSDCLNP utility.
 **
-** Finds a registered UFSD_SSNAME SSCT and, unless its anchor is still
-** flagged ACTIVE (every shutdown path clears the flag before the STC
-** ends, so a set flag means a live server), quiesces and frees it:
-** null the SSVT entry, clear ANCHOR_ACTIVE, drain inflight with the
-** router module still present, then deregister and free all CSA.
-** `force` skips the ACTIVE check (UFSDCLNP emergency semantics).
+** Finds a registered UFSD_SSNAME SSCT and, unless it belongs to a UFSD
+** that is still running, quiesces and frees it: null the SSVT entry,
+** clear ANCHOR_ACTIVE, drain inflight with the router module still
+** present, then deregister and free all CSA.
+**
+** Still running is decided in two steps (#53).  Every shutdown path
+** clears ANCHOR_ACTIVE before the STC ends, so the flag being CLEAR is
+** proof of an orphan.  A SET flag is not proof of a live server -- an
+** instance killed before its ESTAE ran leaves it set too -- so the
+** anchor's server_ascb is looked up in the ASVT to tell the two apart:
+**
+**   ACTIVE clear                          reclaim
+**   ACTIVE + server_ascb assigned         UFSD_RECLAIM_ACTIVE
+**   ACTIVE + server_ascb not in the ASVT  reclaim (orphan after FORCE)
+**   ACTIVE + server_ascb is the caller's  reclaim (SQA handed us the
+**                                         predecessor's ASCB block)
+**   ACTIVE + no ASCB to look up           UFSD_RECLAIM_ACTIVE unless
+**                                         `force`
+**
+** `force` (UFSDCLNP) therefore skips only that last, undecidable case;
+** a running server is off limits to both callers.
 ** Caller must be APF authorized and not under RTM. */
+/* Liveness states behind that table.  ufsd_server_state() is exported
+** for TSTUFSRC (test/mvs/tstufsrc.c): the DEAD and UNKNOWN branches are
+** the half of the guard a host test cannot reach, and the operator
+** action that would produce them for real -- FORCE -- needs master
+** console authority. */
+#define UFSD_SRV_DEAD         0     /* ASCB belongs to no address space  */
+#define UFSD_SRV_LIVE         1     /* ASCB assigned -- server running   */
+#define UFSD_SRV_UNKNOWN      2     /* nothing to check the ASCB against */
+
+int ufsd_server_state(UFSD_ANCHOR *anchor)                           asm("UFSD@SRV");
+
 #define UFSD_RECLAIM_NONE     0     /* no UFSD SSCT registered           */
 #define UFSD_RECLAIM_DONE     1     /* orphaned predecessor reclaimed    */
-#define UFSD_RECLAIM_ACTIVE   2     /* predecessor looks live; untouched */
+#define UFSD_RECLAIM_ACTIVE   2     /* live (or undecidable); untouched  */
 #define UFSD_RECLAIM_FAIL   (-1)    /* cannot enter supervisor state     */
 
 int ufsd_reclaim(int force)                                          asm("UFSD@RCL");

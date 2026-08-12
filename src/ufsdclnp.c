@@ -14,10 +14,14 @@
 ** (src/ufsd#rcl.c) and UFSD startup runs it itself, so after an abend
 ** a plain /S UFSD suffices.  UFSDCLNP stays the standalone fallback:
 ** emergencies, older load libraries, and the case startup refuses --
-** a predecessor still flagged ACTIVE (e.g. after FORCE, when the
-** ESTAE never ran).  UFSDCLNP reclaims UNCONDITIONALLY (force=1): it
-** does not distinguish a crashed server from a running one, so stop
-** UFSD first (TSK-124 tracks refusing while the STC is alive).
+** an anchor flagged ACTIVE whose server ASCB cannot be checked.
+**
+** It reclaims with force=1, which since #53 no longer means
+** "unconditionally": a UFSD whose address space is still in the ASVT
+** is off limits here too.  Any UFSD_RECLAIM_ACTIVE reaching this
+** program therefore means a PROVEN live server -- force already covers
+** the undecidable case -- so the refusal below can say so plainly.
+** There is no override: stop UFSD first (/P, or FORCE if it hangs).
 **
 ** Recovery cycle after UFSD abend:
 **   /S UFSD           (reclaims the orphan itself, then starts)
@@ -51,6 +55,12 @@ main(int argc, char **argv)
     if (rc == UFSD_RECLAIM_NONE) {
         wtof("UFSD142I UFSDCLNP: SUBSYSTEM %s NOT REGISTERED", UFSD_SSNAME);
         return 0;
+    }
+    if (rc == UFSD_RECLAIM_ACTIVE) {
+        /* UFSD155W named the address space.  Nothing was touched. */
+        wtof("UFSD157W UFSDCLNP: CLEANUP SUPPRESSED -- "
+             "STOP UFSD FIRST (/P UFSD)");
+        return 8;
     }
     if (rc != UFSD_RECLAIM_DONE)
         return 8;                         /* UFSD143E already issued */

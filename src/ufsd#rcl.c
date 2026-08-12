@@ -8,11 +8,29 @@
 **
 **   UFSD startup   main() reclaims BEFORE registering, so after /C a
 **                  plain /S UFSD suffices: no second SSCT chained, no
-**                  CSA leak.  force=0 -- a predecessor whose anchor is
-**                  still flagged ACTIVE is treated as a running server
-**                  and left untouched.
-**   UFSDCLNP       standalone emergency utility.  force=1 -- reclaims
-**                  unconditionally (its historical semantics).
+**                  CSA leak.  force=0.
+**   UFSDCLNP       standalone emergency utility.  force=1.
+**
+** Liveness (#53).  Neither caller may tear down a UFSD that is still
+** running.  UFSD_ANCHOR_ACTIVE alone cannot tell that apart: every path
+** out of a UFSD instance clears it, so a SET flag means either a live
+** server or one that died before even its ESTAE ran (FORCE).  The
+** anchor's server_ascb disambiguates -- ufsd_server_state() looks that
+** ASCB up in the ASVT:
+**
+**   ACTIVE clear                       both callers reclaim
+**   ACTIVE + ASCB assigned    LIVE     both callers refuse
+**   ACTIVE + ASCB not found   DEAD     both callers reclaim
+**   ACTIVE + ASCB is our own  DEAD     both callers reclaim
+**   ACTIVE + no ASCB to check UNKNOWN  force reclaims, startup refuses
+**
+** `force` therefore no longer skips the liveness check -- it skips only
+** the undecidable case.  A running server is off limits to UFSDCLNP as
+** well; stop it first.  Every error the scan can make lands on the safe
+** side: SQA address reuse can make a dead server look LIVE (cleanup is
+** refused, nothing is lost but convenience), while calling a live
+** server DEAD -- the one that frees CSA under live clients -- would
+** take an assigned ASVT entry that does not hold its own ASCB.
 **
 ** Quiescing (#39): null the SSVT entry and clear UFSD_ANCHOR_ACTIVE,
 ** then DRAIN anchor->inflight to zero -- keeping the eye catcher and
@@ -28,9 +46,12 @@
 */
 
 #include "ufsd.h"
+#include "ufsdasv.h"
 #include <string.h>
 #include <clibos.h>
 #include <clibwto.h>
+#include <cvt.h>
+#include <ihaasvt.h>
 
 /* Drain tuning -- see ufsd.c ufsd_drain().  The ceiling exceeds
 ** 2 * UFSD_WAIT_INTERVAL (2 * 5.00 s) so a client genuinely parked in the
@@ -68,6 +89,59 @@ ufsd_rcl_drain(UFSD_ANCHOR *anchor)
     return 0;
 }
 
+/* Is the address space that owns this anchor still there?  Problem
+** state: the CVT and the ASVT are fetch-accessible, and this runs
+** before the key-0 window the teardown needs (same as
+** ufsd_sess_cleanup(), ufsd#ses.c).
+**
+** server_ascb == NULL cannot happen for an anchor reached through a
+** registered SSCT -- startup stores the ASCB before ufsd_ssct_init() --
+** but it is reported UNKNOWN rather than DEAD anyway: "I could not
+** check" must never be answered with "go ahead and free the CSA".
+**
+** Our own ASCB is excluded first, and that exclusion is not a corner
+** case: an ASCB block returns to SQA at memterm, and the address space
+** created next -- typically the very restart that is reclaiming here --
+** can be handed the same block back.  Without the exclusion a FORCEd
+** predecessor would find its own recycled ASCB in the ASVT, call itself
+** live, and refuse both the start and the cleanup with no way out but
+** an IPL.  It cannot produce a false DEAD either: two address spaces
+** that are live at the same time never share one ASCB address, so a
+** genuinely running predecessor can never match the caller.
+**
+** Not static: the branches below are the half of the guard that no
+** host test can reach, so TSTUFSRC calls this directly on the target
+** with a hand-built anchor (test/mvs/tstufsrc.c). */
+int
+ufsd_server_state(UFSD_ANCHOR *anchor)
+{
+    CVT  *cvt;
+    ASVT *asvt;
+
+    if (!anchor->server_ascb)
+        return UFSD_SRV_UNKNOWN;
+
+    /* __ascb(0) is a PSAAOLD fetch (libc370 @@ascb.c) -- page 0, the
+    ** same page as the CVT pointer below, so no key-0 window. */
+    if (anchor->server_ascb == __ascb(0))
+        return UFSD_SRV_DEAD;             /* inherited, not inhabited */
+
+    cvt = *(CVT **)16;
+    if (!cvt)
+        return UFSD_SRV_UNKNOWN;
+
+    asvt = (ASVT *)cvt->cvtasvt;
+    if (!asvt || asvt->asvtmaxu == 0U)
+        return UFSD_SRV_UNKNOWN;
+
+    if (ufsd_ascb_in_asvt((const unsigned *)&asvt->asvtenty[0],
+                          asvt->asvtmaxu,
+                          (unsigned)anchor->server_ascb))
+        return UFSD_SRV_LIVE;
+
+    return UFSD_SRV_DEAD;
+}
+
 /* ============================================================
 ** ufsd_reclaim
 **
@@ -94,15 +168,32 @@ ufsd_reclaim(int force)
     anchor    = (UFSD_ANCHOR *)ssct->ssctsuse;
     anchor_ok = (anchor && memcmp(anchor->eye, "UFSDANCR", 8) == 0);
 
-    /* Liveness gate.  Every path out of a UFSD instance -- clean /P,
-    ** drain-timeout retain, and the ESTAE -- clears UFSD_ANCHOR_ACTIVE
-    ** before the STC ends, so a set flag means a running server (or one
-    ** whose ESTAE never got to run, e.g. after FORCE).  Tearing that
-    ** down would yank the CSA from under live clients; without `force`,
-    ** hands off.  An SSCT without a valid anchor cannot be a live
-    ** server -- reclaim it. */
-    if (!force && anchor_ok && (anchor->flags & UFSD_ANCHOR_ACTIVE))
-        return UFSD_RECLAIM_ACTIVE;
+    /* Liveness gate (#53).  An SSCT whose anchor never carried the eye
+    ** catcher cannot be a live server -- reclaim it.  Otherwise the
+    ** ACTIVE flag opens the question and the ASCB answers it; see the
+    ** table in the file header.  A refusal states here what was found;
+    ** what follows from it ("not starting" / "cleanup suppressed") is
+    ** the caller's message. */
+    if (anchor_ok && (anchor->flags & UFSD_ANCHOR_ACTIVE)) {
+        switch (ufsd_server_state(anchor)) {
+        case UFSD_SRV_LIVE:
+            wtof("UFSD155W RECLAIM: UFSD IS ACTIVE IN ASCB %08X -- "
+                 "NOT RECLAIMED (VERIFY WITH D A,L)",
+                 (unsigned)anchor->server_ascb);
+            return UFSD_RECLAIM_ACTIVE;
+
+        case UFSD_SRV_UNKNOWN:
+            if (!force) {
+                wtof("UFSD156W RECLAIM: ANCHOR FLAGGED ACTIVE AND THE "
+                     "SERVER ASCB CANNOT BE CHECKED -- NOT RECLAIMED");
+                return UFSD_RECLAIM_ACTIVE;
+            }
+            break;                        /* force: reclaim anyway */
+
+        default:                          /* UFSD_SRV_DEAD */
+            break;                        /* orphan after FORCE    */
+        }
+    }
 
     /* --- Step 1: close the door and arm the parked-client bail ---
     ** Null the SSVT entry so no NEW iefssreq call dispatches into UFSDSSIR,

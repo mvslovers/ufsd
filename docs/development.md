@@ -175,7 +175,9 @@ No Cross-Memory Services (PC/PT) are available on S/370. The IPC uses IEFSSREQ (
 | UFSD#FIL | `src/ufsd#fil.c` | 1464 | File operation dispatch |
 | UFSD#GFT | `src/ufsd#gft.c` | 119 | Global File Table |
 | UFSD#TRC | `src/ufsd#trc.c` | 109 | Trace ring buffer |
-| UFSDCLNP | `src/ufsdclnp.c` | 198 | Emergency cleanup (no-IPL recovery) |
+| UFSD#RCL | `src/ufsd#rcl.c` | 274 | Orphan reclaim + liveness guard (shared by startup and UFSDCLNP) |
+| UFSD#ASV | `src/ufsd#asv.c` | 36 | ASVT membership scan (portable, host-tested) |
+| UFSDCLNP | `src/ufsdclnp.c` | 70 | Emergency cleanup (no-IPL recovery) |
 | LIBUFS | `client/libufs.c` | 1010 | Client stub library |
 | LIBUFTST | `client/libufstst.c` | 345 | Integration test client |
 | **Total** | | **~7600** | Server + client |
