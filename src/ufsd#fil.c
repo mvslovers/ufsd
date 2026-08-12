@@ -1190,6 +1190,7 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
            UFSREQ *req, char *resp_data, unsigned *resp_data_len)
 {
     UFSD_DISK   *disk;
+    UFSD_DISK   *edisk;      /* disk holding the entry's inode */
     UFSD_GFILE  *gfile;
     UFSD_DINODE  dino;
     UFSD_DINODE  edino;
@@ -1248,33 +1249,48 @@ do_dirread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
 
             found_ino       = de->ino;
             gfile->position = entry_pos + 1U;
+            edisk           = disk;
 
-            /* Mount boundary: if this is ".." at the root of a
-            ** mounted filesystem, resolve the parent from the
-            ** mount point on the parent disk instead. */
-            if (de->name[0] == '.' && de->name[1] == '.'
-                && de->name[2] == '\0'
-                && gfile->ino == UFSD_ROOT_INO
-                && gfile->disk_idx > 0) {
-                UFSD_DISK *parent_disk = stc->disks[0];
-                if (parent_disk) {
-                    const char *mpath = disk->mountpath;
-                    unsigned    pino;
-                    char        pname[UFSD_NAME_MAX + 1];
-                    unsigned    ppino = 0;
-                    pino = ufsd_path_lookup(parent_disk, UFSD_ROOT_INO,
-                               mpath, &ppino, pname);
-                    if (ppino != 0) {
-                        found_ino = ppino;
-                        disk = parent_disk;
+            /* Mount boundaries.  The entry names a directory on this
+            ** disk, but its inode may not be on this disk: "." and
+            ** ".." at a mounted root belong to the parent filesystem,
+            ** and a mount point directory is covered by the root of
+            ** whatever is mounted on it.  Both are read from the disk
+            ** that actually holds the inode, so a listing agrees with
+            ** a stat of the same path (issue #52) -- as `ls -l` does
+            ** in Unix, which stats each entry and crosses mounts.
+            **
+            ** disk itself is not reassigned: it still owns the block
+            ** buffer this loop is walking. */
+            if (de->name[0] == '.' && de->name[1] == '\0') {
+                /* "." is this directory -- never a crossing. */
+            } else if (de->name[0] == '.' && de->name[1] == '.'
+                       && de->name[2] == '\0') {
+                if (gfile->ino == UFSD_ROOT_INO && gfile->disk_idx > 0) {
+                    UFSD_MOUNTPT *mp = &stc->mountpt[gfile->disk_idx];
+
+                    /* ".." at a mounted root is the directory
+                    ** CONTAINING the mount point (/u for /u/user),
+                    ** not the covered directory itself. */
+                    if (mp->pdisk >= 0 && mp->pino != 0U
+                        && stc->disks[mp->pdisk]) {
+                        found_ino = mp->pino;
+                        edisk     = stc->disks[mp->pdisk];
                     }
+                }
+            } else {
+                int child = ufsd_mount_child(stc->mountpt, stc->ndisks,
+                                             gfile->disk_idx, de->ino);
+                if (child >= 0 && stc->disks[child]) {
+                    found_ino = UFSD_ROOT_INO;
+                    edisk     = stc->disks[child];
                 }
             }
 
             memset(resp_data, 0, UFSD_DIRREAD_RLEN);
             *(unsigned *)resp_data = found_ino;
 
-            if (ufsd_ino_read(disk, found_ino, &edino) == UFSD_RC_OK) {
+            if (ufsd_ino_read(edisk, found_ino, &edino) == UFSD_RC_OK) {
                 mtime64_t mt;
 
                 *(unsigned *)(resp_data + 4)        = edino.filesize;

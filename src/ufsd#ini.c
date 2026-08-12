@@ -42,6 +42,7 @@ static unsigned s_ddn_seq = 0;
 static UFSD_DISK *open_disk(const char *ddname);
 static void       close_disk(UFSD_DISK *disk);
 static int        mkdir_p(UFSD_DISK *disk, const char *path);
+static int        find_parent_disk(UFSD_STC *stc, const char *path);
 
 /* ============================================================
 ** s99_errmsg
@@ -274,6 +275,8 @@ mkdir_p(UFSD_DISK *disk, const char *path)
 {
     char         comp[128];
     char         partial[128];
+    char         pown[9];      /* parent dir owner, inherited */
+    char         pgrp[9];      /* parent dir group, inherited */
     const char  *p;
     const char  *end;
     unsigned     cur_ino;
@@ -315,20 +318,26 @@ mkdir_p(UFSD_DISK *disk, const char *path)
         /* Check if this component exists */
         found = ufsd_dir_lookup(disk, cur_ino, comp);
         if (found != 0) {
-            /* Fix up timestamps/owner if missing (legacy dirs) */
-            if (ufsd_ino_read(disk, found, &dino) == UFSD_RC_OK
-                && dino.owner[0] == '\0') {
-                mtime64_t now;
-                mtime64(&now);
-                dino.ctime.v2 = now;
-                dino.mtime.v2 = now;
-                dino.atime.v2 = now;
-                strcpy(dino.owner, "UFSD");
-                strcpy(dino.group, "SYS1");
-                ufsd_ino_write(disk, found, &dino);
-            }
+            /* Existing directory: left exactly as it is.  An earlier
+            ** version stamped UFSD/SYS1 and fresh timestamps onto any
+            ** directory whose owner field was empty, which made an
+            ** empty owner unrepresentable -- every startup wrote the
+            ** invented value straight back (issue #52).  An empty
+            ** owner is now a value in its own right: unowned. */
             cur_ino = found;
             continue;
+        }
+
+        /* Inherit owner/group from the parent directory.  A mount
+        ** point is an ordinary directory on the parent filesystem;
+        ** inventing an owner for it is what made `ls /u` and
+        ** `ufs_stat /u/user` name different owners (issue #52).
+        ** Read into dino, which the create path below overwrites. */
+        pown[0] = '\0';
+        pgrp[0] = '\0';
+        if (ufsd_ino_read(disk, cur_ino, &dino) == UFSD_RC_OK) {
+            memcpy(pown, dino.owner, sizeof(dino.owner));
+            memcpy(pgrp, dino.group, sizeof(dino.group));
         }
 
         /* Create the directory */
@@ -376,8 +385,8 @@ mkdir_p(UFSD_DISK *disk, const char *path)
             dino.mtime.v2 = now;
             dino.atime.v2 = now;
         }
-        strcpy(dino.owner, "UFSD");
-        strcpy(dino.group, "SYS1");
+        memcpy(dino.owner, pown, sizeof(dino.owner));
+        memcpy(dino.group, pgrp, sizeof(dino.group));
 
         if (ufsd_ino_write(disk, new_ino, &dino) != UFSD_RC_OK) {
             ufsd_sb_free_block(disk, new_blk);
@@ -480,6 +489,71 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
 
     if (mode == UFSD_MOUNT_RO)
         disk->flags |= UFSD_DISK_RDONLY;
+
+    /* Record where this filesystem hangs in the tree (issue #52).
+    ** Resolved once, here, while the parent is still the longest
+    ** matching mount: do_dirread reads the table once per directory
+    ** entry and must not do path work there.  Done before the disk
+    ** joins disks[], or find_parent_disk would match it against its
+    ** own mount path and make it its own parent.
+    **
+    ** This write and the ndisks++ below are what keeps the table
+    ** valid: every slot below ndisks has been filled here, so nothing
+    ** ever reads the zero the STC was memset to -- which would read
+    ** as pdisk 0, the root disk, not as "no parent".  Anything added
+    ** between the two must not leave that gap. */
+    {
+        UFSD_MOUNTPT *mp = &stc->mountpt[stc->ndisks];
+
+        mp->pdisk = UFSD_MNT_NOPARENT;
+        mp->ino   = 0U;
+        mp->pino  = 0U;
+
+        if (strcmp(disk->mountpath, "/") != 0) {
+            int         pidx    = find_parent_disk(stc, disk->mountpath);
+            UFSD_DISK  *ppdisk  = stc->disks[pidx];
+            const char *rel     = disk->mountpath;
+            unsigned    mp_ino;
+            unsigned    mp_pino = 0U;
+            char        leaf[UFSD_NAME_MAX + 1];
+
+            /* Strip the parent's own mount prefix: a nested mount
+            ** point is looked up on the parent disk, whose root is
+            ** not "/". */
+            if (pidx > 0)
+                rel = disk->mountpath + strlen(ppdisk->mountpath);
+
+            mp_ino = rel[0]
+                   ? ufsd_path_lookup(ppdisk, UFSD_ROOT_INO, rel,
+                                      &mp_pino, leaf)
+                   : 0U;
+
+            if (mp_ino != 0U) {
+                mp->pdisk = pidx;
+                mp->ino   = mp_ino;
+                mp->pino  = mp_pino;
+            } else {
+                /* Reachable by path either way -- only the metadata
+                ** crossing in do_dirread is lost. */
+                wtof("UFSD126W MOUNT POINT %s NOT FOUND ON PARENT DISK",
+                     disk->mountpath);
+            }
+        }
+    }
+
+    /* The disk was formatted for one userid and mounted for another.
+    ** Both stay as they are: OWNER() decides who may write, the inode
+    ** owner is metadata, and only the operator can say which of the
+    ** two is the mistake (issue #52). */
+    if (disk->mount_owner[0]) {
+        UFSD_DINODE rdino;
+
+        if (ufsd_ino_read(disk, UFSD_ROOT_INO, &rdino) == UFSD_RC_OK
+            && rdino.owner[0]
+            && strncmp(rdino.owner, disk->mount_owner, 8) != 0)
+            wtof("UFSD125W %s ROOT OWNER=%.8s, MOUNTED OWNER=%.8s",
+                 disk->dsn, rdino.owner, disk->mount_owner);
+    }
 
     stc->disks[stc->ndisks++] = disk;
 
@@ -744,7 +818,11 @@ ufsd_disk_umount(UFSD_STC *stc, const char *mountpath)
     if (memcmp(ddname, "UFD", 3) == 0)
         __dsfree(ddname);
 
-    /* Compact the array */
+    /* Compact the array.  The mount point table is indexed the same
+    ** way, so it has to move with it (issue #52) -- and before
+    ** ndisks drops, which is the table's own bound. */
+    ufsd_mount_remove(stc->mountpt, stc->ndisks, (unsigned)found);
+
     for (i = (unsigned)found; i < stc->ndisks - 1U; i++)
         stc->disks[i] = stc->disks[i + 1U];
     stc->disks[--stc->ndisks] = NULL;

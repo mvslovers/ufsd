@@ -211,6 +211,8 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | UFSD076I | I | Inode cache refill complete |
 | UFSD122W | W | Cannot create mount point |
 | UFSD123W | W | Cannot mount dataset |
+| UFSD125W | W | The disk was formatted for one userid and mounted with `OWNER()` naming another. Both are kept: `OWNER()` decides who may write, the root inode owner is metadata that no permission check reads. Correct whichever is wrong — the parmlib statement, or the disk (reformat) |
+| UFSD126W | W | The mount point directory does not exist on the parent filesystem. The filesystem is mounted and reachable by path; only a listing of the parent directory keeps showing the mount point's own metadata instead of the mounted root's |
 
 ### Parmlib Parser (100–105)
 

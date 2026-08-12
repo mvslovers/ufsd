@@ -69,6 +69,7 @@ main(int argc, char **argv)
     char      linebuf[64];
     UINT32    items;
     int       rc;
+    int       mp_fail = 0;   /* #52: listing vs stat mismatches */
 
     (void)argc;
 
@@ -164,6 +165,103 @@ main(int argc, char **argv)
     } else {
         wtof("LUFTSTRFE MKDIR /ROFS_TEST_DIR: rc=%d last_rc=%d (expected %d)",
              rc, ufs_last_rc(ufs), UFSD_RC_ROFS);
+    }
+
+    /* ============================================================
+    ** Step 1e: Listing and stat must agree on the same path (#52)
+    **
+    ** A directory entry and a stat of the very same path are two
+    ** views of one inode, so they have to name one owner, one group
+    ** and one inode number.  They did not at a mount point: DIRREAD
+    ** reported the mount point directory on the parent disk (owner
+    ** UFSD/SYS1, as mkdir_p wrote it) while STAT resolved the mount
+    ** and reported the mounted filesystem's root inode.
+    **
+    ** Every entry of "/" is checked, not a hardcoded mount path, so
+    ** the check follows whatever the running system has mounted --
+    ** and covers the plain directories at the same time, where the
+    ** two views must keep agreeing.
+    ** ============================================================ */
+    {
+        UFSDDESC *mdesc;
+        UFSDLIST *dl;
+        UFSDLIST  sb;
+        char      mpath[72];
+        unsigned  checked  = 0;
+        unsigned  root_ino = 0;
+
+        if (ufs_stat(ufs, "/", &sb) == 0)
+            root_ino = sb.inode_number;
+
+        mdesc = ufs_diropen(ufs, "/", NULL);
+        if (!mdesc) {
+            wtof("LUFTSTMPE diropen / failed");
+            mp_fail++;
+        } else {
+            while ((dl = ufs_dirread(mdesc)) != NULL) {
+                if (strcmp(dl->name, ".") == 0) continue;
+                if (strcmp(dl->name, "..") == 0) continue;
+                if (strlen(dl->name) > sizeof(mpath) - 2U) continue;
+
+                mpath[0] = '/';
+                strcpy(mpath + 1, dl->name);
+
+                rc = ufs_stat(ufs, mpath, &sb);
+                if (rc != 0) {
+                    wtof("LUFTSTMPE STAT %s failed RC=%d", mpath, rc);
+                    mp_fail++;
+                    continue;
+                }
+
+                checked++;
+
+                if (strcmp(dl->owner, sb.owner) != 0
+                    || strcmp(dl->group, sb.group) != 0
+                    || dl->inode_number != sb.inode_number) {
+                    wtof("LUFTSTMPE %s: LS %s/%s ino=%u BUT STAT %s/%s ino=%u",
+                         mpath, dl->owner, dl->group, dl->inode_number,
+                         sb.owner, sb.group, sb.inode_number);
+                    mp_fail++;
+                } else {
+                    wtof("LUFTSTMPI %s: LS = STAT (%s/%s, ino=%u)",
+                         mpath, sb.owner, sb.group, sb.inode_number);
+                }
+
+                /* ".." one level down must name "/" again, whether
+                ** the directory is a plain one or the root of a
+                ** mounted filesystem -- at a mounted root it is the
+                ** directory CONTAINING the mount point, which lives
+                ** on the parent disk. */
+                if (sb.attr[0] == 'd') {
+                    UFSDDESC *sub = ufs_diropen(ufs, mpath, NULL);
+                    UFSDLIST *se;
+                    int       seen = 0;
+
+                    if (!sub) {
+                        wtof("LUFTSTMPE diropen %s failed", mpath);
+                        mp_fail++;
+                    } else {
+                        while ((se = ufs_dirread(sub)) != NULL) {
+                            if (strcmp(se->name, "..") != 0) continue;
+                            seen = 1;
+                            if (se->inode_number != root_ino) {
+                                wtof("LUFTSTMPE %s/..: ino=%u, expected %u",
+                                     mpath, se->inode_number, root_ino);
+                                mp_fail++;
+                            }
+                        }
+                        ufs_dirclose(&sub);
+                        if (!seen) {
+                            wtof("LUFTSTMPE %s: no .. entry", mpath);
+                            mp_fail++;
+                        }
+                    }
+                }
+            }
+            ufs_dirclose(&mdesc);
+            wtof("LUFTSTMPI %u entrie(s) of / checked, %d mismatch(es)",
+                 checked, mp_fail);
+        }
     }
 
     /* ============================================================
@@ -341,5 +439,11 @@ rmdir_test:
 close_sess:
     ufsfree(&ufs);
     wtof("LUFTST15I Session closed");
-    return 0;
+
+    /* The mount view check (step 1e) is the one step whose verdict
+    ** reaches the runner: it compares two answers from the server
+    ** rather than reporting one, so a mismatch is a server defect and
+    ** nothing about the test environment can excuse it.  The older
+    ** steps keep reporting through WTO only. */
+    return mp_fail ? 8 : 0;
 }

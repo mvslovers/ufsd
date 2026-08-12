@@ -534,8 +534,12 @@ Starting from `datablock_start`, build the chain:
    - `owner = "HERC01"` (or from RACF ACEE)
    - `group = "ADMIN"` (or from RACF ACEE)
    - (UFSD note: directories that UFSD itself creates at runtime — e.g.
-     auto-created mount points via its internal `mkdir_p` — default to
-     `owner = "UFSD"`, `group = "SYS1"` rather than the `mkufs` values.)
+     auto-created mount points via its internal `mkdir_p` — inherit
+     `owner`/`group` from the directory they are created in, so a mount
+     point carries the same owner as the rest of the parent filesystem.
+     An empty owner is inherited as empty and means *unowned*; nothing
+     substitutes a value for it. Neither field is read by any permission
+     check — write access is decided by the mount's `OWNER()`.)
 4. Write root data block:
    - Entry 0: `inode=2, name="."`
    - Entry 1: `inode=2, name=".."` (root parent is itself)

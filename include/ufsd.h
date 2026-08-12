@@ -19,6 +19,7 @@
 #include <clibssvt.h>
 #include <time64.h>
 #include <clib64.h>
+#include "ufsdmnt.h"
 
 /* ============================================================
 ** UFSTIMEV — Dual-format on-disk timestamp (8 bytes)
@@ -225,6 +226,9 @@ struct ufsd_stc {
     /* AP-1d: open disk array (STC-local, not CSA) */
     UFSD_DISK      *disks[UFSD_MAX_DISKS];
     unsigned        ndisks;
+    /* #52: where each disk hangs in the tree, same indexing as
+    ** disks[].  Filled at mount time, read per directory entry. */
+    UFSD_MOUNTPT    mountpt[UFSD_MAX_DISKS];
 };
 
 /* ============================================================
