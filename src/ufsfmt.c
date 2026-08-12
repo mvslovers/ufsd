@@ -83,9 +83,12 @@
 #include <osdcb.h>
 #include <osjfcb.h>
 
-#ifndef VERSION
-#define VERSION "1.1.0-dev"
-#endif
+/* Build stamp, same source as the server banner (ufsd.c): mbt generates
+** buildstamp.h at every build, so MBT_VERSION is the project version and
+** nothing here has to be bumped by hand at release time.  The literal that
+** stood here was not in [release] version_files and so would have shipped
+** a released UFSFMT still announcing itself as "-dev". */
+#include <buildstamp.h>
 
 /* Boot block (sector 0).  Header is 8 bytes, the extension that
 ** follows carries the only 64-bit timestamps the format has.
@@ -319,7 +322,7 @@ main(int argc, char **argv)
     rc = parse_sysin(&p);
     s_quiet = p.quiet;
 
-    msg("UFSFMT10I UFSFMT %s -- UFS370 disk format utility\n", VERSION);
+    msg("UFSFMT10I UFSFMT %s -- UFS370 disk format utility\n", MBT_VERSION);
 
     if (p.help) {
         int i;
