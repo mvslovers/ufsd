@@ -201,6 +201,15 @@ ufsd_shutdown(UFSD_STC *ufsd, int mode)
     UFSD_ANCHOR   *anchor;
     unsigned char  savekey;
 
+    /* Announce the teardown before the first step touches anything, so the
+    ** operator can see where the sequence starts rather than inferring it
+    ** from the first UFSD131I.  Not on the abend path: UFSD098E already
+    ** reported the emergency shutdown, and during S222 termination only the
+    ** first and the last WTO reliably reach the console (issue #49) -- a
+    ** second announce would compete for that first slot. */
+    if (mode != UFSD_SHUT_ABEND)
+        wtof("UFSD098I UFSD SHUTTING DOWN");
+
     /* Delete ESTAE first: prevents re-entrant recovery if shutdown
     ** itself encounters an error. */
     __estae(ESTAE_DELETE, NULL, NULL);

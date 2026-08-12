@@ -15,6 +15,7 @@ Stop the daemon with `/P UFSD` or `/F UFSD,SHUTDOWN`. UFSD performs an orderly s
 Console output:
 
 ```
+UFSD098I UFSD SHUTTING DOWN
 UFSD131I SUPERBLOCK WRITTEN FOR DSN=IBMUSER.UFSHOME
 UFSD131I SUPERBLOCK WRITTEN FOR DSN=UFSD.SCRATCH
 UFSD095I SSCT DEREGISTERED
@@ -190,6 +191,7 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | UFSD090E | E | Cannot initialize console interface (startup fails) |
 | UFSD091E | E | APF setup failed — STEPLIB not APF-authorized (startup fails) |
 | UFSD092E | E | Cannot allocate CSA anchor (startup fails) |
+| UFSD098I | I | Shutdown starting (normal shutdown only; the abend path announces itself with UFSD098E instead) |
 | UFSD130W | W | Superblock writeback failed for a disk at shutdown |
 | UFSD131I | I | Superblock written for DSN (one per RW filesystem) |
 | UFSD095I | I | SSCT deregistered |
