@@ -1,8 +1,11 @@
 /* UFSFMTG.C - UFS370 format geometry
 **
-** The arithmetic half of UFSFMT (see src/ufsfmt.c).  Portable C: no
-** MVS headers, no I/O, no EBCDIC, no 64-bit time -- so `make test-host`
-** can run it natively (test/mvs/tstufsg.c).
+** The arithmetic half of UFSFMT (see src/ufsfmt.c), plus the two
+** report helpers that have to decide what an absent owner looks like
+** (#62).  Portable C: no MVS headers, no I/O, no 64-bit time -- so
+** `make test-host` can run it natively (test/mvs/tstufsg.c).  The
+** string work here never reaches a disk; every byte that does is
+** written by src/ufsfmt.c.
 **
 ** The layout produced here is byte-compatible with ufsd-utils
 ** (pkg/ufs/image.go, func Create), which is the reference
@@ -140,4 +143,57 @@ ufsfmt_geometry(UFSFMT_GEOM *g, unsigned total_blocks,
     g->nfreeinode = n;
 
     return UFSFMT_GEOM_OK;
+}
+
+/* ============================================================
+** ufsfmt_owner_text
+**
+** See include/ufsfmt.h.  A NULL owner is treated as an absent one
+** rather than refused: this is called from the report, and a report
+** is not the place to fault.
+** ============================================================ */
+const char *
+ufsfmt_owner_text(const char *owner)
+{
+    return (owner && owner[0]) ? owner : UFSFMT_UNOWNED;
+}
+
+/* Append what fits of s, keeping out NUL-terminated within outsz.
+** Built by hand rather than with snprintf: the statement is assembled
+** from a handful of literals, and this stays within C89 stdio, which
+** is what cc370 provides. */
+static void
+app(char *out, unsigned outsz, unsigned *len, const char *s)
+{
+    while (*s && *len + 1U < outsz)
+        out[(*len)++] = *s++;
+    out[*len] = '\0';
+}
+
+/* ============================================================
+** ufsfmt_mount_stmt
+**
+** See include/ufsfmt.h.  Truncation is silent by design: the caller
+** is a report line, and a statement cut short is visibly incomplete
+** to the operator reading it, while a buffer run past its end is not
+** visible at all.
+** ============================================================ */
+void
+ufsfmt_mount_stmt(char *out, unsigned outsz,
+                  const char *dsn, const char *owner)
+{
+    unsigned len = 0U;
+
+    if (!out || outsz == 0U) return;
+    out[0] = '\0';
+
+    app(out, outsz, &len, "MOUNT    DSN(");
+    app(out, outsz, &len, (dsn && dsn[0]) ? dsn : "your.dataset.name");
+    app(out, outsz, &len, ") PATH(/your/mount/point) MODE(RW)");
+
+    if (owner && owner[0]) {
+        app(out, outsz, &len, " OWNER(");
+        app(out, outsz, &len, owner);
+        app(out, outsz, &len, ")");
+    }
 }

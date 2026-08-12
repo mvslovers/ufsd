@@ -56,8 +56,8 @@ Statements are read from `SYSIN`. `PARM=` is not supported — there is one sour
 | `BLKSIZE` | 512–8192, multiple of 512 | `4096` | Block size |
 | `DDNAME` | DD name | `DISKFILE` | DD of the dataset to format |
 | `INODES` | 1.0–50.0 | `10.0` | Percent of blocks for inodes |
-| `OWNER` | 1–8 chars | `HERC01` | Root directory owner |
-| `GROUP` | 1–8 chars | `ADMIN` | Root directory group |
+| `OWNER` | 1–8 chars | *(none)* | Root directory owner |
+| `GROUP` | 1–8 chars | *(none)* | Root directory group |
 | `FORCE` | — | off | Overwrite an existing UFS filesystem |
 | `QUIET` | — | off | Suppress messages and the report |
 | `VERBOSE` | — | off | Extra per-phase messages |
@@ -124,6 +124,10 @@ UFSFMT91I   MOUNT    DSN(MIKEG1.UFSHOME) PATH(/your/mount/point) MODE(RW) OWNER(
 
 The `MOUNT` line carries the owner the disk was formatted for; formatting with the userid the disk will be mounted for is the documented convention.
 
+Without `OWNER` and `GROUP` the root directory is left unowned, the summary reads `(none)/(none)`, and the suggested `MOUNT` line comes without an `OWNER()` keyword — `OWNER()` with nothing in it is a syntax error to the parmlib parser, and a mount without `OWNER` is what an unowned filesystem means: any authenticated user may write to it.
+
+Those fields are metadata either way. Who may write to a mounted filesystem is decided by `OWNER()` on the `MOUNT` statement and by nothing else — see [Access Control](configuration.md#access-control).
+
 Return codes: **0** formatted, **4** `HELP` was requested (nothing was written), **8** the format did not complete. Messages and warnings go to `SYSTERM`, the report to `SYSPRINT`; `QUIET` suppresses the report but never an error.
 
 ---
@@ -179,8 +183,8 @@ Options:
 | `--size` | `10M` | Image size (e.g. `1M`, `500K`, `50M`) |
 | `--blksize` | 4096 | Block size (512, 1024, 2048, 4096, 8192) |
 | `--inodes` | 10% | Percentage of blocks reserved for inodes |
-| `--owner` | `$USER` → `HERC01` | Root directory owner (RACF userid); uppercased `$USER`, or `HERC01` if unset |
-| `--group` | `ADMIN` | Root directory group |
+| `--owner` | *(none)* | Root directory owner (RACF userid) |
+| `--group` | *(none)* | Root directory group |
 
 ## Step 2: Populate Content
 

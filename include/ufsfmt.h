@@ -87,4 +87,35 @@ struct ufsfmt_geom {
 int ufsfmt_geometry(UFSFMT_GEOM *g, unsigned total_blocks,
                     unsigned blksize, double inode_pct);
 
+/* ============================================================
+** Reporting an owner that may be absent (#62)
+**
+** UFSFMT leaves owner and group empty unless OWNER/GROUP say
+** otherwise, so both the summary and the suggested parmlib line have
+** to render "no owner" as something other than nothing.  Both are
+** plain string work over ASCII-safe character literals, which is why
+** they sit here with the geometry and not in the target-only half.
+** ============================================================ */
+
+/* What the report prints where an owner would be. */
+#define UFSFMT_UNOWNED  "(none)"
+
+/* Returns owner, or UFSFMT_UNOWNED when it is empty or NULL. */
+const char *ufsfmt_owner_text(const char *owner);
+
+/* ============================================================
+** ufsfmt_mount_stmt
+**
+** Build the parmlib MOUNT statement the report suggests, into out
+** (at most outsz bytes including the NUL, always terminated).
+**
+** The OWNER keyword is omitted entirely when there is no owner:
+** `OWNER()` is a syntax error to the parmlib parser, and an operator
+** copying the suggested line has no reason to doubt it.  A mount
+** without OWNER is also what an unowned filesystem means -- any
+** authenticated user may write to it.
+** ============================================================ */
+void ufsfmt_mount_stmt(char *out, unsigned outsz,
+                       const char *dsn, const char *owner);
+
 #endif /* UFSFMT_H */
