@@ -61,6 +61,8 @@ UFSD enforces access control at three levels, applied in order:
 
 **Level 3 — RACF/RAKF per-file permissions.** Not implemented. There are no per-file or per-inode permission checks. The `mode` bits stored in inodes are informational only and not enforced by UFSD. Full RACF/RAKF integration with per-operation RACHECK is planned for a future release.
 
+`OWNER()` is the only owner UFSD enforces. The `owner`/`group` fields stored in the inodes — written by the format utility for the root directory, inherited from the parent directory for everything created afterwards — are metadata: they are reported by `stat` and by a directory listing, and no permission check reads them. The two are therefore free to differ, and a disk formatted for one userid can be mounted with `OWNER()` naming another; UFSD reports that with `UFSD125W` at mount time and honours `OWNER()`. To change who may write to a filesystem, change `OWNER()` — reformatting or rewriting inode owners has no effect on access.
+
 The check is applied in `do_fopen` (write mode), `do_mkdir`, `do_rmdir`, `do_remove`, and `do_fwrite` — six call sites (five functions; `do_fopen` calls the check twice), one helper function:
 
 ```c

@@ -62,6 +62,13 @@ sources = ["test/mvs/tstufsg.c", "src/ufsfmtg.c"]
 name = "TSTUFSAV"
 sources = ["test/mvs/tstufsav.c", "src/ufsd#asv.c"]
 
+# TSTUFSMP — the mount point table do_dirread crosses a mount with (#52).
+# Portable C, so it runs natively via `make test-host` as well as on the
+# target.
+[[test]]
+name = "TSTUFSMP"
+sources = ["test/mvs/tstufsmp.c", "src/ufsd#mnt.c"]
+
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
 [[test]]
