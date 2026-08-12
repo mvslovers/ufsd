@@ -3,6 +3,13 @@ name = "ufsd"
 version = "1.1.1-dev"
 type = "application"
 
+[toolchain]
+# Pins the refs release.yml builds the published artifacts against; build.yml
+# deliberately keeps floating on main so a cc370/libc370 regression surfaces
+# in a PR build (mbt#68). cc370 is omitted -- it defaults to main and has no
+# releases to pin to yet.
+libc370 = "1.0.2"
+
 [build]
 # The build stamp behind UFSD000I/UFSD006W is no longer injected here: mbt
 # generates .mbt/buildstamp.h and puts it on the include path, so ufsd.c
