@@ -60,8 +60,13 @@
 //* unless FORCE is given.
 //*
 //* SYSIN is optional -- omit it or use DUMMY to take every default
-//* (BLKSIZE 4096, INODES 10.0, OWNER HERC01, GROUP ADMIN).  The
-//* report always shows the values actually used.
+//* (BLKSIZE 4096, INODES 10.0, no OWNER, no GROUP).  The report
+//* always shows the values actually used.
+//*
+//* Without OWNER and GROUP the root directory is left unowned.  Those
+//* fields are metadata: who may write to the filesystem is decided by
+//* OWNER() on the UFSD parmlib MOUNT statement.  Give OWNER here when
+//* the disk should carry the name of the userid it is handed to.
 //*
 //* Comments use slash-star and star-slash, and must not start in
 //* column 1 of an instream SYSIN -- that would end the input.

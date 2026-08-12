@@ -175,8 +175,8 @@ static const char *help_text[] = {
 "BLKSIZE   512-8192, multiple 512   4096      Block size in bytes",
 "DDNAME    DD name                  DISKFILE  DD of dataset to format",
 "INODES    1.0-50.0                 10.0      Percent of blocks for inodes",
-"OWNER     1-8 characters           HERC01    Root directory owner",
-"GROUP     1-8 characters           ADMIN     Root directory group",
+"OWNER     1-8 characters           (none)    Root directory owner",
+"GROUP     1-8 characters           (none)    Root directory group",
 "FORCE     --                       off       Overwrite an existing UFS",
 "QUIET     --                       off       Suppress messages and report",
 "VERBOSE   --                       off       Extra per-phase messages",
@@ -197,6 +197,12 @@ static const char *help_text[] = {
 " ",
 "An existing UFS370 filesystem is not overwritten unless FORCE is",
 "given.  The dataset must be allocated DISP=OLD.",
+" ",
+"Without OWNER and GROUP the root directory is left unowned.  The",
+"fields are metadata: who may write to the filesystem is decided by",
+"OWNER() on the UFSD parmlib MOUNT statement, not by them.  Give",
+"OWNER here when you want the disk to carry the name of the userid",
+"it is being handed to.",
 " ",
 "Example",
 "//FORMAT   EXEC PGM=UFSFMT",
@@ -290,10 +296,14 @@ main(int argc, char **argv)
 
     (void)argv;
 
+    /* No owner and no group unless OWNER/GROUP say otherwise (#62):
+    ** a formatter has no way of knowing who a filesystem belongs to,
+    ** and a name invented here would be indistinguishable from one
+    ** the operator chose.  The memset leaves both empty, which UFSD
+    ** reads as unowned -- and access is decided by OWNER() on the
+    ** MOUNT statement either way, never by this field. */
     memset(&p, 0, sizeof(p));
     strcpy(p.ddname, "DISKFILE");
-    strcpy(p.owner,  "HERC01");
-    strcpy(p.group,  "ADMIN");
     p.blksize   = 4096U;
     p.inode_pct = 10.0;
 
@@ -326,7 +336,8 @@ main(int argc, char **argv)
     if (p.verbose) {
         msg("UFSFMT16I DDNAME=%s BLKSIZE=%u INODES=%.1f "
             "OWNER=%s GROUP=%s%s\n",
-            p.ddname, p.blksize, p.inode_pct, p.owner, p.group,
+            p.ddname, p.blksize, p.inode_pct,
+            ufsfmt_owner_text(p.owner), ufsfmt_owner_text(p.group),
             p.force ? " FORCE" : "");
         msg("UFSFMT19I PARAMETERS ACCEPTED\n");
     }
@@ -1219,7 +1230,8 @@ format_root(DCB *dcb, const UFSFMT_GEOM *g, mtime64_t now,
             UFSFMT_ROOT_INO, g->root_block);
 
     msg("UFSFMT71I Root directory created, owner=%s, group=%s, mode=0%o\n",
-        p->owner, p->group, UFSFMT_ROOT_MODE);
+        ufsfmt_owner_text(p->owner), ufsfmt_owner_text(p->group),
+        UFSFMT_ROOT_MODE);
 
     return 0;
 }
@@ -1281,7 +1293,9 @@ write_super(DCB *dcb, const UFSFMT_GEOM *g, char *buf)
 **
 ** The format summary, and the parmlib line that mounts what was just
 ** built.  OWNER() carries the owner the disk was formatted for, which
-** is the documented way of handing a disk to a userid.
+** is the documented way of handing a disk to a userid -- and is left
+** out of the suggestion entirely when the disk was formatted without
+** one, so the line stays copyable (#62).
 ** ============================================================ */
 static void
 report(const UFSFMT_PARMS *p, const UFSFMT_GEOM *g, const char *dsn)
@@ -1306,10 +1320,14 @@ report(const UFSFMT_PARMS *p, const UFSFMT_GEOM *g, const char *dsn)
            g->inode_blocks, g->inode_slots, g->total_freeinode);
     printf("UFSFMT85I   Data blocks . . . %-14u(%u free)\n",
            data_blocks, g->total_freeblock);
-    printf("UFSFMT86I   Root owner  . . . %s/%s\n", p->owner, p->group);
+    printf("UFSFMT86I   Root owner  . . . %s/%s\n",
+           ufsfmt_owner_text(p->owner), ufsfmt_owner_text(p->group));
     printf(" \n");
     printf("UFSFMT90I Add to your UFSD parmlib member:\n");
-    printf("UFSFMT91I   MOUNT    DSN(%s) PATH(/your/mount/point) "
-           "MODE(RW) OWNER(%s)\n",
-           dsn[0] ? dsn : "your.dataset.name", p->owner);
+    {
+        char stmt[128];
+
+        ufsfmt_mount_stmt(stmt, sizeof(stmt), dsn, p->owner);
+        printf("UFSFMT91I   %s\n", stmt);
+    }
 }

@@ -226,6 +226,69 @@ check_planning_table(void)
     }
 }
 
+/* ============================================================
+** check_owner_text
+**
+** How an absent owner is shown to the operator (#62).  Since the
+** format defaults leave owner and group empty, every report line that
+** prints them would otherwise print nothing at all -- a summary
+** reading "Root owner . . . /" tells the operator neither that the
+** field is empty nor that empty is a legitimate value.
+** ============================================================ */
+static void
+check_owner_text(void)
+{
+    CHECK(strcmp(ufsfmt_owner_text("HERC01"), "HERC01") == 0,
+          "owner text: a name is shown as it is");
+    CHECK(strcmp(ufsfmt_owner_text(""), UFSFMT_UNOWNED) == 0,
+          "owner text: an empty owner is named, not blank");
+    CHECK(strcmp(ufsfmt_owner_text(NULL), UFSFMT_UNOWNED) == 0,
+          "owner text: a null owner is named, not a fault");
+}
+
+/* ============================================================
+** check_mount_stmt
+**
+** The parmlib line the report suggests (#62).  With no owner the
+** OWNER keyword has to be left out entirely: `OWNER()` is a syntax
+** error to the parmlib parser, and an operator copying the suggested
+** line has no reason to doubt it.  A mount without OWNER is also the
+** honest translation of an unowned filesystem -- any authenticated
+** user may write to it.
+** ============================================================ */
+static void
+check_mount_stmt(void)
+{
+    char buf[128];
+    char small[24];
+
+    ufsfmt_mount_stmt(buf, sizeof(buf), "MIKEG1.UFSHOME", "MIKEG1");
+    CHECK(strstr(buf, "DSN(MIKEG1.UFSHOME)") != NULL,
+          "mount stmt: carries the dataset");
+    CHECK(strstr(buf, "OWNER(MIKEG1)") != NULL,
+          "mount stmt: carries the owner when there is one");
+
+    ufsfmt_mount_stmt(buf, sizeof(buf), "MIKEG1.UFSHOME", "");
+    CHECK(strstr(buf, "OWNER") == NULL,
+          "mount stmt: no OWNER keyword when unowned");
+    CHECK(strstr(buf, "MODE(RW)") != NULL,
+          "mount stmt: still a complete statement when unowned");
+
+    ufsfmt_mount_stmt(buf, sizeof(buf), "", "MIKEG1");
+    CHECK(strstr(buf, "DSN(") != NULL,
+          "mount stmt: a missing dataset leaves a placeholder");
+
+    /* The report builds this into a fixed buffer, so a long dataset
+    ** name must truncate rather than run past its end. */
+    memset(small, '#', sizeof(small));
+    ufsfmt_mount_stmt(small, sizeof(small) - 1U,
+                      "VERY.LONG.DATASET.NAME.INDEED", "MIKEG1");
+    CHECK(strlen(small) < sizeof(small) - 1U,
+          "mount stmt: truncates inside the buffer");
+    CHECK(small[sizeof(small) - 1U] == '#',
+          "mount stmt: writes no byte past the size given");
+}
+
 int
 main(void)
 {
@@ -269,6 +332,8 @@ main(void)
     check_caches();
     check_rejects();
     check_planning_table();
+    check_owner_text();
+    check_mount_stmt();
 
     return mbt_test_summary("TSTUFSG");
 }

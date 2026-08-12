@@ -56,8 +56,8 @@ Statements are read from `SYSIN`. `PARM=` is not supported — there is one sour
 | `BLKSIZE` | 512–8192, multiple of 512 | `4096` | Block size |
 | `DDNAME` | DD name | `DISKFILE` | DD of the dataset to format |
 | `INODES` | 1.0–50.0 | `10.0` | Percent of blocks for inodes |
-| `OWNER` | 1–8 chars | `HERC01` | Root directory owner |
-| `GROUP` | 1–8 chars | `ADMIN` | Root directory group |
+| `OWNER` | 1–8 chars | *(none)* | Root directory owner |
+| `GROUP` | 1–8 chars | *(none)* | Root directory group |
 | `FORCE` | — | off | Overwrite an existing UFS filesystem |
 | `QUIET` | — | off | Suppress messages and the report |
 | `VERBOSE` | — | off | Extra per-phase messages |
@@ -108,7 +108,7 @@ UFSFMT10I UFSFMT 1.1.0 -- UFS370 disk format utility
 UFSFMT26I Initialized 256 blocks (1.00 MB)
 UFSFMT51I Formatted 2 index blocks, 64 inode slots
 UFSFMT52I Formatted 252 data blocks
-UFSFMT71I Root directory created, owner=HERC01, group=ADMIN, mode=0755
+UFSFMT71I Root directory created, owner=HERC01, group=(none), mode=0755
 
 UFSFMT80I Format summary
 UFSFMT81I   Dataset . . . . . MIKEG1.UFSHOME
@@ -116,13 +116,17 @@ UFSFMT82I   Block size  . . . 4096
 UFSFMT83I   Total blocks  . . 256           (1.00 MB)
 UFSFMT84I   Inode blocks  . . 2             (64 slots, 62 free)
 UFSFMT85I   Data blocks . . . 252           (251 free)
-UFSFMT86I   Root owner  . . . HERC01/ADMIN
+UFSFMT86I   Root owner  . . . HERC01/(none)
 
 UFSFMT90I Add to your UFSD parmlib member:
 UFSFMT91I   MOUNT    DSN(MIKEG1.UFSHOME) PATH(/your/mount/point) MODE(RW) OWNER(HERC01)
 ```
 
 The `MOUNT` line carries the owner the disk was formatted for; formatting with the userid the disk will be mounted for is the documented convention.
+
+Without `OWNER` and `GROUP` the root directory is left unowned, the summary reads `(none)/(none)`, and the suggested `MOUNT` line comes without an `OWNER()` keyword — `OWNER()` with nothing in it is a syntax error to the parmlib parser, and a mount without `OWNER` is what an unowned filesystem means: any authenticated user may write to it.
+
+Those fields are metadata either way. Who may write to a mounted filesystem is decided by `OWNER()` on the `MOUNT` statement and by nothing else — see [Access Control](configuration.md#access-control).
 
 Return codes: **0** formatted, **4** `HELP` was requested (nothing was written), **8** the format did not complete. Messages and warnings go to `SYSTERM`, the report to `SYSPRINT`; `QUIET` suppresses the report but never an error.
 
@@ -156,7 +160,7 @@ Creating root.img (1M, blksize=4096, inodes=10.0%)
   Block size:      4096 bytes
   Inode blocks:    2 (64 inodes)
   Data blocks:     252 (free: 251)
-  Root owner:      MIKE/ADMIN
+  Root owner:      (none)/(none)
   Format:          UFS370 v1 (time64 timestamps)
 
   Upload to MVS:  ufsd-utils upload root.img --dsn YOUR.DATASET.NAME
@@ -179,8 +183,8 @@ Options:
 | `--size` | `10M` | Image size (e.g. `1M`, `500K`, `50M`) |
 | `--blksize` | 4096 | Block size (512, 1024, 2048, 4096, 8192) |
 | `--inodes` | 10% | Percentage of blocks reserved for inodes |
-| `--owner` | `$USER` → `HERC01` | Root directory owner (RACF userid); uppercased `$USER`, or `HERC01` if unset |
-| `--group` | `ADMIN` | Root directory group |
+| `--owner` | *(none)* | Root directory owner (RACF userid) |
+| `--group` | *(none)* | Root directory group |
 
 ## Step 2: Populate Content
 
