@@ -531,8 +531,9 @@ Starting from `datablock_start`, build the chain:
    - `filesize = 128` (2 × 64-byte entries)
    - `addr[0] = allocated_block`
    - `ctime/mtime/atime = now` (time64 format)
-   - `owner = "HERC01"` (or from RACF ACEE)
-   - `group = "ADMIN"` (or from RACF ACEE)
+   - `owner` = the owner given to the formatter, all-NUL when none was
+     given (which means *unowned*)
+   - `group` = likewise, all-NUL when none was given
    - (UFSD note: directories that UFSD itself creates at runtime — e.g.
      auto-created mount points via its internal `mkdir_p` — inherit
      `owner`/`group` from the directory they are created in, so a mount

@@ -108,7 +108,7 @@ UFSFMT10I UFSFMT 1.1.0 -- UFS370 disk format utility
 UFSFMT26I Initialized 256 blocks (1.00 MB)
 UFSFMT51I Formatted 2 index blocks, 64 inode slots
 UFSFMT52I Formatted 252 data blocks
-UFSFMT71I Root directory created, owner=HERC01, group=ADMIN, mode=0755
+UFSFMT71I Root directory created, owner=HERC01, group=(none), mode=0755
 
 UFSFMT80I Format summary
 UFSFMT81I   Dataset . . . . . MIKEG1.UFSHOME
@@ -116,7 +116,7 @@ UFSFMT82I   Block size  . . . 4096
 UFSFMT83I   Total blocks  . . 256           (1.00 MB)
 UFSFMT84I   Inode blocks  . . 2             (64 slots, 62 free)
 UFSFMT85I   Data blocks . . . 252           (251 free)
-UFSFMT86I   Root owner  . . . HERC01/ADMIN
+UFSFMT86I   Root owner  . . . HERC01/(none)
 
 UFSFMT90I Add to your UFSD parmlib member:
 UFSFMT91I   MOUNT    DSN(MIKEG1.UFSHOME) PATH(/your/mount/point) MODE(RW) OWNER(HERC01)
@@ -160,7 +160,7 @@ Creating root.img (1M, blksize=4096, inodes=10.0%)
   Block size:      4096 bytes
   Inode blocks:    2 (64 inodes)
   Data blocks:     252 (free: 251)
-  Root owner:      MIKE/ADMIN
+  Root owner:      (none)/(none)
   Format:          UFS370 v1 (time64 timestamps)
 
   Upload to MVS:  ufsd-utils upload root.img --dsn YOUR.DATASET.NAME
