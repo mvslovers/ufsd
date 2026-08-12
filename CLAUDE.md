@@ -77,6 +77,8 @@ make link           # mvslink on MVS
 | UFSD#FIL | `src/ufsd#fil.c` | File dispatch |
 | UFSD#GFT | `src/ufsd#gft.c` | Global file table |
 | UFSD#TRC | `src/ufsd#trc.c` | Trace ring buffer |
+| UFSD#RCL | `src/ufsd#rcl.c` | Orphan reclaim + liveness guard (startup + UFSDCLNP) |
+| UFSD#ASV | `src/ufsd#asv.c` | ASVT membership scan (portable, host-tested) |
 
 Client: `client/libufs.c` (stub library — includes ufs_stat), `client/libufstst.c` (integration test)
 

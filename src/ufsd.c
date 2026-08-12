@@ -359,8 +359,13 @@ main(int argc, char **argv)
     ** start over it. */
     rc = ufsd_reclaim(0);
     if (rc == UFSD_RECLAIM_ACTIVE) {
+        /* Since #53 startup reclaims an ACTIVE-flagged predecessor whose
+        ** address space is gone, so this is either a genuinely running
+        ** UFSD (UFSD155W named its ASCB) or an anchor whose ASCB could
+        ** not be checked at all (UFSD156W) -- the one case left for the
+        ** standalone utility. */
         wtof("UFSD002E UFSD ALREADY REGISTERED AND ACTIVE -- NOT "
-             "STARTING (IF ORPHANED, RUN UFSDCLNP)");
+             "STARTING (IF NOT RUNNING, RUN UFSDCLNP)");
         return 8;
     }
     if (rc == UFSD_RECLAIM_FAIL) {

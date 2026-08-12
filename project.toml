@@ -36,7 +36,7 @@ sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c"]
 [[module]]
 name = "UFSDCLNP"
 ac = 1
-sources = ["src/ufsdclnp.c", "src/ufsd#rcl.c"]
+sources = ["src/ufsdclnp.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
 # UFSFMT — disk format utility (batch, unauthorized: plain BSAM/BDAM I/O)
 [[module]]
@@ -55,6 +55,19 @@ sources = ["client/libufstst.c", "client/libufs.c"]
 [[test]]
 name = "TSTUFSG"
 sources = ["test/mvs/tstufsg.c", "src/ufsfmtg.c"]
+
+# TSTUFSAV — the ASVT scan behind the #53 liveness guard. Portable C,
+# so it runs natively via `make test-host` as well as on the target.
+[[test]]
+name = "TSTUFSAV"
+sources = ["test/mvs/tstufsav.c", "src/ufsd#asv.c"]
+
+# TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
+# only the target has. Reads storage; registers nothing.
+[[test]]
+name = "TSTUFSRC"
+host = false          # MVS-only: needs a live ASVT
+sources = ["test/mvs/tstufsrc.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
 # ── Library (consumed by HTTPD and others) ───────────────
 [lib]
