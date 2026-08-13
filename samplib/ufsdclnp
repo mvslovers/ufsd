@@ -9,7 +9,7 @@
 //* As STC:       /S UFSDCLNP
 //* As batch:     Submit the UFSDCLNP JCL from SAMPLIB
 //*
-//* Safe to run when UFSD is not registered — reports
+//* Safe to run when UFSD is not registered - reports
 //* "nothing to do" and exits RC=0.
 //*
 //CLEANUP  EXEC PGM=UFSDCLNP
