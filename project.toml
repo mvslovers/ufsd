@@ -89,6 +89,38 @@ name = "libufs"
 sources = ["client/libufs.c"]
 headers = ["include/libufs.h", "include/ufsdrc.h"]
 
+# ── Distribution (SMP4 install package) ──────────────────
+# Turns `make package` into an installable product. Two transports, on purpose:
+#
+#   load modules  -> XMIT -> staging LKLIB -> SMP ++MOD -> UFSD.<vrm>.LINKLIB
+#   samplib/      -> XMIT -> TSO RECEIVE   -> UFSD.<vrm>.SAMPLIB
+#
+# SMP *copies* the host-bound modules rather than re-binding them (a COPY-style
+# ++JCLIN is what says so), which is what keeps ac = 1 and the entry points
+# exactly as ld370 set them. The sample library stays outside SMP: an MCS card
+# ends at column 72, and a configuration pattern should not have to answer to a
+# delivery mechanism. Since the datasets are versioned, every release brings a
+# fresh SAMPLIB anyway -- there is no in-place update for SMP to manage.
+#
+# Every value is a dataset name; the ddname SMP addresses it by is always the
+# last qualifier, so LINKLIB, SAMPLIB and AUFSDLOD fall out of the names.
+# @VRM@ becomes V1R1M1 at package time.
+[distribution]
+readme = "docs/installation.md"
+
+[distribution.smp]
+fmid    = "TUFS110"              # T + 3 letters + version, like the sysgen FMIDs
+system  = "Z038"
+prereq  = []                     # no [dependencies]; RAKF is a *runtime* one
+accept_fmid = true               # accept the FMID once so a PTF can be RESTOREd
+lklib   = "UFSD.@VRM@.UFSDLOAD"  # staging: what the load XMIT is received into
+target  = "UFSD.@VRM@.LINKLIB"   # where the load modules end up
+distlib = "UFSD.@VRM@.AUFSDLOD"
+
+[[distribution.library]]
+dir     = "samplib"
+target  = "UFSD.@VRM@.SAMPLIB"
+
 # ── Release ──────────────────────────────────────────────
 [release]
 version_files = ["VERSION"]

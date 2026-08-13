@@ -74,7 +74,7 @@
 //* ------------------------------------------------------------------
 //*
 //FORMAT   EXEC PGM=UFSFMT
-//STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
+//STEPLIB  DD  DISP=SHR,DSN=@LINKLIB@
 //DISKFILE DD  DISP=OLD,DSN=IBMUSER.UFSHOME
 //SYSPRINT DD  SYSOUT=*
 //SYSTERM  DD  SYSOUT=*
