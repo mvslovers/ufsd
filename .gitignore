@@ -44,6 +44,12 @@ CLAUDE.md
 
 # Build system
 .env
+# Per-system connection profiles (.env.mvsdev, .env.drnmig3a, ...).
+# They hold MBT_MVS_USER/PASS, so they must never be committed -- and
+# an untracked file also blocks `make release`, which refuses to run
+# on anything git status reports.
+.env.*
+!.env.example
 *.jcl
 !tests/jcl/*.jcl
 .build-warnings
