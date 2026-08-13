@@ -104,12 +104,19 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 #
 # Every value is a dataset name; the ddname SMP addresses it by is always the
 # last qualifier, so LINKLIB, SAMPLIB and AUFSDLOD fall out of the names.
-# @VRM@ becomes V1R1M1 at package time.
+# @VRM@ becomes V1R2M0 at package time.
 [distribution]
 readme = "docs/installation.md"
 
 [distribution.smp]
-fmid    = "TUFS110"              # T + 3 letters + version, like the sysgen FMIDs
+# One FMID per minor release, spent exactly once: it names a functional level,
+# and a changed one is a new level. Patches on top of it ship as PTFs. 1.2.x is
+# TUFS120; a later 1.3.0 becomes TUFS130 and is installed as a clean cut
+# (RESTORE + REJECT the old, then receive the new). The T matches the form the
+# MVS 3.8j sysgen uses for its own function SYSMODs (TMVS804, TJES801, ...) and
+# stays clear of IBM's H/J namespace. A test install must use a throwaway id --
+# a half-applied FMID leaves this one occupied.
+fmid    = "TUFS120"
 system  = "Z038"
 prereq  = []                     # no [dependencies]; RAKF is a *runtime* one
 accept_fmid = true               # accept the FMID once so a PTF can be RESTOREd

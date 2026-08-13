@@ -29,28 +29,18 @@ Client Address Space          UFSD STC Address Space
 
 ## Installation
 
-> **Note:** Installation instructions will be finalized once the packaging system is complete. The following is a preliminary guide.
+Download `ufsd-<version>-dist.zip` (or `.tar.gz`) from the
+[latest release](https://github.com/mvslovers/ufsd/releases/latest). It holds the
+load modules, the sample library, the two installation jobs and a step-by-step
+guide.
 
-### JCL Procedure
+Installation runs through **SMP 4**, the SMP that ships with MVS 3.8j: upload two
+XMITs, submit an allocation job once, submit the install job. The system then
+records what is installed, and there is a defined way back out again.
 
-Copy the STC procedure from `samplib/ufsd` to `SYS2.PROCLIB(UFSD)`:
-
-```
-//UFSD     EXEC PGM=UFSD,REGION=4M,TIME=1440
-//STEPLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
-//UFSDPRM  DD  DSN=SYS2.PARMLIB(UFSDPRM0),DISP=SHR,FREE=CLOSE
-```
-
-### Parmlib
-
-Copy `samplib/ufsdprm0` to `SYS2.PARMLIB(UFSDPRM0)` and adjust as needed. A minimal configuration:
-
-```
-ROOT     DSN(UFSD.ROOT)
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
-MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
-MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
-```
+The complete procedure — including which sample member to copy where, and the
+authorisation question — is [docs/installation.md](docs/installation.md), which
+is also the README inside the archive.
 
 ### Disk Setup
 
