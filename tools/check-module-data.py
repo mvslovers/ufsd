@@ -99,9 +99,13 @@ def declarations(src):
     """Yield (line, text, depth) for every statement, file scope and inside
     function bodies alike -- a function-local `static` is module storage too.
 
-    A '{' right after '=' or ',' opens an initializer, not a block.
+    A '{' right after '=' or ',' opens an initializer, not a block.  The
+    declarator that closes a `typedef struct { ... } NAME;` is a type name, not
+    data -- but `struct tag { ... } instance;` is data, so only typedef tails
+    are dropped.
     """
     depth, init, buf, line, start = 0, 0, '', 1, 1
+    heads, typetail = [], False
     for ch in src:
         if ch == '\n':
             line += 1
@@ -111,6 +115,7 @@ def declarations(src):
                 buf += ' '
                 continue
             depth += 1
+            heads.append(' '.join(buf.split()))
             buf, start = '', line
             continue
         if ch == '}':
@@ -119,12 +124,15 @@ def declarations(src):
                 buf += ' '
                 continue
             depth = max(0, depth - 1)
+            typetail = bool(re.search(r'\btypedef\b',
+                                      heads.pop() if heads else ''))
             buf, start = '', line
             continue
         if ch == ';' and not init:
             head = ' '.join(buf.split())
-            if head:
+            if head and not typetail:
                 yield start, head, depth
+            typetail = False
             buf, start = '', line
             continue
         if not buf.strip():
@@ -152,13 +160,15 @@ def mutable(head, depth):
 
 
 def sources_of(module, root):
+    """The module's C sources.  Hand-written assembler is not parsed here --
+    its storage is explicit, and `DS`/`DC` in a CSECT is visible on sight."""
     files = []
     for pattern in module.get('sources', []):
         files += glob.glob(os.path.join(root, pattern))
     dropped = set()
     for pattern in module.get('exclude', []):
         dropped |= set(glob.glob(os.path.join(root, pattern)))
-    return sorted(set(files) - dropped)
+    return sorted(f for f in set(files) - dropped if f.endswith('.c'))
 
 
 def main(argv):
