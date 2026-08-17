@@ -35,8 +35,9 @@ struct ufsboot_hdr {
 };                              /* 08                                   */
 #define UFSD_DISK_TYPE_UFS  2
 
-/* DD name sequence counter for DYNALLOC */
-static unsigned s_ddn_seq = 0;
+/* The DD name sequence counter lives in UFSD_STC (stc->ddn_seq), not in a
+** C static: with AC(1) from an APF-authorized library the module is fetched
+** into key-0 storage, where a key-8 store abends S0C4 (#64). */
 
 /* Forward declarations */
 static UFSD_DISK *open_disk(const char *ddname);
@@ -451,7 +452,7 @@ ufsd_disk_mount_dyn(UFSD_STC *stc, const char *dsname,
     }
 
     /* Generate DD name: UFD00001, UFD00002, ... */
-    sprintf(ddname, "UFD%05u", ++s_ddn_seq);
+    sprintf(ddname, "UFD%05u", ++stc->ddn_seq);
 
     /* DYNALLOC: DISP=OLD for RW (exclusive), DISP=SHR for RO */
     if (ufsd_dynalloc(ddname, dsname, mode) != 0)

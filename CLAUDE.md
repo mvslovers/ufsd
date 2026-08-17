@@ -47,6 +47,14 @@ These are hard-won from implementation. Violating them causes abends:
 6. **4K buffer pattern:** `do_fread`/`do_fwrite` use heap staging buffers.
    `ufsd_dispatch` copies to/from CSA UFSBUF in key-0. The staging pointer is
    passed via `resp_data[4..7]`.
+7. **No writable statics in an AC(1) module.** UFSD/UFSDSSIR/UFSDCLNP are
+   link-edited AC(1); from an APF-authorized library program fetch takes the
+   job pack area in subpool 252 **key 0**, while the STC runs key 8 — a store
+   into a C static or non-const global then abends S0C4 (#64). SVC 244 only
+   sets `JSCBAUTH` afterwards and changes nothing about the storage key. Put
+   the value in `UFSD_STC` (a `main()` local, key 8, reachable through
+   `anchor->server_stc`), on the heap, or in CSA behind the key-0 window.
+   `tools/check-module-data.py` enforces this and runs in CI.
 
 ## Build
 
@@ -93,3 +101,4 @@ Client: `client/libufs.c` (stub library — includes ufs_stat), `client/libufsts
 - Dispatch functions (ufsd#fil.c) NEVER write CSA directly — use resp_data[]
 - 4K data transfers use staging buffers (heap) — ufsd_dispatch copies to/from CSA
 - UFSFILE in libufs: ~8K per handle (4K rbuf + 4K wbuf) — document if this grows
+- No mutable `static`/global at any scope in an AC(1) module — see constraint 7

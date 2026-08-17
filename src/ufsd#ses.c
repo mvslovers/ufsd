@@ -5,7 +5,7 @@
 **
 ** Token scheme: ((slot_index + 1) << 16) | (serial & 0xFFFF)
 **   - Slot 0 produces tokens 0x0001xxxx
-**   - serial is a static counter, wraps at 0xFFFF
+**   - serial counts up in UFSD_STC (stc->sess_serial), wraps at 0xFFFF
 **   - Token 0 is never issued (slot+1 ensures non-zero high word)
 **
 ** Memory layout:
@@ -32,9 +32,13 @@
 #include <cvt.h>
 #include <ihaasvt.h>
 
-/* Static serial counter.  Accessed only from the STC (problem state,
-** single-threaded in Phase 1).  NOT in CSA; no key-0 window needed. */
-static unsigned s_sess_serial = 0;
+/* The serial counter lives in UFSD_STC (stc->sess_serial), reached through
+** anchor->server_stc.  It must not be a C static: UFSD is linked AC(1), and
+** fetched from an APF-authorized library the module lands in subpool 252
+** KEY 0 while the STC runs problem state key 8 -- a store into module
+** storage then abends S0C4 (#64).  UFSD_STC is a main() local, hence key 8.
+** Accessed only from the STC (problem state, single-threaded in Phase 1);
+** it is not in CSA, so no key-0 window is needed. */
 
 /* ============================================================
 ** ufsd_sess_init
@@ -174,9 +178,16 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
     UFSD_SESSION *sess;
     unsigned      token;
     UFSD_UFS     *ufs;
+    UFSD_STC     *stc;
     int           j;
 
     if (!anchor || !anchor->sessions || !out_token) return UFSD_RC_CORRUPT;
+
+    /* Set at startup, before the SSI router is registered -- so by the time
+    ** a client can reach us it is there.  Without it there is no writable
+    ** home for the serial (see the note at the top of this file). */
+    stc = (UFSD_STC *)anchor->server_stc;
+    if (!stc) return UFSD_RC_CORRUPT;
 
     *out_token = 0;
 
@@ -191,8 +202,8 @@ ufsd_sess_open(UFSD_ANCHOR *anchor, UFSREQ *req, unsigned *out_token)
     if (slot >= anchor->max_sessions) return UFSD_RC_NOREQ;
 
     /* Generate token */
-    s_sess_serial++;
-    token = ((slot + 1U) << 16) | (s_sess_serial & 0xFFFFU);
+    stc->sess_serial++;
+    token = ((slot + 1U) << 16) | (stc->sess_serial & 0xFFFFU);
 
     /* Allocate per-session UFS handle */
     ufs = (UFSD_UFS *)calloc(1, sizeof(UFSD_UFS));

@@ -89,6 +89,15 @@ The clean alternative is to add `UFSD.<vrm>.LINKLIB` to the APF list in
 IPL, and that the library name carries the version — so this is one IPL per
 release, not one IPL ever.
 
+The two routes are not quite the same underneath. UFSD is link-edited AC(1),
+so from an APF-authorized library the job step is already authorized when
+program fetch runs, and MVS obtains the job pack area in **key 0** — the
+module's own storage is then read-only for the STC, which runs key 8. Via
+SVC 244 the module is fetched key 8 and `JSCBAUTH` is set afterwards, which
+does not relabel storage already allocated. UFSD therefore keeps no writable
+data in module storage; releases up to 1.2.0 did, and abend S0C4 during
+startup on the APF route (issue #64).
+
 If neither applies to your system, resolve it before step 5: an install that
 completes cleanly will still not start.
 
@@ -420,6 +429,7 @@ linkage convention are documented in
 | `S806` (module not found) at `/S UFSD` | `STEPLIB` in the procedure does not name the LINKLIB the APPLY wrote to |
 | `/S UFSD` rejected — procedure not found | Procedure not copied into a PROCLIB in the started-task concatenation |
 | `UFSD091E APF SETUP FAILED` | No RAKF (so no SVC 244) and no APF entry — see step 2 |
+| `S0C4` right after `UFSD047I`, only with an APF-authorized LINKLIB | Release 1.2.0 or earlier: the module is fetched key 0 there, and a static counter is written key 8 (issue #64). Upgrade, or drop the APF entry and let SVC 244 do it |
 | `UFSD061E PARMLIB … NOT FOUND` | `D=`/`M=` wrong, or the member is in a PARMLIB the procedure does not name. On TK5 this is usually `SYS2.PARMLIB` not existing — step 6 |
 | Mount fails / `UFSD124E` superblock validation | The `ROOT`/`MOUNT` dataset does not exist or is not UFS-formatted — step 7 |
 | `S106` at start on a freshly installed library | The XMIT was uploaded in text mode. Re-upload in **binary** and re-run the install job |
