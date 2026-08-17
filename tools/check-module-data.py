@@ -19,24 +19,32 @@ unnoticed, which is why this only shows up on hardened systems.  Authorizing
 ourselves later via SVC 244 does not change it either way: that sets JSCBAUTH,
 it cannot relabel storage that program fetch already allocated.
 
-The same defect turns fatal a second way if a module is ever marked RENT and
-placed in the (key 0, page-protected) LPA.  Keeping module storage read-only
-is what makes "reentrant" an honest claim.
+There is a second reason, independent of authorization: ld370 marks a load
+module RENT and REUS unless the module opts out with `norent` / `noreus`, and
+none of ours does.  Writable module data breaks that promise outright, and
+would fail the same way in the (key 0, page-protected) LPA.
 
 So: no mutable file-scope data in an AC(1) module.  Put the counter in
 UFSD_STC (a main() local, key 8, reachable through anchor->server_stc), on the
 heap, or in CSA behind the usual key-0 window.
 
-UFSFMT is exempt: AC(0) means the job step is never authorized, so MVS fetches
-it key 8.
+UFSFMT is exempt from the key-0 argument: AC(0) means the job step is never
+authorized, so MVS fetches it key 8.  (An absent `ac` counts as 0, matching
+mbt -- see mbtconfig.py, `mod.get("ac", 0)`.)
 
 Scope and limits
 ----------------
-This checks the C sources this repo owns.  It cannot see libc370 (audited by
-hand for #64: per-task state lives in the heap-allocated CRT, the module-
-resident statics are no-CRT fallbacks only).  The precise cross-check is to
-compile with `cc370 -S` and look for a store through a register loaded from
-`=A(@Vn)` -- that is what found the two offenders in the first place.
+Only `[[module]]` sources are checked, so `client/libufs.c` is not: it is a
+library, and the key of the module it ends up in is the consuming program's
+business.  Scanned by hand for #64 -- no module-resident data at all.
+
+libc370 is out of reach too (different repo).  Audited by hand for #64: per-
+task state lives in the heap-allocated CRT, the module-resident statics are
+no-CRT fallbacks only.
+
+The precise cross-check for any of this is to compile with `cc370 -S` and look
+for a store through a register loaded from `=A(@Vn)` -- that is what found the
+two offenders in the first place.
 
 Usage: tools/check-module-data.py [project.toml]
 """
