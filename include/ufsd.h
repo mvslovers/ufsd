@@ -229,6 +229,13 @@ struct ufsd_stc {
     /* #52: where each disk hangs in the tree, same indexing as
     ** disks[].  Filled at mount time, read per directory entry. */
     UFSD_MOUNTPT    mountpt[UFSD_MAX_DISKS];
+    /* #64: counters that must not live in module storage.  UFSD is
+    ** linked AC(1); fetched from an APF-authorized library it lands in
+    ** subpool 252 KEY 0, and the STC runs problem state key 8 -- so a
+    ** store into a C static abends S0C4.  This block is a main() local
+    ** (key 8) and is reachable from anywhere via anchor->server_stc. */
+    unsigned        ddn_seq;        /* DYNALLOC DD name sequence    */
+    unsigned        sess_serial;    /* session token serial         */
 };
 
 /* ============================================================

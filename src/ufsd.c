@@ -308,6 +308,7 @@ main(int argc, char **argv)
     unsigned     *ecblist[3]; /* WAIT ECBLIST: up to 2 entries + sentinel */
     unsigned      count;
     int           rc;
+    int           apf_at_entry;
     char          vers[24];   /* MBT_VERSION, upper case: UFSD000I+UFSD001I */
 
     (void)argc;
@@ -327,6 +328,12 @@ main(int argc, char **argv)
     __cibset(5);
 
     /* --- APF authorization --------------------------------------- */
+    /* Ask first: which route authorizes us decides whether our own module
+    ** storage is writable.  Authorized at entry means the job step was
+    ** already authorized when program fetch ran, so MVS took the job pack
+    ** area in subpool 252 key 0 and a key-8 store into it abends (#64).
+    ** clib_apf_setup() destroys the distinction, so measure before it. */
+    apf_at_entry = __isauth();
     rc = clib_apf_setup(argv[0]);
     if (rc) {
         wtof("UFSD091E APF SETUP FAILED RC=%d (STEPLIB NOT APF AUTHORIZED?)",
@@ -354,6 +361,13 @@ main(int argc, char **argv)
 #if MBT_COMMIT_DIRTY
         wtof("UFSD006W BUILT FROM A MODIFIED WORKING TREE");
 #endif
+        /* The key is inferred from the route, not measured: an authorized
+        ** job step gets its module fetched key 0, an unauthorized one key 8,
+        ** and SVC 244 comes too late to change that. */
+        if (apf_at_entry)
+            wtof("UFSD007I AUTHORIZED BY LIBRARY (MODULE KEY 0)");
+        else
+            wtof("UFSD007I AUTHORIZED BY SVC (MODULE KEY 8)");
     }
 
     /* --- Predecessor reclaim (Issue #49) -------------------------- */

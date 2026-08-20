@@ -180,6 +180,7 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | UFSD004I | I | Orphaned predecessor reclaimed at startup — CSA recovered |
 | UFSD005I | I | libc370 version + commit this module was linked against |
 | UFSD006W | W | Built from a modified working tree — issued only by a `-DIRTY` build |
+| UFSD007I | I | Which route authorized the STC: `AUTHORIZED BY LIBRARY` (already authorized at entry, from the APF list) or `AUTHORIZED BY SVC` (self-authorized via SVC 244). The module key that follows is inferred from the route, not measured — an authorized job step has its module fetched key 0, so module storage is read-only to the STC (see issue #64) |
 | UFSD030I | I | CSA anchor allocated |
 | UFSD031I–033I | I | Pool sizes (request pool / buffer pool / trace buffer) |
 | UFSD034I | I | SSCT registered |

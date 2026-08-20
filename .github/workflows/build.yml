@@ -8,3 +8,21 @@ on:
 jobs:
   build:
     uses: mvslovers/mbt/.github/workflows/build.yml@main
+
+  # An AC(1) module fetched from an APF-authorized library is loaded into
+  # key-0 storage, so a key-8 store into its own statics abends S0C4 (#64).
+  # The build cannot see that -- this can.
+  module-data:
+    name: No writable data in AC(1) modules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Check module data
+        run: python3 tools/check-module-data.py
