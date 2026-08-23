@@ -17,9 +17,7 @@ libc370 = "1.0.3"
 # <buildstamp.h>` (mbt#59). As a header it is a real prerequisite via -MMD,
 # so a new commit recompiles the banner TU instead of leaving it stamped
 # with the previous hash.
-cflags = [
-    "-I", "include",
-]
+cflags = ["-I", "include"]
 
 # ── Load modules ─────────────────────────────────────────
 # UFSD — main daemon (threading → crt1)
@@ -54,7 +52,7 @@ sources = ["src/ufsfmt.c", "src/ufsfmtg.c"]
 # ── Tests ────────────────────────────────────────────────
 [[test]]
 name = "LIBUFTST"
-host = false          # MVS-only: drives the server through the SSI
+host = false                                        # MVS-only: drives the server through the SSI
 sources = ["client/libufstst.c", "client/libufs.c"]
 
 # TSTUFSG — UFSFMT geometry: the counters #50 fixes. Portable C, so it
@@ -80,7 +78,7 @@ sources = ["test/mvs/tstufsmp.c", "src/ufsd#mnt.c"]
 # only the target has. Reads storage; registers nothing.
 [[test]]
 name = "TSTUFSRC"
-host = false          # MVS-only: needs a live ASVT
+host = false                                                          # MVS-only: needs a live ASVT
 sources = ["test/mvs/tstufsrc.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
 # ── Library (consumed by HTTPD and others) ───────────────
@@ -116,17 +114,17 @@ readme = "docs/installation.md"
 # MVS 3.8j sysgen uses for its own function SYSMODs (TMVS804, TJES801, ...) and
 # stays clear of IBM's H/J namespace. A test install must use a throwaway id --
 # a half-applied FMID leaves this one occupied.
-fmid    = "TUFS120"
-system  = "Z038"
-prereq  = []                     # no [dependencies]; RAKF is a *runtime* one
-accept_fmid = true               # accept the FMID once so a PTF can be RESTOREd
-lklib   = "UFSD.@VRM@.UFSDLOAD"  # staging: what the load XMIT is received into
-target  = "UFSD.@VRM@.LINKLIB"   # where the load modules end up
+fmid = "TUFS120"
+system = "Z038"
+prereq = []                     # no [dependencies]; RAKF is a *runtime* one
+accept_fmid = true              # accept the FMID once so a PTF can be RESTOREd
+lklib = "UFSD.@VRM@.UFSDLOAD"   # staging: what the load XMIT is received into
+target = "UFSD.@VRM@.LINKLIB"   # where the load modules end up
 distlib = "UFSD.@VRM@.AUFSDLOD"
 
 [[distribution.library]]
-dir     = "samplib"
-target  = "UFSD.@VRM@.SAMPLIB"
+dir = "samplib"
+target = "UFSD.@VRM@.SAMPLIB"
 
 # ── Release ──────────────────────────────────────────────
 [release]
