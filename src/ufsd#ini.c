@@ -652,7 +652,7 @@ ufsd_ufs_init(UFSD_STC *stc)
 
     rc = ufsd_cfg_read(&cfg);
     if (rc != 0) {
-        wtof("UFSD061E PARMLIB (DD:UFSDPRM) NOT FOUND -- SHUTTING DOWN");
+        wtof("UFSD061E PARMLIB (DD:UFSDPRM) UNUSABLE -- SHUTTING DOWN");
         return 8;
     }
 

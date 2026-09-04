@@ -430,7 +430,7 @@ linkage convention are documented in
 | `/S UFSD` rejected — procedure not found | Procedure not copied into a PROCLIB in the started-task concatenation |
 | `UFSD091E APF SETUP FAILED` | No RAKF (so no SVC 244) and no APF entry — see step 2 |
 | `S0C4` right after `UFSD047I`, only with an APF-authorized LINKLIB | Release 1.2.0 or earlier: the module is fetched key 0 there, and a static counter is written key 8 (issue #64). Upgrade, or drop the APF entry and let SVC 244 do it |
-| `UFSD061E PARMLIB … NOT FOUND` | `D=`/`M=` wrong, or the member is in a PARMLIB the procedure does not name. On TK5 this is usually `SYS2.PARMLIB` not existing — step 6 |
+| `UFSD061E PARMLIB … UNUSABLE` | Preceded by `UFSD100W` (cannot open): `D=`/`M=` wrong, or the member is in a PARMLIB the procedure does not name. On TK5 this is usually `SYS2.PARMLIB` not existing — step 6. Preceded by `UFSD106E` instead, the member was found but could not be read to the end — a media or DCB problem, not a configuration one |
 | Mount fails / `UFSD124E` superblock validation | The `ROOT`/`MOUNT` dataset does not exist or is not UFS-formatted — step 7 |
 | `S106` at start on a freshly installed library | The XMIT was uploaded in text mode. Re-upload in **binary** and re-run the install job |
 
