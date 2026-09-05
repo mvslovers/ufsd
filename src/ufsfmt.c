@@ -735,6 +735,20 @@ parse_sysin(UFSFMT_PARMS *p)
         }
     }
 
+    /* A read error is not end of SYSIN.  Since libc370 1.0.4 an
+    ** uncorrectable I/O error comes back as a NULL from fgets()
+    ** rather than ABEND S001, so the loop ends the way it does after
+    ** the last card -- and UFSFMT would go on to format the dataset
+    ** from whatever it had parsed, with defaults for the rest.  This
+    ** returns before the KW_NONE check below, because a read that
+    ** stopped mid-statement leaves a keyword pending and would report
+    ** a missing value the user never wrote.  */
+    if (ferror(stdin)) {
+        err("UFSFMT17E SYSIN READ ERROR -- "
+            "CONTROL STATEMENTS ARE INCOMPLETE\n");
+        return 8;
+    }
+
     if (pending != KW_NONE) {
         err("UFSFMT13E KEYWORD AT END OF SYSIN HAS NO VALUE\n");
         rc = 8;

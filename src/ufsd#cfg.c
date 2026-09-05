@@ -111,6 +111,7 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
     FILE *fp;
     char  line[512];
     int   in_comment;
+    int   ioerr;
     char  val[256];
     char *p;
 
@@ -208,7 +209,22 @@ ufsd_cfg_read(UFSD_CONFIG *cfg)
         wtof("UFSD104W PARMLIB: UNRECOGNIZED STATEMENT: %.40s", p);
     }
 
+    /* A read error is not end of file.  Since libc370 1.0.4 the DCBs
+    ** the stdio layer opens carry a SYNAD, so an uncorrectable I/O
+    ** error returns through fgets() as a NULL instead of ABEND S001 --
+    ** and the loop above then ends exactly as it does at EOF.  Every
+    ** statement past the failed block would be silently missing, which
+    ** for a MOUNT list means a server that comes up looking healthy
+    ** with filesystems absent.  A parmlib read in part is not a
+    ** parmlib: stop.  */
+    ioerr = ferror(fp);
+
     fclose(fp);
+
+    if (ioerr) {
+        wtof("UFSD106E PARMLIB: READ ERROR -- CONFIGURATION INCOMPLETE");
+        return 8;
+    }
 
     if (cfg->root_dsname[0] == '\0') {
         wtof("UFSD105W PARMLIB: ROOT STATEMENT MISSING");
