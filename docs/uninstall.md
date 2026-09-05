@@ -18,9 +18,17 @@ its FMID for a re-install.
 | Distribution library | `UFSD.<vrm>.AUFSDLOD` |
 | Sample library | `UFSD.<vrm>.SAMPLIB` |
 
-`<vrm>` is the release as MVS qualifier — `V1R2M0` for 1.2.x. The staging
-library `UFSD.<vrm>.UFSDLOAD` is not listed because the install job's
-`CLEANUP` step already scratched it.
+`<vrm>` is the release as MVS qualifier, and it carries the **patch** level:
+`V1R2M0` for 1.2.0, `V1R2M1` for 1.2.1, `V1R2M2` for 1.2.2. The FMID does not
+work that way -- `TUFS120` names the whole 1.2.x functional level -- so a patch
+release collides with its predecessor in the SMP inventory while its libraries
+sit beside them untouched. Read `<vrm>` as the release you are removing, and
+check the name against ISPF 3.4 before running anything below: the wrong one
+scratches an installation you meant to keep and leaves the live one standing,
+with SMP reporting success throughout.
+
+The staging library `UFSD.<vrm>.UFSDLOAD` is not listed because the install
+job's `CLEANUP` step already scratched it.
 
 ---
 

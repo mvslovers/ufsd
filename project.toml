@@ -102,7 +102,10 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 #
 # Every value is a dataset name; the ddname SMP addresses it by is always the
 # last qualifier, so LINKLIB, SAMPLIB and AUFSDLOD fall out of the names.
-# @VRM@ becomes V1R2M0 at package time.
+# @VRM@ becomes the *patch* level at package time -- V1R2M2 for 1.2.2, not
+# V1R2M0 for all of 1.2.x. The FMID below is per minor, so the two move at
+# different rates on purpose: a patch's libraries never collide with its
+# predecessor's, only its FMID does.
 [distribution]
 readme = "docs/installation.md"
 
