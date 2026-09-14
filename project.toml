@@ -1,6 +1,6 @@
 [project]
 name = "ufsd"
-version = "1.2.3-dev"
+version = "1.3.0-dev"
 type = "application"
 
 [toolchain]
@@ -130,16 +130,32 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 readme = "docs/installation.md"
 
 [distribution.smp]
-# One FMID per minor release, spent exactly once: it names a functional level,
-# and a changed one is a new level. Patches on top of it ship as PTFs. 1.2.x is
-# TUFS120; a later 1.3.0 becomes TUFS130. Cutting over to it is *not* RESTORE
-# + REJECT -- SMP refuses both once the FMID has been accepted, which this
-# package does in the same run as the APPLY -- but the UCLIN in
-# docs/uninstall.md. The T matches the form the MVS 3.8j sysgen uses for its
-# own function SYSMODs (TMVS804, TJES801, ...) and stays clear of IBM's H/J
-# namespace. A test install must use a throwaway id -- a half-applied FMID
-# leaves this one occupied.
-fmid = "TUFS120"
+# The id is the release: T + three product letters + the three version digits.
+# One per release, spent exactly once, and each release deletes the one before
+# it -- that is what `delete` below is. No version component may ever exceed 9:
+# a 7-character id has no room for a second digit, so at patch 9 the next
+# release is a new minor. ufsd 1.3.10 cannot be expressed and must not be
+# released.
+#
+# TUFS121 and TUFS122 are never assigned. 1.2.0 through 1.2.2 all shipped under
+# TUFS120 back when the rule was one id per *minor*, so the id space skips --
+# the gap is deliberate, not an oversight to correct.
+#
+# `delete` is the whole upgrade story. SMP keys element ownership on MOD(name)
+# in the CDS, not on the library the element lives in, so without it a
+# successor cannot install at all: it reports NOT SEL for every module, copies
+# nothing, and still ends RC 00 with an empty target library. With it, SMP
+# deletes the predecessor's LMODs (HMA2240) and copies the new ones in
+# (HMA2380), and MOD(x) comes back carrying the new FMID. Measured on mvsdev
+# 2026-09-14. The UCLIN in docs/uninstall.md is for *removing* UFSD now, not
+# for upgrading it.
+#
+# The T matches the form the MVS 3.8j sysgen uses for its own function SYSMODs
+# (TMVS804, TJES801, ...) and stays clear of IBM's H/J namespace. A test
+# install needs a throwaway id *and* throwaway module names -- a throwaway id
+# alone just measures the ownership wall above.
+fmid = "TUFS130"
+delete = ["TUFS120"]            # the level this one replaces; SMP deletes it
 system = "Z038"
 prereq = []                     # no [dependencies]; RAKF is a *runtime* one
 accept_fmid = true              # accept the FMID once so a PTF can be RESTOREd

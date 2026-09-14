@@ -111,13 +111,13 @@ its predecessor:
 
 ```toml
 [distribution.smp]
-fmid   = "TUFS123"
+fmid   = "TUFS130"
 delete = ["TUFS120"]
 ```
 
 **No version component may ever exceed 9** — a 7-character id has no room for
 a second digit. At patch 9 cut the next minor, at minor 9 the next major;
-ufsd 1.2.10 cannot be expressed and must not be released.
+ufsd 1.3.10 cannot be expressed and must not be released.
 
 Current: **`TUFS123`** for 1.2.3, deleting `TUFS120`. Burned here: `TUFS110`
 (1.1.x, never released but accepted on a test system) and `TUFS120` (1.2.0-1.2.2).

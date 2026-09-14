@@ -13,7 +13,7 @@ its FMID for a re-install.
 
 | | |
 |---|---|
-| FMID | `TUFS120` |
+| FMID | `TUFS130` |
 | Load modules | `UFSD`, `UFSDSSIR`, `UFSDCLNP`, `UFSFMT` |
 | Target library | `UFSD.LINKLIB` |
 | Distribution library | `UFSD.AUFSDLOD` |
@@ -21,15 +21,22 @@ its FMID for a re-install.
 
 The names carry no version qualifier (issue #71), so there is exactly one UFSD
 installation on the system and these are its datasets whatever release put them
-there. Releases before 1.2.3 versioned them — if ISPF 3.4 on `UFSD.*` shows
-`UFSD.V1R2M2.LINKLIB` and friends, you are removing one of those, and every
-name below takes that qualifier back.
+there. Releases before 1.3.0 versioned them — if ISPF 3.4 on `UFSD.*` shows
+`UFSD.V1R2M2.LINKLIB` and friends, you are removing one of those: every name
+below takes that qualifier back, and the FMID is `TUFS120` rather than
+`TUFS130`.
+
+One id per release since 1.3.0, so read `TUFS130` as *the release you are
+removing* — 1.3.1 would be `TUFS131`. Its predecessor needs nothing: an upgrade
+deletes it as it installs, leaving a `DELBY` tombstone that the `DEL SYSMOD`
+below removes along with everything else.
 
 The staging library `UFSD.UFSDLOAD` is not listed because the install job's
 `CLEANUP` step already scratched it.
 
-> **If you are upgrading rather than removing, stop after step 3.** Steps 1-3
-> free the FMID, which is what a new release needs; step 4 scratches the
+> **If you are upgrading rather than removing, you are in the wrong document.**
+> Since 1.3.0 a release deletes its predecessor as part of its own install —
+> there is no FMID to free by hand, and step 4 below would scratch the very
 > libraries the new release installs into. See
 > [Upgrading](https://github.com/mvslovers/ufsd/blob/main/docs/installation.md#10-upgrading-from-an-earlier-release).
 
@@ -56,10 +63,10 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 //UCLIN   EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN CDS .
-  DEL SYSMOD(TUFS120) MOD(UFSD) .
-  DEL SYSMOD(TUFS120) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS120) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS120) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS130) MOD(UFSD) .
+  DEL SYSMOD(TUFS130) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS130) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS130) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
@@ -68,25 +75,25 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL LMOD(UFSDSSIR) .
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
-  DEL SYSMOD(TUFS120) .
+  DEL SYSMOD(TUFS130) .
  ENDUCL .
  UCLIN ACDS .
-  DEL SYSMOD(TUFS120) MOD(UFSD) .
-  DEL SYSMOD(TUFS120) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS120) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS120) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS130) MOD(UFSD) .
+  DEL SYSMOD(TUFS130) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS130) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS130) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
-  DEL SYSMOD(TUFS120) .
+  DEL SYSMOD(TUFS130) .
  ENDUCL .
 /*
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
  RESETRC .
- LIST CDS  SYSMOD(TUFS120) .
- LIST ACDS SYSMOD(TUFS120) .
+ LIST CDS  SYSMOD(TUFS130) .
+ LIST ACDS SYSMOD(TUFS130) .
 /*
 //
 ```
@@ -102,7 +109,7 @@ The `LIST` step is what tells you whether it worked. Both zones must answer:
 THE FOLLOWING SELECTED ENTRIES WERE NOT FOUND OR WERE NOT ELIGIBLE
 FOR PROCESSING
  TYPE        NAME
- SYSMOD      TUFS120
+ SYSMOD      TUFS130
 ```
 
 with `HIGHEST RETURN CODE IS 04`. **RC 04 and an empty list means the FMID is

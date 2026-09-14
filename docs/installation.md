@@ -27,7 +27,7 @@ One placeholder is used throughout:
 
 | | |
 |---|---|
-| `<version>` | the release, e.g. `1.2.3` — it appears in every shipped file name |
+| `<version>` | the release, e.g. `1.3.0` — it appears in every shipped file name |
 
 It is already filled in inside the shipped jobs; you only need it to recognise
 which file is which.
@@ -401,63 +401,81 @@ in [recovery.md](https://github.com/mvslovers/ufsd/blob/main/docs/recovery.md).
 
 ## 10. Upgrading from an earlier release
 
-The dataset names do not change between releases, so an upgrade installs into
-the datasets step 4 already created. Four differences from a first install:
+An upgrade is **step 3 and step 5, and nothing else**. The dataset names do
+not change between releases, and the SYSMOD removes its predecessor on its own
+— there is no inventory work for you to do first.
 
 **Skip step 4.** `UFSD.LINKLIB` and `UFSD.AUFSDLOD` are already there. The
 alloc job would fail on `DISP=(NEW,CATLG)` — harmlessly, but it has nothing to
-do. Steps 3 and 5 are the whole upgrade.
+do.
 
-**Free the FMID first.** SMP refuses to receive a SYSMOD id that is already
-`REC APP ACC`, and one FMID covers a whole minor level — `TUFS120` is 1.2.0,
-1.2.1, 1.2.2 and 1.2.3 alike. So even a patch upgrade needs the id released
-first: run **step 2 of
-[uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)**
-(the `UCLIN` job) and check its `LIST` output, then come back here.
-
-> **Do not run step 4 of that document.** It scratches `UFSD.LINKLIB` and
-> `UFSD.AUFSDLOD` — the datasets you are about to install into. It is for
-> removing UFSD, not for replacing it.
+**There is no `UCLIN` step any more.** Each release carries its own FMID and
+deletes the one before it — 1.3.0 is `TUFS130` and its `++VER` reads
+`DELETE(TUFS120)`. SMP deletes the predecessor's load modules from the target
+library and copies the new ones in, and the module entries in its inventory
+become this release's. The `UCLIN` job in
+[uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
+is for **removing** UFSD, not for replacing it — running it as part of an
+upgrade would scratch the datasets you are installing into.
 
 **Stop the server.** `/P UFSD` before the install job, `/S UFSD` after. A
 running STC holds its own copy of the load module in storage and would go on
 using it, so an upgrade that skips this looks like it did nothing.
 
-**Check the members, not the condition codes.** An upgrade copies over members
-that already exist, and the one message that proves it happened is the
-`HMA2380 COPY SUCCESSFUL` line per module in the `APPLY` step. If SMP finds an
-element it does not own it prints `NOT SEL`, copies nothing, and still ends
-RC 00 with `HMA2270 ... SUCCESSFULLY COMPLETED`. Read `UFSD005I` after the
+**Expect RC 04 from the APPLY, and let it stand.** A deleted FMID has no
+backup entry in `SYS1.SMPSCDS` and never will, so the step reports success and
+*then* a 4:
+
+```
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS130
+HMA2461    SYSMOD TUFS120 NOT FOUND ON SMPSCDS LIBRARY
+HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
+```
+
+That is the expected result of a replacement, and the job's `ACCEPT` step is
+conditioned to run through it.
+
+**Check the members, not the condition codes.** The messages that prove the
+upgrade happened are, per module:
+
+```
+HMA2240    SUCCESSFULLY DELETED LMOD UFSD ON LINKLIB LIBRARY
+HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
+```
+
+If SMP meets an element it does not own it prints `NOT SEL` instead, copies
+nothing, and still ends RC 00 with `HMA2270 ... SUCCESSFULLY COMPLETED` — an
+install that reports success and changes nothing. Read `UFSD005I` after the
 restart as the final word: it reports the build the running module came from.
 
-### Coming from 1.2.2 or earlier
+### Coming from 1.2.x
 
-Those releases put their datasets in `UFSD.V1R2M0.*`, `UFSD.V1R2M1.*` or
-`UFSD.V1R2M2.*`. Nothing of this release's lands on top of them, so the first
-upgrade across the rename is a move, not a replacement — and it is the one
-upgrade that *does* run step 4:
+1.2.0, 1.2.1 and 1.2.2 put their datasets in `UFSD.V1R2M0.*`, `UFSD.V1R2M1.*`
+or `UFSD.V1R2M2.*`, and all three shipped under the same FMID `TUFS120`. This
+release installs into `UFSD.*` instead, so the first upgrade across the rename
+is a **move**: the old datasets are not written to, and you scratch them
+yourself once the new server is up.
 
 1. `/P UFSD`.
-2. Free the FMID:
-   [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
-   step 2, and read its `LIST` output (step 3).
-3. **Do** run step 4 of that document this time — but leave the old datasets
-   alone for now. Scratching them is the last thing you do, not the first.
-   `UCLIN` has already released their hold on the SMP inventory.
-4. Steps 4 and 5 of this guide, unchanged: the alloc job creates
-   `UFSD.LINKLIB` and `UFSD.AUFSDLOD` beside the old ones, the install job
-   fills them.
-5. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
+2. **Step 4 of this guide** — the alloc job creates `UFSD.LINKLIB` and
+   `UFSD.AUFSDLOD` beside the old ones. This is the one upgrade that runs it.
+3. **Steps 3 and 5**, unchanged. The SYSMOD's `DELETE(TUFS120)` retires the old
+   release from the SMP inventory as part of the APPLY; you do not run `UCLIN`.
+   Because the old load modules live in a *different* dataset than the one this
+   job's `LINKLIB` DD names, expect the `HMA2240` delete messages to report
+   against the new library, and the old `UFSD.V1R2Mx.LINKLIB` to be left
+   physically untouched. Step 6 below is what removes it.
+4. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
    procedures, any client JCL, and — if you took the APF route — the entry in
    `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
    name does not change again.
-6. `/S UFSD`, then check `UFSD000I` and `UFSD005I` (step 8).
-7. Only now scratch the release you came from:
+5. `/S UFSD`, then check `UFSD000I` and `UFSD005I` (step 8).
+6. Only now scratch the release you came from:
    `DELETE UFSD.V1R2Mx.LINKLIB / .AUFSDLOD / .SAMPLIB NONVSAM SCRATCH PURGE`.
    Copy anything you still want out of the old SAMPLIB first.
 
-Until step 7 both installations sit on the disk side by side and the old one
-is intact, so a problem at step 6 is one PROC edit away from being undone.
+Until step 6 both installations sit on the disk side by side and the old one is
+intact, so a problem at step 5 is one PROC edit away from being undone.
 
 ---
 
