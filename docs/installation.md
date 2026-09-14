@@ -430,6 +430,35 @@ element it does not own it prints `NOT SEL`, copies nothing, and still ends
 RC 00 with `HMA2270 ... SUCCESSFULLY COMPLETED`. Read `UFSD005I` after the
 restart as the final word: it reports the build the running module came from.
 
+### Coming from 1.2.2 or earlier
+
+Those releases put their datasets in `UFSD.V1R2M0.*`, `UFSD.V1R2M1.*` or
+`UFSD.V1R2M2.*`. Nothing of this release's lands on top of them, so the first
+upgrade across the rename is a move, not a replacement — and it is the one
+upgrade that *does* run step 4:
+
+1. `/P UFSD`.
+2. Free the FMID:
+   [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
+   step 2, and read its `LIST` output (step 3).
+3. **Do** run step 4 of that document this time — but leave the old datasets
+   alone for now. Scratching them is the last thing you do, not the first.
+   `UCLIN` has already released their hold on the SMP inventory.
+4. Steps 4 and 5 of this guide, unchanged: the alloc job creates
+   `UFSD.LINKLIB` and `UFSD.AUFSDLOD` beside the old ones, the install job
+   fills them.
+5. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
+   procedures, any client JCL, and — if you took the APF route — the entry in
+   `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
+   name does not change again.
+6. `/S UFSD`, then check `UFSD000I` and `UFSD005I` (step 8).
+7. Only now scratch the release you came from:
+   `DELETE UFSD.V1R2Mx.LINKLIB / .AUFSDLOD / .SAMPLIB NONVSAM SCRATCH PURGE`.
+   Copy anything you still want out of the old SAMPLIB first.
+
+Until step 7 both installations sit on the disk side by side and the old one
+is intact, so a problem at step 6 is one PROC edit away from being undone.
+
 ---
 
 ## 11. Removing UFSD
