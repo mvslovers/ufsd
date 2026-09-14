@@ -119,10 +119,11 @@ delete = ["TUFS120"]
 a second digit. At patch 9 cut the next minor, at minor 9 the next major;
 ufsd 1.3.10 cannot be expressed and must not be released.
 
-Current: **`TUFS123`** for 1.2.3, deleting `TUFS120`. Burned here: `TUFS110`
-(1.1.x, never released but accepted on a test system) and `TUFS120` (1.2.0-1.2.2).
-`TUFS121` and `TUFS122` are never assigned -- the gap is deliberate, the old rule
-was one id per minor.
+Current: **`TUFS130`** for 1.3.0, deleting `TUFS120`. Burned here: `TUFS110`
+(1.1.x, never released but accepted on a test system) and `TUFS120` (1.2.0-1.2.2,
+`REC APP ACC` on mvsdev). `TUFS121` and `TUFS122` are never assigned -- those
+releases shipped under `TUFS120` when the rule was one id per *minor*, so the id
+space skips. The gap is deliberate.
 
 Never re-spend an id, and never install a test package under the real one: a
 test needs a throwaway id **and** throwaway module names, because SMP keys
