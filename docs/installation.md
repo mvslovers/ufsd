@@ -488,10 +488,12 @@ yourself once the new server is up.
    `UFSD.AUFSDLOD` beside the old ones. This is the one upgrade that runs it.
 3. **Steps 3 and 5**, unchanged. The SYSMOD's `DELETE(TUFS120)` retires the old
    release from the SMP inventory as part of the APPLY; you do not run `UCLIN`.
-   Because the old load modules live in a *different* dataset than the one this
-   job's `LINKLIB` DD names, expect the `HMA2240` delete messages to report
-   against the new library, and the old `UFSD.V1R2Mx.LINKLIB` to be left
-   physically untouched. Step 6 below is what removes it.
+   **It does not touch the old datasets.** SMP records the *ddname* an element
+   was installed through and never the dataset behind it, so it resolves
+   `LINKLIB` in this job — where it names the new library — deletes from there,
+   prints `HMA2240 SUCCESSFULLY DELETED LMOD … ON LINKLIB LIBRARY`, and copies
+   the new modules in. `UFSD.V1R2Mx.LINKLIB` is never opened. Measured on
+   mvsdev 2026-09-14 (mvslovers/ftpd#145, jobs TTMPDINS/TTMPEINS/TTMPECHK).
 4. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
    procedures, any client JCL, and — if you took the APF route — the entry in
    `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
@@ -501,8 +503,17 @@ yourself once the new server is up.
    `DELETE UFSD.V1R2Mx.LINKLIB / .AUFSDLOD / .SAMPLIB NONVSAM SCRATCH PURGE`.
    Copy anything you still want out of the old SAMPLIB first.
 
-Until step 6 both installations sit on the disk side by side and the old one is
-intact, so a problem at step 5 is one PROC edit away from being undone.
+> **Steps 4 and 6 are the upgrade, not housekeeping.** The old library survives
+> the install untouched — still populated, still a working load module, and
+> still APF-authorised if it was before. Nothing in the job log mentions it. A
+> `STEPLIB` that was not re-pointed goes on loading the **old** server, an
+> install that reported success from top to bottom will look like it did
+> nothing, and `UFSD005I` will report the previous build. If you stop after
+> step 3 you have not upgraded.
+
+Read the other way round, that is also the safety net: until step 6 both
+installations sit on the disk side by side and the old one is intact, so a
+problem at step 5 is one procedure edit away from being undone.
 
 ---
 

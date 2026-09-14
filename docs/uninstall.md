@@ -76,6 +76,7 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
   DEL SYSMOD(TUFS130) .
+  DEL SYSMOD(TUFS120) .
  ENDUCL .
  UCLIN ACDS .
   DEL SYSMOD(TUFS130) MOD(UFSD) .
@@ -87,6 +88,7 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
   DEL SYSMOD(TUFS130) .
+  DEL SYSMOD(TUFS120) .
  ENDUCL .
 /*
 //LIST    EXEC SMPAPP
@@ -100,6 +102,19 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 
 Every `DEL` reports `HMA2550 UPDATE COMPLETE`, and each `UCLIN` block ends
 `RC 00`.
+
+**`DEL SYSMOD(TUFS120)` is the predecessor, and it is not redundant.** Installing
+1.3.0 did not remove `TUFS120` from the inventory — it left a *tombstone*:
+
+```
+TUFS120   TYPE            = FUNCTION
+          DELBY           = TUFS130
+```
+
+A `LIST` answers **RC 00** for that stanza, not RC 04, so the "RC 04 and an
+empty list means the id is free" rule in step 3 reads it as still occupied. A
+plain `DEL SYSMOD` clears it. If you are removing a release that was installed
+onto a bare system, the `DEL` simply reports nothing to do.
 
 ## 3. Read the LIST — this is the actual result
 
