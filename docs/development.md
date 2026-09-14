@@ -377,7 +377,7 @@ ufs_clearerr(fp);
 | 32 | `UFSD_RC_EXIST` | File/directory already exists |
 | 36 | `UFSD_RC_NOTDIR` | Not a directory |
 | 40 | `UFSD_RC_ISDIR` | Is a directory (not a file) |
-| 44 | `UFSD_RC_NOSPACE` | No free disk blocks |
+| 44 | `UFSD_RC_NOSPACE` | No free disk blocks, **or** the per-file size ceiling was reached |
 | 48 | `UFSD_RC_NOINODES` | No free inodes |
 | 52 | `UFSD_RC_IO` | I/O error |
 | 56 | `UFSD_RC_BADFD` | Bad file descriptor |
@@ -385,6 +385,20 @@ ufs_clearerr(fp);
 | 64 | `UFSD_RC_NAMETOOLONG` | Filename exceeds 59 characters |
 | 68 | `UFSD_RC_ROFS` | Read-only filesystem |
 | 72 | `UFSD_RC_EACCES` | Permission denied (owner check) |
+
+**Rc 44 is not only "disk full".** `blk_alloc_at()` returns `UFSD_RC_NOSPACE`
+just as readily when a write crosses the single-indirect ceiling:
+`UFSD_NADDR_DIRECT + blksize/4` blocks, which is 1040 blocks or **4.06 MB** at
+the usual `BLKSIZE=4096`. Double and triple indirect are reserved by the on-disk
+format and never followed, so a file larger than that fails mid-write on a
+filesystem with any amount of free space. A client mapping rc 44 to a protocol
+reply should not word it as "filesystem full". See
+[ufsdisk-spec.md](ufsdisk-spec.md) §5.5 for the capacity table.
+
+**Rc 48 never comes from a write.** `UFSD_RC_NOINODES` is raised only where an
+inode is allocated -- `ufs_fopen()` on a create and `ufs_mkdir()` -- so it is
+reported through `ufs_last_rc()` after one of those, never through
+`ufs_ferror()` after `ufs_fwrite()`.
 
 ### Complete Example
 
