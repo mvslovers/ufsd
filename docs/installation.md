@@ -511,9 +511,10 @@ yourself once the new server is up.
 > nothing, and `UFSD005I` will report the previous build. If you stop after
 > step 3 you have not upgraded.
 
-Read the other way round, that is also the safety net: until step 6 both
-installations sit on the disk side by side and the old one is intact, so a
-problem at step 5 is one procedure edit away from being undone.
+Steps 4 to 6 are therefore a **deliberate rollback window, then a scratch**:
+both installations sit on the disk side by side until you end it, so a bad
+start at step 5 is one procedure edit away from being undone. Treat it as a
+window you chose and then close — not as a state you can leave the system in.
 
 ---
 

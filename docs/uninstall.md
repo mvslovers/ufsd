@@ -103,8 +103,10 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 Every `DEL` reports `HMA2550 UPDATE COMPLETE`, and each `UCLIN` block ends
 `RC 00`.
 
-**`DEL SYSMOD(TUFS120)` is the predecessor, and it is not redundant.** Installing
-1.3.0 did not remove `TUFS120` from the inventory — it left a *tombstone*:
+### Why `TUFS120` is in a job that removes `TUFS130`
+
+Installing 1.3.0 did not remove its predecessor from the inventory — it left a
+*tombstone*:
 
 ```
 TUFS120   TYPE            = FUNCTION
@@ -113,8 +115,9 @@ TUFS120   TYPE            = FUNCTION
 
 A `LIST` answers **RC 00** for that stanza, not RC 04, so the "RC 04 and an
 empty list means the id is free" rule in step 3 reads it as still occupied. A
-plain `DEL SYSMOD` clears it. If you are removing a release that was installed
-onto a bare system, the `DEL` simply reports nothing to do.
+plain `DEL SYSMOD` clears it. If this release was installed onto a bare system
+the `DEL` simply reports nothing to do, so the line is safe either way — which
+is why it is unconditional rather than something you have to decide about.
 
 ## 3. Read the LIST — this is the actual result
 
