@@ -154,8 +154,8 @@ readme = "docs/installation.md"
 # (TMVS804, TJES801, ...) and stays clear of IBM's H/J namespace. A test
 # install needs a throwaway id *and* throwaway module names -- a throwaway id
 # alone just measures the ownership wall above.
-fmid = "TUFS130"
-delete = ["TUFS120"]            # the level this one replaces; SMP deletes it
+fmid = "TUFS131"
+delete = ["TUFS130"]            # the level this one replaces; SMP deletes it
 system = "Z038"
 prereq = []                     # no [dependencies]; RAKF is a *runtime* one
 accept_fmid = true              # accept the FMID once so a PTF can be RESTOREd

@@ -111,19 +111,24 @@ its predecessor:
 
 ```toml
 [distribution.smp]
-fmid   = "TUFS130"
-delete = ["TUFS120"]
+fmid   = "TUFS131"
+delete = ["TUFS130"]
 ```
 
 **No version component may ever exceed 9** — a 7-character id has no room for
 a second digit. At patch 9 cut the next minor, at minor 9 the next major;
 ufsd 1.3.10 cannot be expressed and must not be released.
 
-Current: **`TUFS130`** for 1.3.0, deleting `TUFS120`. Burned here: `TUFS110`
-(1.1.x, never released but accepted on a test system) and `TUFS120` (1.2.0-1.2.2,
-`REC APP ACC` on mvsdev). `TUFS121` and `TUFS122` are never assigned -- those
-releases shipped under `TUFS120` when the rule was one id per *minor*, so the id
-space skips. The gap is deliberate.
+Current: **`TUFS131`** for 1.3.1, deleting `TUFS130`. **The FMID does not move
+by itself** -- `make release` bumps `VERSION` and `project.toml`'s version and
+stops there, so bumping `fmid` and `delete` is part of preparing the next
+release, not of cutting the last one.
+
+Burned here: `TUFS110` (1.1.x, never released but accepted on a test system),
+`TUFS120` (1.2.0-1.2.2, `REC APP ACC` on mvsdev) and `TUFS130` (1.3.0,
+released 2026-09-14). `TUFS121` and `TUFS122` are never assigned -- those
+releases shipped under `TUFS120` when the rule was one id per *minor*, so the
+id space skips. The gap is deliberate.
 
 Never re-spend an id, and never install a test package under the real one: a
 test needs a throwaway id **and** throwaway module names, because SMP keys
