@@ -197,3 +197,23 @@ ufsfmt_mount_stmt(char *out, unsigned outsz,
         app(out, outsz, &len, ")");
     }
 }
+
+/* ============================================================
+** ufsfmt_extent_end
+**
+** See include/ufsfmt.h.  The x37 family is B37, D37 and E37 -- and
+** only those three: 137 and 237 share the last two digits and are an
+** abending SYNAD exit and a missing DD, neither of which means the
+** disk is full.
+** ============================================================ */
+int
+ufsfmt_extent_end(int checkrc)
+{
+    unsigned sys;
+
+    if (checkrc <= 0) return 0;     /* no abend, or ESTAE CREATE failed */
+
+    sys = ((unsigned)checkrc >> 12) & 0xFFFU;
+
+    return (sys == 0xB37U || sys == 0xD37U || sys == 0xE37U) ? 1 : 0;
+}

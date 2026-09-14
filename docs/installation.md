@@ -232,9 +232,28 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00
 ```
 
-Then check `UFSD.LINKLIB` really holds `UFSD`, `UFSDSSIR`, `UFSDCLNP`
-and `UFSFMT` (ISPF 3.4). Do look: SMP reports the library by **ddname**, and a
-ddname says nothing about which dataset was behind it.
+**Then list the members, and treat that as the result.** SMP reports the
+library by **ddname**, and a ddname says nothing about which dataset was behind
+it — and an install that owns none of its elements ends RC 00 from top to
+bottom with an empty library. ISPF 3.4 does it, or submit this:
+
+```
+//UFSDLIST JOB (SYS),'UFSD MEMBERS',
+//             CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1)
+//LIST    EXEC PGM=IEHLIST
+//SYSPRINT DD  SYSOUT=*
+//DD1      DD  DISP=SHR,DSN=UFSD.LINKLIB
+//SYSIN    DD  *
+ LISTPDS DSNAME=UFSD.LINKLIB,VOL=SYSDA=<volser>
+/*
+//
+```
+
+`UFSD`, `UFSDSSIR`, `UFSDCLNP` and `UFSFMT` must all be there. If the listing
+is empty while the job log said success, the `APPLY` printed `NOT SEL` instead
+of `HMA2380` — see
+[uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
+for how to clear the owner out of the inventory.
 
 SMP **copies** these modules rather than re-binding them, which is why the
 authorisation code and the link attributes are exactly what the build produced.

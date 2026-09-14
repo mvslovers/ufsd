@@ -289,6 +289,49 @@ check_mount_stmt(void)
           "mount stmt: writes no byte past the size given");
 }
 
+/* ============================================================
+** ufsfmt_extent_end -- telling "the extent is full" from "the write
+** failed".
+**
+** UFSFMT writes until the primary extent is full and counts the blocks
+** it managed; running out of space is the loop's *terminating
+** condition*, not an error.  It learns about it through oscheck(),
+** which runs the BSAM CHECK under try() and therefore answers with an
+** abend code in the 0x00sssuuu form -- sss the system code, uuu the
+** user code.
+**
+** Before #72 the loop broke on any nonzero answer, so an uncorrectable
+** I/O error half way through produced a short container and a success
+** report.  Only the x37 family means "no more space"; anything else is
+** a failure the user has to hear about.
+** ============================================================ */
+static void
+check_extent_end(void)
+{
+    /* The x37 family, as try() formats it: system code in bits 12-23. */
+    CHECK_EQ(ufsfmt_extent_end(0x00D37000), 1, "D37 is end of extent");
+    CHECK_EQ(ufsfmt_extent_end(0x00B37000), 1, "B37 is end of extent");
+    CHECK_EQ(ufsfmt_extent_end(0x00E37000), 1, "E37 is end of extent");
+
+    /* A user abend code alongside it must not change the verdict. */
+    CHECK_EQ(ufsfmt_extent_end(0x00D37004), 1, "D37 with user code");
+
+    /* Real failures.  001 is an I/O error -- the one that used to be
+    ** read as "done" and turned into a half-written filesystem. */
+    CHECK_EQ(ufsfmt_extent_end(0x00001000), 0, "001 is a failure");
+    CHECK_EQ(ufsfmt_extent_end(0x000C4000), 0, "0C4 is a failure");
+    CHECK_EQ(ufsfmt_extent_end(0x00213000), 0, "213 is a failure");
+
+    /* 137 and 237 are not x37s -- only B37, D37 and E37 are. */
+    CHECK_EQ(ufsfmt_extent_end(0x00137000), 0, "137 is a failure");
+    CHECK_EQ(ufsfmt_extent_end(0x00237000), 0, "237 is a failure");
+
+    /* No abend, and an ESTAE that could not be created (negative rc):
+    ** neither is an end of extent. */
+    CHECK_EQ(ufsfmt_extent_end(0), 0, "zero is not an end");
+    CHECK_EQ(ufsfmt_extent_end(-1), 0, "negative is not an end");
+}
+
 int
 main(void)
 {
@@ -334,6 +377,7 @@ main(void)
     check_planning_table();
     check_owner_text();
     check_mount_stmt();
+    check_extent_end();
 
     return mbt_test_summary("TSTUFSG");
 }

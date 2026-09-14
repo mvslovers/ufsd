@@ -937,13 +937,29 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
             ufsssob.data_len = 8U + want;
         }
 
-        if (libufs_issue(&ufsssob) != SSRTOK || ufsssob.rc != UFSD_RC_OK) {
+        if (libufs_issue(&ufsssob) != SSRTOK) {
+            /* The request never reached the server, so nothing in the
+            ** response block means anything. */
             fp->flags |= LIBUFS_F_ERR;
             fp->error   = ufsssob.rc;
             break;
         }
 
         written = *(unsigned *)ufsssob.data;
+
+        if (ufsssob.rc != UFSD_RC_OK) {
+            /* A failed write may still have moved part of the data --
+            ** do_fwrite fills the byte count before it returns the rc,
+            ** and ufsd_dispatch copies the response back either way.
+            ** Dropping it would under-report what is on the disk and
+            ** leave the caller's idea of the file position behind the
+            ** server's, which owns it (#72). */
+            fp->flags |= LIBUFS_F_ERR;
+            fp->error   = ufsssob.rc;
+            done += written;
+            break;
+        }
+
         done += written;
 
         if (written < want) break; /* short write */
