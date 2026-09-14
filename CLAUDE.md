@@ -102,3 +102,29 @@ Client: `client/libufs.c` (stub library — includes ufs_stat), `client/libufsts
 - 4K data transfers use staging buffers (heap) — ufsd_dispatch copies to/from CSA
 - UFSFILE in libufs: ~8K per handle (4K rbuf + 4K wbuf) — document if this grows
 - No mutable `static`/global at any scope in an AC(1) module — see constraint 7
+
+## SMP4 FMID — one per release
+
+The id is the release: `T` + three product letters + the three version digits.
+One id per release, **spent exactly once**, and each release's SYSMOD deletes
+its predecessor:
+
+```toml
+[distribution.smp]
+fmid   = "TUFS123"
+delete = ["TUFS120"]
+```
+
+**No version component may ever exceed 9** — a 7-character id has no room for
+a second digit. At patch 9 cut the next minor, at minor 9 the next major;
+ufsd 1.2.10 cannot be expressed and must not be released.
+
+Current: **`TUFS123`** for 1.2.3, deleting `TUFS120`. Burned here: `TUFS110`
+(1.1.x, never released but accepted on a test system) and `TUFS120` (1.2.0-1.2.2).
+`TUFS121` and `TUFS122` are never assigned -- the gap is deliberate, the old rule
+was one id per minor.
+
+Never re-spend an id, and never install a test package under the real one: a
+test needs a throwaway id **and** throwaway module names, because SMP keys
+element ownership on `MOD(name)`, not on the target library. See the root
+`CLAUDE.md` for the full rule and the measurements behind it.
