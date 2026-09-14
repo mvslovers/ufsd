@@ -249,11 +249,19 @@ bottom with an empty library. ISPF 3.4 does it, or submit this:
 //
 ```
 
-`UFSD`, `UFSDSSIR`, `UFSDCLNP` and `UFSFMT` must all be there. If the listing
-is empty while the job log said success, the `APPLY` printed `NOT SEL` instead
-of `HMA2380` — see
+`UFSD`, `UFSDSSIR`, `UFSDCLNP` and `UFSFMT` must all be there.
+
+If the listing is empty while the job log said success, the `APPLY` printed
+`NOT SEL` instead of `HMA2380`: some other SYSMOD owns those module names in
+the SMP inventory. **This should not happen on an ordinary system** — 1.3.0
+deletes `TUFS120`, and every release from here deletes the one before it, so
+the owner is cleared as part of the install. It is reachable only if the names
+were claimed by something this release does not know about: a test install
+under a throwaway id, or ufsd 1.1.x, which was never released but was applied
+on at least one system under `TUFS110`. `LIST CDS MOD(UFSD) .` names the owner;
+step 2 of
 [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
-for how to clear the owner out of the inventory.
+removes it.
 
 SMP **copies** these modules rather than re-binding them, which is why the
 authorisation code and the link attributes are exactly what the build produced.
