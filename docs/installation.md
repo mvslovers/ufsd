@@ -472,8 +472,10 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 
 If SMP meets an element it does not own it prints `NOT SEL` instead, copies
 nothing, and still ends RC 00 with `HMA2270 ... SUCCESSFULLY COMPLETED` — an
-install that reports success and changes nothing. Read `UFSD005I` after the
-restart as the final word: it reports the build the running module came from.
+install that reports success and changes nothing. Read `UFSD000I` after the
+restart as the final word: it names the version and the commit the running
+module was built from. (`UFSD005I` reports the libc370 it was linked against,
+not the UFSD build -- it will not tell you whether the upgrade took.)
 
 ### Coming from 1.2.x
 
@@ -503,8 +505,12 @@ yourself once the new server is up.
    procedures, any client JCL, and — if you took the APF route — the entry in
    `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
    name does not change again.
-5. `/S UFSD`, then check `UFSD000I` and `UFSD005I` (step 8).
-6. Only now scratch the release you came from:
+5. `/S UFSD`, then read `UFSD000I` (step 8). **It must name the version and
+   commit you just installed.** If it still names the old build, step 4 did not
+   take -- the STC is loading out of a library you did not re-point -- and
+   nothing below this line is safe to do yet.
+6. Only once `UFSD000I` names the new build, scratch the release you came
+   from:
    `DELETE UFSD.V1R2Mx.LINKLIB / .AUFSDLOD / .SAMPLIB NONVSAM SCRATCH PURGE`.
    Copy anything you still want out of the old SAMPLIB first.
 
@@ -513,8 +519,13 @@ yourself once the new server is up.
 > still APF-authorised if it was before. Nothing in the job log mentions it. A
 > `STEPLIB` that was not re-pointed goes on loading the **old** server, an
 > install that reported success from top to bottom will look like it did
-> nothing, and `UFSD005I` will report the previous build. If you stop after
+> nothing, and `UFSD000I` will report the previous build. If you stop after
 > step 3 you have not upgraded.
+
+The gate in step 5 is the point of the sequence: **an upgrade is proven by a
+positive statement, never by the absence of a failure.** Nothing above it
+reports the old server still running, so there is no error to wait for --
+`UFSD000I` naming the new commit is the only evidence that exists.
 
 Steps 4 to 6 are therefore a **deliberate rollback window, then a scratch**:
 both installations sit on the disk side by side until you end it, so a bad

@@ -27,9 +27,15 @@ below takes that qualifier back, and the FMID is `TUFS120` rather than
 `TUFS130`.
 
 One id per release since 1.3.0, so read `TUFS130` as *the release you are
-removing* — 1.3.1 would be `TUFS131`. Its predecessor needs nothing: an upgrade
-deletes it as it installs, leaving a `DELBY` tombstone that the `DEL SYSMOD`
-below removes along with everything else.
+removing* — 1.3.1 would be `TUFS131`.
+
+**Its predecessors are not finished with, and there is more than one of them.**
+Every upgrade deletes the level before it and leaves that id behind as a
+`DELBY` tombstone in both zones, so a system that came 1.2.x → 1.3.0 → 1.3.1
+carries two of them and a `DEL SYSMOD` for the release plus its immediate
+predecessor clears only the newest. The job in step 2 therefore names **every
+id UFSD has ever spent**, which is why it lists more than you installed — see
+[Why the job names ids you never installed](#why-the-job-names-ids-you-never-installed).
 
 The staging library `UFSD.UFSDLOAD` is not listed because the install job's
 `CLEANUP` step already scratched it.
@@ -75,8 +81,10 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL LMOD(UFSDSSIR) .
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
+  DEL SYSMOD(TUFS131) .
   DEL SYSMOD(TUFS130) .
   DEL SYSMOD(TUFS120) .
+  DEL SYSMOD(TUFS110) .
  ENDUCL .
  UCLIN ACDS .
   DEL SYSMOD(TUFS130) MOD(UFSD) .
@@ -87,15 +95,23 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
+  DEL SYSMOD(TUFS131) .
   DEL SYSMOD(TUFS130) .
   DEL SYSMOD(TUFS120) .
+  DEL SYSMOD(TUFS110) .
  ENDUCL .
 /*
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
  RESETRC .
+ LIST CDS  SYSMOD(TUFS131) .
+ LIST ACDS SYSMOD(TUFS131) .
  LIST CDS  SYSMOD(TUFS130) .
  LIST ACDS SYSMOD(TUFS130) .
+ LIST CDS  SYSMOD(TUFS120) .
+ LIST ACDS SYSMOD(TUFS120) .
+ LIST CDS  SYSMOD(TUFS110) .
+ LIST ACDS SYSMOD(TUFS110) .
 /*
 //
 ```
@@ -103,10 +119,10 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 Every `DEL` reports `HMA2550 UPDATE COMPLETE`, and each `UCLIN` block ends
 `RC 00`.
 
-### Why `TUFS120` is in a job that removes `TUFS130`
+### Why the job names ids you never installed
 
-Installing 1.3.0 did not remove its predecessor from the inventory — it left a
-*tombstone*:
+An upgrade does not remove its predecessor from the inventory. It leaves the id
+behind as a *tombstone*:
 
 ```
 TUFS120   TYPE            = FUNCTION
@@ -114,14 +130,33 @@ TUFS120   TYPE            = FUNCTION
 ```
 
 A `LIST` answers **RC 00** for that stanza, not RC 04, so the "RC 04 and an
-empty list means the id is free" rule in step 3 reads it as still occupied. A
-plain `DEL SYSMOD` clears it. If this release was installed onto a bare system
-the `DEL` simply reports nothing to do, so the line is safe either way — which
-is why it is unconditional rather than something you have to decide about.
+empty list means the id is free" rule in step 3 reads it as still occupied. The
+id is spent, and it stays spent until something clears it.
+
+**Tombstones accumulate, one per upgrade.** A system that went 1.2.x → 1.3.0 →
+1.3.1 holds two: `TUFS120` marked `DELBY = TUFS130`, and `TUFS130` marked
+`DELBY = TUFS131`. Deleting the release and its immediate predecessor clears
+the newer one and leaves the older standing for good — and because the `LIST`
+in step 3 only asks about the ids you named, the job reports complete success
+while a tombstone survives. That is why the block above names **every id UFSD
+has ever spent** (`TUFS110`, `TUFS120`, `TUFS130`, `TUFS131`) rather than the
+one you are removing plus one.
+
+A plain `DEL SYSMOD` clears a tombstone — measured on drnmig3a 2026-09-14 by
+the httpd project (`TSTHCLN JOB00043`, 29 × `HMA2550`, COND 0000, both ids gone
+from both zones afterwards). An id that was never on this system reports
+nothing to do, so every line is safe whether it hits or not. **That is the
+whole reason the list is unconditional**: it needs no judgement from you about
+which releases this system has seen, and getting that judgement wrong is
+exactly the failure it prevents.
+
+If a future release adds an id, it is added here too — the list grows one line
+per release, on the same cadence as the `fmid` bump in `project.toml`.
 
 ## 3. Read the LIST — this is the actual result
 
-The `LIST` step is what tells you whether it worked. Both zones must answer:
+The `LIST` step is what tells you whether it worked. Every id must answer, in
+both zones:
 
 ```
 THE FOLLOWING SELECTED ENTRIES WERE NOT FOUND OR WERE NOT ELIGIBLE
@@ -134,6 +169,13 @@ with `HIGHEST RETURN CODE IS 04`. **RC 04 and an empty list means the FMID is
 free.** Both zones matter: the CDS records what is applied, the ACDS what is
 accepted, and they are separate inventories — an id gone from one and present
 in the other is not free.
+
+**Read the stanzas, not the step's return code.** The `LIST` reports RC 04 for
+the ids that are gone, so a single surviving tombstone — which answers RC 00 —
+does not raise the step's highest return code above the 04 you were expecting.
+There are eight `LIST` statements above and all eight must show the id as not
+found; a stanza naming `TYPE = FUNCTION` and `DELBY` is one that is still
+there.
 
 ## 4. Scratch the libraries
 
