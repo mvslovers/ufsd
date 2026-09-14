@@ -6,7 +6,7 @@ Hercules build) from the release distribution archive.
 The installation is managed by **SMP Release 4** — the SMP that ships with
 MVS 3.8j, not SMP/E. That means the system keeps a record of what was
 installed, and there is a supported way back out (see
-[Removing UFSD](#10-removing-ufsd)).
+[Removing UFSD](#11-removing-ufsd)).
 
 ## Getting help
 
@@ -23,15 +23,20 @@ console messages and, for an install problem, the job output.
 
 ---
 
-Two placeholders are used throughout:
+One placeholder is used throughout:
 
 | | |
 |---|---|
-| `<version>` | the release, e.g. `1.2.0` — it appears in every shipped file name |
-| `<vrm>` | the same release as MVS dataset qualifier, patch level included — `V1R2M0` for 1.2.0, `V1R2M1` for 1.2.1, `V1R2M2` for 1.2.2 |
+| `<version>` | the release, e.g. `1.3.0` — it appears in every shipped file name |
 
-Both are already filled in inside the shipped jobs; you only need them to
-recognise which file is which.
+It is already filled in inside the shipped jobs; you only need it to recognise
+which file is which.
+
+The **dataset names carry no version**. `UFSD.LINKLIB` is `UFSD.LINKLIB` in
+every release, so the `STEPLIB` in your procedure, any client JCL naming it,
+and an APF entry for it are written once and never again (issue #71). The
+trade is that there is no side-by-side install: an upgrade replaces what is
+there, and the way back is SMP `RESTORE` from the distribution library.
 
 ---
 
@@ -50,14 +55,14 @@ The load modules are `UFSD` (the server), `UFSDSSIR` (the SSI router),
 
 The separate release asset `ufsd-<version>-lib.tar.gz` is **not** part of this
 archive and is not needed to install UFSD — it is for building client programs
-against `libufs`, see [Building clients](#11-building-clients).
+against `libufs`, see [Building clients](#12-building-clients).
 
 Where everything ends up:
 
 ```
-UFSD.<vrm>.LINKLIB     the load modules -- point STEPLIB here
-UFSD.<vrm>.SAMPLIB     the patterns you copy from in step 6
-UFSD.<vrm>.AUFSDLOD    SMP's distribution library, the base a RESTORE returns to
+UFSD.LINKLIB     the load modules -- point STEPLIB here
+UFSD.SAMPLIB     the patterns you copy from in step 6
+UFSD.AUFSDLOD    SMP's distribution library, the base a RESTORE returns to
 ```
 
 ---
@@ -84,10 +89,10 @@ available and the start ends with:
 UFSD091E APF SETUP FAILED RC=n (STEPLIB NOT APF AUTHORIZED?)
 ```
 
-The clean alternative is to add `UFSD.<vrm>.LINKLIB` to the APF list in
-`SYS1.PARMLIB(IEAAPF00)`. Note that on MVS 3.8j the APF list is only read at
-IPL, and that the library name carries the version — so this is one IPL per
-release, not one IPL ever.
+The clean alternative is to add `UFSD.LINKLIB` to the APF list in
+`SYS1.PARMLIB(IEAAPF00)`. On MVS 3.8j the APF list is only read at IPL, so the
+entry costs one IPL — once. The library name does not change between releases,
+so no later upgrade asks for another one.
 
 The two routes are not quite the same underneath. UFSD is link-edited AC(1),
 so from an APF-authorized library the job step is already authorized when
@@ -171,18 +176,21 @@ Submit `ufsd-<version>-alloc.jcl` unchanged, unless you want a specific unit or
 volume — the `UNIT=SYSDA` and the space on each DD are the only things worth
 editing.
 
-It creates `UFSD.<vrm>.LINKLIB` and `UFSD.<vrm>.AUFSDLOD` and nothing else. The
-libraries the next step receives into are deliberately **not** allocated here:
-TSO RECEIVE creates its own target and refuses to merge into an existing
-dataset.
+It creates `UFSD.LINKLIB` and `UFSD.AUFSDLOD` and nothing else. The libraries
+the next step receives into are deliberately **not** allocated here: TSO
+RECEIVE creates its own target and refuses to merge into an existing dataset.
 
 Expect `COND CODE 0000`.
 
-> **Run this once.** There is no DELETE step in it, on purpose. After the
-> install, `UFSD.<vrm>.AUFSDLOD` holds SMP's accepted copy of every module; a
-> re-run that scratched it would leave the SMP inventory reporting an install
-> that is no longer on the system, and nothing would say so. To start over,
-> reject the SYSMOD first — see [Removing UFSD](#10-removing-ufsd).
+> **Run this once ever — not once per release.** Since the names carry no
+> version, a later upgrade finds both datasets already there and must skip
+> this step; running it again fails on `DISP=(NEW,CATLG)` and changes nothing.
+>
+> There is no DELETE step in it, on purpose. After the install,
+> `UFSD.AUFSDLOD` holds SMP's accepted copy of every module; a re-run that
+> scratched it would leave the SMP inventory reporting an install that is no
+> longer on the system, and nothing would say so. To start over, remove the
+> SYSMOD first — see [Removing UFSD](#11-removing-ufsd).
 
 ---
 
@@ -204,11 +212,11 @@ the first failure rather than building on it:
 | Step | What it does |
 |------|--------------|
 | `DELOLD` | scratches the RECEIVE targets, so the job can be re-run |
-| `RECV1` | load XMIT → `UFSD.<vrm>.UFSDLOAD` (a staging library) |
-| `RECV2` | samplib XMIT → `UFSD.<vrm>.SAMPLIB` |
+| `RECV1` | load XMIT → `UFSD.UFSDLOAD` (a staging library) |
+| `RECV2` | samplib XMIT → `UFSD.SAMPLIB` |
 | `RECV` | receives the SYSMOD into the SMP inventory |
 | `APPLYCHK` | dry run — `APPLY` only proceeds if this ends RC 0 |
-| `APPLY` | copies the load modules into `UFSD.<vrm>.LINKLIB` |
+| `APPLY` | copies the load modules into `UFSD.LINKLIB` |
 | `ACCEPT` | makes this level the base a later `RESTORE` returns to |
 | `CLEANUP` | scratches the staging library, which is now spent |
 
@@ -224,7 +232,7 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00
 ```
 
-Then check `UFSD.<vrm>.LINKLIB` really holds `UFSD`, `UFSDSSIR`, `UFSDCLNP`
+Then check `UFSD.LINKLIB` really holds `UFSD`, `UFSDSSIR`, `UFSDCLNP`
 and `UFSFMT` (ISPF 3.4). Do look: SMP reports the library by **ddname**, and a
 ddname says nothing about which dataset was behind it.
 
@@ -241,11 +249,11 @@ running procedure, every change you made to it would be silently replaced by
 the next update. So this step is yours, and it is the one place where you have
 to read what you are copying.
 
-Copy from `UFSD.<vrm>.SAMPLIB`:
+Copy from `UFSD.SAMPLIB`:
 
 | Member | Copy to | Adjust |
 |--------|---------|--------|
-| `UFSD` | a PROCLIB in the started-task concatenation | usually nothing — `STEPLIB` already names this release's LINKLIB |
+| `UFSD` | a PROCLIB in the started-task concatenation | usually nothing — `STEPLIB` already names `UFSD.LINKLIB` |
 | `UFSDCLNP` | the same PROCLIB | likewise |
 | `UFSDPRM0` | a PARMLIB | **yes — see below** |
 | `UFSFMT` | anywhere you keep JCL; it is a job, not a procedure | dataset name and size, step 7 |
@@ -297,7 +305,7 @@ The full keyword reference is in
 Each mounted filesystem is one dataset holding a formatted UFS image. At
 minimum you need the `ROOT` dataset before the first start.
 
-Use `UFSD.<vrm>.SAMPLIB(UFSFMT)`. It is a complete job that allocates the
+Use `UFSD.SAMPLIB(UFSFMT)`. It is a complete job that allocates the
 dataset and formats it in two steps, on MVS, with nothing to install and
 nothing to upload. Edit the dataset name, the `SPACE` and the `OWNER`, then
 submit it once per filesystem.
@@ -391,7 +399,87 @@ in [recovery.md](https://github.com/mvslovers/ufsd/blob/main/docs/recovery.md).
 
 ---
 
-## 10. Removing UFSD
+## 10. Upgrading from an earlier release
+
+An upgrade is **step 3 and step 5, and nothing else**. The dataset names do
+not change between releases, and the SYSMOD removes its predecessor on its own
+— there is no inventory work for you to do first.
+
+**Skip step 4.** `UFSD.LINKLIB` and `UFSD.AUFSDLOD` are already there. The
+alloc job would fail on `DISP=(NEW,CATLG)` — harmlessly, but it has nothing to
+do.
+
+**There is no `UCLIN` step any more.** Each release carries its own FMID and
+deletes the one before it — 1.3.0 is `TUFS130` and its `++VER` reads
+`DELETE(TUFS120)`. SMP deletes the predecessor's load modules from the target
+library and copies the new ones in, and the module entries in its inventory
+become this release's. The `UCLIN` job in
+[uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
+is for **removing** UFSD, not for replacing it — running it as part of an
+upgrade would scratch the datasets you are installing into.
+
+**Stop the server.** `/P UFSD` before the install job, `/S UFSD` after. A
+running STC holds its own copy of the load module in storage and would go on
+using it, so an upgrade that skips this looks like it did nothing.
+
+**Expect RC 04 from the APPLY, and let it stand.** A deleted FMID has no
+backup entry in `SYS1.SMPSCDS` and never will, so the step reports success and
+*then* a 4:
+
+```
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS130
+HMA2461    SYSMOD TUFS120 NOT FOUND ON SMPSCDS LIBRARY
+HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
+```
+
+That is the expected result of a replacement, and the job's `ACCEPT` step is
+conditioned to run through it.
+
+**Check the members, not the condition codes.** The messages that prove the
+upgrade happened are, per module:
+
+```
+HMA2240    SUCCESSFULLY DELETED LMOD UFSD ON LINKLIB LIBRARY
+HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
+```
+
+If SMP meets an element it does not own it prints `NOT SEL` instead, copies
+nothing, and still ends RC 00 with `HMA2270 ... SUCCESSFULLY COMPLETED` — an
+install that reports success and changes nothing. Read `UFSD005I` after the
+restart as the final word: it reports the build the running module came from.
+
+### Coming from 1.2.x
+
+1.2.0, 1.2.1 and 1.2.2 put their datasets in `UFSD.V1R2M0.*`, `UFSD.V1R2M1.*`
+or `UFSD.V1R2M2.*`, and all three shipped under the same FMID `TUFS120`. This
+release installs into `UFSD.*` instead, so the first upgrade across the rename
+is a **move**: the old datasets are not written to, and you scratch them
+yourself once the new server is up.
+
+1. `/P UFSD`.
+2. **Step 4 of this guide** — the alloc job creates `UFSD.LINKLIB` and
+   `UFSD.AUFSDLOD` beside the old ones. This is the one upgrade that runs it.
+3. **Steps 3 and 5**, unchanged. The SYSMOD's `DELETE(TUFS120)` retires the old
+   release from the SMP inventory as part of the APPLY; you do not run `UCLIN`.
+   Because the old load modules live in a *different* dataset than the one this
+   job's `LINKLIB` DD names, expect the `HMA2240` delete messages to report
+   against the new library, and the old `UFSD.V1R2Mx.LINKLIB` to be left
+   physically untouched. Step 6 below is what removes it.
+4. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
+   procedures, any client JCL, and — if you took the APF route — the entry in
+   `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
+   name does not change again.
+5. `/S UFSD`, then check `UFSD000I` and `UFSD005I` (step 8).
+6. Only now scratch the release you came from:
+   `DELETE UFSD.V1R2Mx.LINKLIB / .AUFSDLOD / .SAMPLIB NONVSAM SCRATCH PURGE`.
+   Copy anything you still want out of the old SAMPLIB first.
+
+Until step 6 both installations sit on the disk side by side and the old one is
+intact, so a problem at step 5 is one PROC edit away from being undone.
+
+---
+
+## 11. Removing UFSD
 
 Because the installation is SMP-managed, there is a defined way back — but it
 is **not** the `RESTORE` followed by `REJECT` that SMP documentation leads you
@@ -408,7 +496,7 @@ in step 6, and your UFS disks. Those are yours to delete.
 
 ---
 
-## 11. Building clients
+## 12. Building clients
 
 To build a client (HTTPD, FTPD, or your own program) against UFSD, unpack the
 separate `ufsd-<version>-lib.tar.gz` release asset — it provides `include/` and

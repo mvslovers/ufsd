@@ -1,6 +1,6 @@
 [project]
 name = "ufsd"
-version = "1.2.3-dev"
+version = "1.3.0-dev"
 type = "application"
 
 [toolchain]
@@ -90,44 +90,82 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 # ── Distribution (SMP4 install package) ──────────────────
 # Turns `make package` into an installable product. Two transports, on purpose:
 #
-#   load modules  -> XMIT -> staging LKLIB -> SMP ++MOD -> UFSD.<vrm>.LINKLIB
-#   samplib/      -> XMIT -> TSO RECEIVE   -> UFSD.<vrm>.SAMPLIB
+#   load modules  -> XMIT -> staging LKLIB -> SMP ++MOD -> UFSD.LINKLIB
+#   samplib/      -> XMIT -> TSO RECEIVE   -> UFSD.SAMPLIB
 #
 # SMP *copies* the host-bound modules rather than re-binding them (a COPY-style
 # ++JCLIN is what says so), which is what keeps ac = 1 and the entry points
 # exactly as ld370 set them. The sample library stays outside SMP: an MCS card
 # ends at column 72, and a configuration pattern should not have to answer to a
-# delivery mechanism. Since the datasets are versioned, every release brings a
-# fresh SAMPLIB anyway -- there is no in-place update for SMP to manage.
+# delivery mechanism. The install job's DELOLD step scratches and re-receives
+# it whole every time, so there is still no in-place update for SMP to manage.
 #
 # Every value is a dataset name; the ddname SMP addresses it by is always the
 # last qualifier, so LINKLIB, SAMPLIB and AUFSDLOD fall out of the names.
-# @VRM@ becomes the *patch* level at package time -- V1R2M2 for 1.2.2, not
-# V1R2M0 for all of 1.2.x. The FMID below is per minor, so the two move at
-# different rates on purpose: a patch's libraries never collide with its
-# predecessor's, only its FMID does.
+#
+# None of them carries a version qualifier, and @VRM@ is deliberately unused
+# here (#71). A versioned target library is a name the site has to re-type
+# every release: the STC procedure's STEPLIB, any client's JCL, and -- the one
+# that hurts -- the APF list in SYS1.PARMLIB(IEAAPF00), which MVS 3.8j reads
+# only at IPL. Versioned, that is one IPL per release; stable, one IPL ever.
+# On a system without RAKF (no SVC 244 to authorize from) the APF route is the
+# only way UFSD starts at all, so this is not a convenience.
+#
+# What the version qualifier looked like it bought was a clean cut between
+# minors, and it did not: SMP keys element ownership on MOD(UFSD) in the CDS,
+# not on the library the element lives in. A new FMID does not replace an
+# element it does not own no matter which dataset that element sits in -- it
+# reports NOT SEL and copies nothing, at RC 0, with every condition code
+# reading success. The UCLIN in docs/uninstall.md is required either way. What
+# it did cost was a V1R2M0-for-all-of-1.2.x ambiguity that scratched the wrong
+# libraries once already (ftpd, 2026-09-05).
+#
+# Two consequences to keep in the install guide:
+#   - the alloc job runs once EVER, not once per release. A second run fails
+#     on DISP=(NEW,CATLG) and changes nothing; an upgrade skips it.
+#   - there is no side-by-side install and no back-out by dataset. The way
+#     back is SMP RESTORE from the DLIB, which is what accept_fmid below
+#     exists for.
 [distribution]
 readme = "docs/installation.md"
 
 [distribution.smp]
-# One FMID per minor release, spent exactly once: it names a functional level,
-# and a changed one is a new level. Patches on top of it ship as PTFs. 1.2.x is
-# TUFS120; a later 1.3.0 becomes TUFS130 and is installed as a clean cut
-# (RESTORE + REJECT the old, then receive the new). The T matches the form the
-# MVS 3.8j sysgen uses for its own function SYSMODs (TMVS804, TJES801, ...) and
-# stays clear of IBM's H/J namespace. A test install must use a throwaway id --
-# a half-applied FMID leaves this one occupied.
-fmid = "TUFS120"
+# The id is the release: T + three product letters + the three version digits.
+# One per release, spent exactly once, and each release deletes the one before
+# it -- that is what `delete` below is. No version component may ever exceed 9:
+# a 7-character id has no room for a second digit, so at patch 9 the next
+# release is a new minor. ufsd 1.3.10 cannot be expressed and must not be
+# released.
+#
+# TUFS121 and TUFS122 are never assigned. 1.2.0 through 1.2.2 all shipped under
+# TUFS120 back when the rule was one id per *minor*, so the id space skips --
+# the gap is deliberate, not an oversight to correct.
+#
+# `delete` is the whole upgrade story. SMP keys element ownership on MOD(name)
+# in the CDS, not on the library the element lives in, so without it a
+# successor cannot install at all: it reports NOT SEL for every module, copies
+# nothing, and still ends RC 00 with an empty target library. With it, SMP
+# deletes the predecessor's LMODs (HMA2240) and copies the new ones in
+# (HMA2380), and MOD(x) comes back carrying the new FMID. Measured on mvsdev
+# 2026-09-14. The UCLIN in docs/uninstall.md is for *removing* UFSD now, not
+# for upgrading it.
+#
+# The T matches the form the MVS 3.8j sysgen uses for its own function SYSMODs
+# (TMVS804, TJES801, ...) and stays clear of IBM's H/J namespace. A test
+# install needs a throwaway id *and* throwaway module names -- a throwaway id
+# alone just measures the ownership wall above.
+fmid = "TUFS130"
+delete = ["TUFS120"]            # the level this one replaces; SMP deletes it
 system = "Z038"
 prereq = []                     # no [dependencies]; RAKF is a *runtime* one
 accept_fmid = true              # accept the FMID once so a PTF can be RESTOREd
-lklib = "UFSD.@VRM@.UFSDLOAD"   # staging: what the load XMIT is received into
-target = "UFSD.@VRM@.LINKLIB"   # where the load modules end up
-distlib = "UFSD.@VRM@.AUFSDLOD"
+lklib = "UFSD.UFSDLOAD"         # staging: what the load XMIT is received into
+target = "UFSD.LINKLIB"         # where the load modules end up
+distlib = "UFSD.AUFSDLOD"
 
 [[distribution.library]]
 dir = "samplib"
-target = "UFSD.@VRM@.SAMPLIB"
+target = "UFSD.SAMPLIB"
 
 # ── Release ──────────────────────────────────────────────
 [release]

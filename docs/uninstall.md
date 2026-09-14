@@ -3,32 +3,42 @@
 This is the supported way to take UFSD back off an MVS 3.8j system and free
 its FMID for a re-install.
 
-> **The removal instructions inside the shipped release archive are wrong.**
-> `README.md` in `ufsd-<version>-dist.zip` says to run `RESTORE` and then
-> `REJECT`. Both are refused once the FMID has been accepted — which the
-> install job does, in the same run as the APPLY. Use this document instead.
+> **If you are holding a 1.2.0 archive, its removal instructions are wrong.**
+> `README.md` in `ufsd-1.2.0-dist.zip` says to run `RESTORE` and then `REJECT`.
+> Both are refused once the FMID has been accepted — which the install job
+> does, in the same run as the APPLY. Every archive from 1.2.1 on points here
+> instead.
 
 ## What this release put on the system
 
 | | |
 |---|---|
-| FMID | `TUFS120` |
+| FMID | `TUFS130` |
 | Load modules | `UFSD`, `UFSDSSIR`, `UFSDCLNP`, `UFSFMT` |
-| Target library | `UFSD.<vrm>.LINKLIB` |
-| Distribution library | `UFSD.<vrm>.AUFSDLOD` |
-| Sample library | `UFSD.<vrm>.SAMPLIB` |
+| Target library | `UFSD.LINKLIB` |
+| Distribution library | `UFSD.AUFSDLOD` |
+| Sample library | `UFSD.SAMPLIB` |
 
-`<vrm>` is the release as MVS qualifier, and it carries the **patch** level:
-`V1R2M0` for 1.2.0, `V1R2M1` for 1.2.1, `V1R2M2` for 1.2.2. The FMID does not
-work that way -- `TUFS120` names the whole 1.2.x functional level -- so a patch
-release collides with its predecessor in the SMP inventory while its libraries
-sit beside them untouched. Read `<vrm>` as the release you are removing, and
-check the name against ISPF 3.4 before running anything below: the wrong one
-scratches an installation you meant to keep and leaves the live one standing,
-with SMP reporting success throughout.
+The names carry no version qualifier (issue #71), so there is exactly one UFSD
+installation on the system and these are its datasets whatever release put them
+there. Releases before 1.3.0 versioned them — if ISPF 3.4 on `UFSD.*` shows
+`UFSD.V1R2M2.LINKLIB` and friends, you are removing one of those: every name
+below takes that qualifier back, and the FMID is `TUFS120` rather than
+`TUFS130`.
 
-The staging library `UFSD.<vrm>.UFSDLOAD` is not listed because the install
-job's `CLEANUP` step already scratched it.
+One id per release since 1.3.0, so read `TUFS130` as *the release you are
+removing* — 1.3.1 would be `TUFS131`. Its predecessor needs nothing: an upgrade
+deletes it as it installs, leaving a `DELBY` tombstone that the `DEL SYSMOD`
+below removes along with everything else.
+
+The staging library `UFSD.UFSDLOAD` is not listed because the install job's
+`CLEANUP` step already scratched it.
+
+> **If you are upgrading rather than removing, you are in the wrong document.**
+> Since 1.3.0 a release deletes its predecessor as part of its own install —
+> there is no FMID to free by hand, and step 4 below would scratch the very
+> libraries the new release installs into. See
+> [Upgrading](https://github.com/mvslovers/ufsd/blob/main/docs/installation.md#10-upgrading-from-an-earlier-release).
 
 ---
 
@@ -53,10 +63,10 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 //UCLIN   EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN CDS .
-  DEL SYSMOD(TUFS120) MOD(UFSD) .
-  DEL SYSMOD(TUFS120) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS120) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS120) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS130) MOD(UFSD) .
+  DEL SYSMOD(TUFS130) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS130) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS130) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
@@ -65,25 +75,25 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL LMOD(UFSDSSIR) .
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
-  DEL SYSMOD(TUFS120) .
+  DEL SYSMOD(TUFS130) .
  ENDUCL .
  UCLIN ACDS .
-  DEL SYSMOD(TUFS120) MOD(UFSD) .
-  DEL SYSMOD(TUFS120) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS120) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS120) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS130) MOD(UFSD) .
+  DEL SYSMOD(TUFS130) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS130) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS130) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
-  DEL SYSMOD(TUFS120) .
+  DEL SYSMOD(TUFS130) .
  ENDUCL .
 /*
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
  RESETRC .
- LIST CDS  SYSMOD(TUFS120) .
- LIST ACDS SYSMOD(TUFS120) .
+ LIST CDS  SYSMOD(TUFS130) .
+ LIST ACDS SYSMOD(TUFS130) .
 /*
 //
 ```
@@ -99,7 +109,7 @@ The `LIST` step is what tells you whether it worked. Both zones must answer:
 THE FOLLOWING SELECTED ENTRIES WERE NOT FOUND OR WERE NOT ELIGIBLE
 FOR PROCESSING
  TYPE        NAME
- SYSMOD      TUFS120
+ SYSMOD      TUFS130
 ```
 
 with `HIGHEST RETURN CODE IS 04`. **RC 04 and an empty list means the FMID is
@@ -110,17 +120,20 @@ in the other is not free.
 ## 4. Scratch the libraries
 
 `UCLIN` edits the inventory only. The load modules are still in the target
-library and SMP's accepted copies are still in the distribution library, so a
-re-install would find both datasets already there and its allocation job would
-fail:
+library and SMP's accepted copies are still in the distribution library. The
+allocation job in the install guide is a `DISP=(NEW,CATLG)` step, so it would
+fail against either of them:
 
 ```
-  DELETE UFSD.<vrm>.LINKLIB  NONVSAM SCRATCH PURGE
-  DELETE UFSD.<vrm>.AUFSDLOD NONVSAM SCRATCH PURGE
+  DELETE UFSD.LINKLIB  NONVSAM SCRATCH PURGE
+  DELETE UFSD.AUFSDLOD NONVSAM SCRATCH PURGE
 ```
 
-Leave `UFSD.<vrm>.SAMPLIB` alone if you like — the install job's `DELOLD` step
-scratches it on its own.
+**Only when you are removing UFSD for good.** For an upgrade these are the
+datasets the next release installs into; leave them.
+
+Leave `UFSD.SAMPLIB` alone either way if you like — the install job's `DELOLD`
+step scratches it on its own.
 
 ## 5. What is not removed, because SMP never owned it
 
