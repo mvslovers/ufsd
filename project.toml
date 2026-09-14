@@ -87,6 +87,20 @@ name = "libufs"
 sources = ["client/libufs.c"]
 headers = ["include/libufs.h", "include/ufsdrc.h"]
 
+# ── Deploy (development library) ──────────────────────────
+# UFSD.LINKLIB belongs to SMP and nothing else may write to it: a deploy into
+# it leaves the inventory describing a level that is not on disk, and SMP
+# cannot notice. `make deploy` therefore stages into a separate development
+# library, which a STEPLIB concatenation names ahead of UFSD.LINKLIB -- first
+# one wins, so a deploy overrides the installed level and removing the DD
+# goes back to it. No HLQ on purpose: the name has to be reachable from a
+# fixed STC procedure, so it cannot be per-developer. It needs its own
+# IEAAPF00 entry beside the SMP one (dsname *and* volser), because an
+# unauthorized library anywhere in an authorized concatenation
+# de-authorizes the whole task.
+[deploy]
+target = "UFSD.DEV.LINKLIB"
+
 # ── Distribution (SMP4 install package) ──────────────────
 # Turns `make package` into an installable product. Two transports, on purpose:
 #
