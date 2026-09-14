@@ -492,8 +492,13 @@ yourself once the new server is up.
    was installed through and never the dataset behind it, so it resolves
    `LINKLIB` in this job — where it names the new library — deletes from there,
    prints `HMA2240 SUCCESSFULLY DELETED LMOD … ON LINKLIB LIBRARY`, and copies
-   the new modules in. `UFSD.V1R2Mx.LINKLIB` is never opened. Measured on
-   mvsdev 2026-09-14 (mvslovers/ftpd#145, jobs TTMPDINS/TTMPEINS/TTMPECHK).
+   the new modules in. `UFSD.V1R2Mx.LINKLIB` is never opened. This is SMP's
+   behaviour, not UFSD's: it was measured on 2026-09-14 with a throwaway module
+   name in throwaway libraries belonging to no product
+   ([mvslovers/ftpd#145](https://github.com/mvslovers/ftpd/issues/145), jobs
+   TTMPDINS/TTMPEINS/TTMPECHK). The one product-specific condition is that the
+   old and new dataset names end in the same qualifier — `LINKLIB` before and
+   after — which UFSD satisfies for all four of its libraries.
 4. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
    procedures, any client JCL, and — if you took the APF route — the entry in
    `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
