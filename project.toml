@@ -90,44 +90,66 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 # ── Distribution (SMP4 install package) ──────────────────
 # Turns `make package` into an installable product. Two transports, on purpose:
 #
-#   load modules  -> XMIT -> staging LKLIB -> SMP ++MOD -> UFSD.<vrm>.LINKLIB
-#   samplib/      -> XMIT -> TSO RECEIVE   -> UFSD.<vrm>.SAMPLIB
+#   load modules  -> XMIT -> staging LKLIB -> SMP ++MOD -> UFSD.LINKLIB
+#   samplib/      -> XMIT -> TSO RECEIVE   -> UFSD.SAMPLIB
 #
 # SMP *copies* the host-bound modules rather than re-binding them (a COPY-style
 # ++JCLIN is what says so), which is what keeps ac = 1 and the entry points
 # exactly as ld370 set them. The sample library stays outside SMP: an MCS card
 # ends at column 72, and a configuration pattern should not have to answer to a
-# delivery mechanism. Since the datasets are versioned, every release brings a
-# fresh SAMPLIB anyway -- there is no in-place update for SMP to manage.
+# delivery mechanism. The install job's DELOLD step scratches and re-receives
+# it whole every time, so there is still no in-place update for SMP to manage.
 #
 # Every value is a dataset name; the ddname SMP addresses it by is always the
 # last qualifier, so LINKLIB, SAMPLIB and AUFSDLOD fall out of the names.
-# @VRM@ becomes the *patch* level at package time -- V1R2M2 for 1.2.2, not
-# V1R2M0 for all of 1.2.x. The FMID below is per minor, so the two move at
-# different rates on purpose: a patch's libraries never collide with its
-# predecessor's, only its FMID does.
+#
+# None of them carries a version qualifier, and @VRM@ is deliberately unused
+# here (#71). A versioned target library is a name the site has to re-type
+# every release: the STC procedure's STEPLIB, any client's JCL, and -- the one
+# that hurts -- the APF list in SYS1.PARMLIB(IEAAPF00), which MVS 3.8j reads
+# only at IPL. Versioned, that is one IPL per release; stable, one IPL ever.
+# On a system without RAKF (no SVC 244 to authorize from) the APF route is the
+# only way UFSD starts at all, so this is not a convenience.
+#
+# What the version qualifier looked like it bought was a clean cut between
+# minors, and it did not: SMP keys element ownership on MOD(UFSD) in the CDS,
+# not on the library the element lives in. A new FMID does not replace an
+# element it does not own no matter which dataset that element sits in -- it
+# reports NOT SEL and copies nothing, at RC 0, with every condition code
+# reading success. The UCLIN in docs/uninstall.md is required either way. What
+# it did cost was a V1R2M0-for-all-of-1.2.x ambiguity that scratched the wrong
+# libraries once already (ftpd, 2026-09-05).
+#
+# Two consequences to keep in the install guide:
+#   - the alloc job runs once EVER, not once per release. A second run fails
+#     on DISP=(NEW,CATLG) and changes nothing; an upgrade skips it.
+#   - there is no side-by-side install and no back-out by dataset. The way
+#     back is SMP RESTORE from the DLIB, which is what accept_fmid below
+#     exists for.
 [distribution]
 readme = "docs/installation.md"
 
 [distribution.smp]
 # One FMID per minor release, spent exactly once: it names a functional level,
 # and a changed one is a new level. Patches on top of it ship as PTFs. 1.2.x is
-# TUFS120; a later 1.3.0 becomes TUFS130 and is installed as a clean cut
-# (RESTORE + REJECT the old, then receive the new). The T matches the form the
-# MVS 3.8j sysgen uses for its own function SYSMODs (TMVS804, TJES801, ...) and
-# stays clear of IBM's H/J namespace. A test install must use a throwaway id --
-# a half-applied FMID leaves this one occupied.
+# TUFS120; a later 1.3.0 becomes TUFS130. Cutting over to it is *not* RESTORE
+# + REJECT -- SMP refuses both once the FMID has been accepted, which this
+# package does in the same run as the APPLY -- but the UCLIN in
+# docs/uninstall.md. The T matches the form the MVS 3.8j sysgen uses for its
+# own function SYSMODs (TMVS804, TJES801, ...) and stays clear of IBM's H/J
+# namespace. A test install must use a throwaway id -- a half-applied FMID
+# leaves this one occupied.
 fmid = "TUFS120"
 system = "Z038"
 prereq = []                     # no [dependencies]; RAKF is a *runtime* one
 accept_fmid = true              # accept the FMID once so a PTF can be RESTOREd
-lklib = "UFSD.@VRM@.UFSDLOAD"   # staging: what the load XMIT is received into
-target = "UFSD.@VRM@.LINKLIB"   # where the load modules end up
-distlib = "UFSD.@VRM@.AUFSDLOD"
+lklib = "UFSD.UFSDLOAD"         # staging: what the load XMIT is received into
+target = "UFSD.LINKLIB"         # where the load modules end up
+distlib = "UFSD.AUFSDLOD"
 
 [[distribution.library]]
 dir = "samplib"
-target = "UFSD.@VRM@.SAMPLIB"
+target = "UFSD.SAMPLIB"
 
 # ── Release ──────────────────────────────────────────────
 [release]
