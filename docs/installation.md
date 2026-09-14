@@ -232,9 +232,36 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00
 ```
 
-Then check `UFSD.LINKLIB` really holds `UFSD`, `UFSDSSIR`, `UFSDCLNP`
-and `UFSFMT` (ISPF 3.4). Do look: SMP reports the library by **ddname**, and a
-ddname says nothing about which dataset was behind it.
+**Then list the members, and treat that as the result.** SMP reports the
+library by **ddname**, and a ddname says nothing about which dataset was behind
+it — and an install that owns none of its elements ends RC 00 from top to
+bottom with an empty library. ISPF 3.4 does it, or submit this:
+
+```
+//UFSDLIST JOB (SYS),'UFSD MEMBERS',
+//             CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1)
+//LIST    EXEC PGM=IEHLIST
+//SYSPRINT DD  SYSOUT=*
+//DD1      DD  DISP=SHR,DSN=UFSD.LINKLIB
+//SYSIN    DD  *
+ LISTPDS DSNAME=UFSD.LINKLIB,VOL=SYSDA=<volser>
+/*
+//
+```
+
+`UFSD`, `UFSDSSIR`, `UFSDCLNP` and `UFSFMT` must all be there.
+
+If the listing is empty while the job log said success, the `APPLY` printed
+`NOT SEL` instead of `HMA2380`: some other SYSMOD owns those module names in
+the SMP inventory. **This should not happen on an ordinary system** — 1.3.0
+deletes `TUFS120`, and every release from here deletes the one before it, so
+the owner is cleared as part of the install. It is reachable only if the names
+were claimed by something this release does not know about: a test install
+under a throwaway id, or ufsd 1.1.x, which was never released but was applied
+on at least one system under `TUFS110`. `LIST CDS MOD(UFSD) .` names the owner;
+step 2 of
+[uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
+removes it.
 
 SMP **copies** these modules rather than re-binding them, which is why the
 authorisation code and the link attributes are exactly what the build produced.

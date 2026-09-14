@@ -118,4 +118,26 @@ const char *ufsfmt_owner_text(const char *owner);
 void ufsfmt_mount_stmt(char *out, unsigned outsz,
                        const char *dsn, const char *owner);
 
+/* ============================================================
+** ufsfmt_extent_end
+**
+** Decide whether the abend that ended a write means "the primary
+** extent is full" -- which is how UFSFMT finds the end of the disk it
+** was given -- or a failure the caller has to report.
+**
+** `checkrc` is what oscheck() answered: it runs the BSAM CHECK under
+** try(), so a nonzero value is an abend code in try()'s 0x00sssuuu
+** form, sss the system code and uuu the user code.  A negative value
+** means the ESTAE could not be created and nothing was protected.
+**
+** Only B37, D37 and E37 mean out of space.  Everything else -- an
+** uncorrectable I/O error above all -- must not be read as the end of
+** the disk: doing so formats a container shorter than its extent and
+** reports success, which mounts and then misbehaves (#72).
+**
+** Returns 1 for an out-of-space abend, 0 for anything else, including
+** 0 and negative values.
+** ============================================================ */
+int ufsfmt_extent_end(int checkrc);
+
 #endif /* UFSFMT_H */

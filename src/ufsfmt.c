@@ -933,6 +933,13 @@ probe_disk(const UFSFMT_PARMS *p, UFSFMT_FOUND *found)
 ** CHECK succeeded is counted, so the reported size can never exceed
 ** what is really on disk.
 **
+** An abend that is *not* an x37 ends the job instead of the loop.
+** oscheck() answers with an abend code either way, and reading an
+** uncorrectable I/O error as "the disk ends here" would write a
+** container shorter than its extent and report it as a success -- one
+** that mounts and then misbehaves (#72).  ufsfmt_extent_end() draws
+** the line.
+**
 ** Returns 0 on success, 8 on error.  Fills dsn from the JFCB.
 ** ============================================================ */
 static int
@@ -943,6 +950,7 @@ fill_disk(const UFSFMT_PARMS *p, char *dsn, unsigned *blocks)
     DECB     decb;
     JFCB     jfcb;
     unsigned count;
+    int      crc;
     int      i;
 
     *blocks = 0;
@@ -1020,7 +1028,23 @@ fill_disk(const UFSFMT_PARMS *p, char *dsn, unsigned *blocks)
         ** value on writes that completed perfectly well.  Believing it
         ** would end the loop early and silently build a filesystem
         ** smaller than the extent it was given. */
-        if (oscheck(&decb)) break;      /* D37: primary extent full */
+        crc = oscheck(&decb);
+        if (crc) {
+            /* oscheck() runs the CHECK under try(), so crc is an abend
+            ** code.  Running out of space is how this loop *ends* --
+            ** the extent's size is what it is measuring -- but an
+            ** uncorrectable I/O error arrives the same way, and
+            ** treating it as the end of the disk formats a container
+            ** shorter than its extent and calls it a success (#72). */
+            if (ufsfmt_extent_end(crc)) break;  /* x37: extent full */
+
+            err("UFSFMT28E DD %s WRITE FAILED AFTER %u BLOCKS, "
+                "ABEND %03X\n",
+                p->ddname, count, (unsigned)((crc >> 12) & 0xFFFU));
+            osbclose(dcb, NULL, 1, 0);
+            free(buf);
+            return 8;
+        }
 
         count++;
         if (count >= UFSFMT_BLOCK_LIMIT) {
