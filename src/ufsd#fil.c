@@ -39,8 +39,8 @@
 #include "ufsd.h"
 #include <string.h>
 #include <stdlib.h>
-#include "time64.h"
-#include "clib64.h"
+#include <ext/time64.h>
+#include <ext/int64.h>
 
 /* ============================================================
 ** Internal helpers (static)

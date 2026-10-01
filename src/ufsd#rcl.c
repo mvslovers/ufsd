@@ -48,10 +48,12 @@
 #include "ufsd.h"
 #include "ufsdasv.h"
 #include <string.h>
-#include <clibos.h>
-#include <clibwto.h>
-#include <cvt.h>
-#include <ihaasvt.h>
+#include <mvs/apf.h>
+#include <mvs/storage.h>
+#include <mvs/xmem.h>
+#include <mvs/wto.h>
+#include <ibm/mvs/cvt.h>
+#include <ibm/mvs/ihaasvt.h>
 
 /* Drain tuning -- see ufsd.c ufsd_drain().  The ceiling exceeds
 ** 2 * UFSD_WAIT_INTERVAL (2 * 5.00 s) so a client genuinely parked in the

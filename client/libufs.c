@@ -32,8 +32,8 @@
 #include "ufsd.h"
 #include <string.h>
 #include <stdlib.h>
-#include <iefssobh.h>
-#include <iefjssib.h>
+#include <ibm/mvs/iefssobh.h>
+#include <ibm/mvs/iefjssib.h>
 
 /* Forward declarations */
 static int libufs_wbuf_flush(UFSFILE *fp);

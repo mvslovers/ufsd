@@ -47,8 +47,8 @@
 */
 
 #include <string.h>
-#include <clibos.h>
-#include <clibwto.h>
+#include <mvs/apf.h>
+#include <mvs/wto.h>
 #include "libufs.h"
 
 #define TESTDIR  "/tmp/LIBUFSTEST"

@@ -27,7 +27,7 @@
 **
 ** Timestamps are not covered: they are __64 values, and __64 is
 ** big-endian by construction and therefore target-verified only (see
-** libc370 clib64.h).  UFSFMT keeps them out of the geometry for that
+** libc370 ext/int64.h).  UFSFMT keeps them out of the geometry for that
 ** reason, and the byte-comparison test masks them anyway.
 */
 

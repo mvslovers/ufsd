@@ -13,8 +13,8 @@
 #ifndef LIBUFS_H
 #define LIBUFS_H
 
-#include "time64.h"     /* mtime64_t, mlocaltime64() */
-#include "clib64.h"     /* __64_from_u32, __64_mul_u32 */
+#include <ext/time64.h>     /* mtime64_t, mlocaltime64() */
+#include <ext/int64.h>     /* __64_from_u32, __64_mul_u32 */
 
 #include "ufsdrc.h"     /* UFSD_RC_* return codes */
 

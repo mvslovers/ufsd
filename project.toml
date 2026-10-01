@@ -1,14 +1,15 @@
 [project]
 name = "ufsd"
-version = "1.3.1-dev"
+version = "1.4.0-dev"
 type = "application"
 
 [toolchain]
-# Pins the refs release.yml builds the published artifacts against; build.yml
-# deliberately keeps floating on main so a cc370/libc370 regression surfaces
-# in a PR build (mbt#68). cc370 is omitted -- it defaults to main and has no
-# releases to pin to yet.
-libc370 = "1.0.6"
+# Pins the refs release.yml builds the published artifacts against. build.yml
+# normally floats on main so a cc370/libc370 regression surfaces in a PR build
+# (mbt#68); while libc370 main is still 1.x it is held on v2.0.0-dev as well,
+# and that hold comes off once 2.0 is on main (#81). cc370 is omitted -- it
+# defaults to main and has no releases to pin to yet.
+libc370 = "2.0.0-dev"
 
 [build]
 # The build stamp behind UFSD000I/UFSD006W is no longer injected here: mbt
@@ -17,7 +18,11 @@ libc370 = "1.0.6"
 # <buildstamp.h>` (mbt#59). As a header it is a real prerequisite via -MMD,
 # so a new commit recompiles the banner TU instead of leaving it stamped
 # with the previous hash.
-cflags = ["-I", "include"]
+#
+# mbt compiles with -O1 alone, so a warning -- an implicit declaration
+# among them -- passes silently. Set here until mbt makes them its default
+# (mbt#133); drop them again then.
+cflags = ["-I", "include", "-Wall", "-Wextra", "-Werror"]
 
 # ── Load modules ─────────────────────────────────────────
 # UFSD — main daemon (threading → crt1)
@@ -168,7 +173,7 @@ readme = "docs/installation.md"
 # (TMVS804, TJES801, ...) and stays clear of IBM's H/J namespace. A test
 # install needs a throwaway id *and* throwaway module names -- a throwaway id
 # alone just measures the ownership wall above.
-fmid = "TUFS131"
+fmid = "TUFS140"
 delete = ["TUFS130"]            # the level this one replaces; SMP deletes it
 system = "Z038"
 prereq = []                     # no [dependencies]; RAKF is a *runtime* one

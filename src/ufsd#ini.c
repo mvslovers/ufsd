@@ -15,14 +15,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <clibwto.h>
-#include <clibio.h>
-#include "time64.h"
-#include <osio.h>
-#include <osdcb.h>
-#include <osjfcb.h>
-#include <mvssupa.h>
-#include "svc99.h"
+#include <mvs/wto.h>
+#include <ext/time64.h>
+#include <mvs/osio.h>
+#include <ibm/mvs/dcbd.h>
+#include <ibm/mvs/iefjfcbn.h>
+#include <mvs/dd.h>
+#include <mvs/dynalloc.h>
 
 /* Boot block header (8 bytes at sector 0 offset 0).
 ** Matches struct ufs_boot in ufs370/include/ufs/disk.h. */

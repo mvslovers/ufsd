@@ -37,11 +37,13 @@
 
 #include "ufsd.h"
 #include <string.h>
-#include <clibos.h>
-#include <clibecb.h>
-#include <clibssct.h>
-#include <iefssobh.h>
-#include <iefjssib.h>
+#include <mvs/apf.h>
+#include <mvs/xmem.h>
+#include <s370/atomic.h>
+#include <mvs/ecb.h>
+#include <mvs/subsys.h>
+#include <ibm/mvs/iefssobh.h>
+#include <ibm/mvs/iefjssib.h>
 
 /* Liveness check interval: hundredths of a second (500 = 5 s).
 ** After each timeout the router checks UFSD_ANCHOR_ACTIVE.  If

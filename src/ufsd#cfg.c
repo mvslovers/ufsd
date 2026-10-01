@@ -14,7 +14,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <clibwto.h>
+#include <mvs/wto.h>
 
 /* ============================================================
 ** parse_param

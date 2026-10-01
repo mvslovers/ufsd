@@ -19,9 +19,9 @@
 
 #include "ufsd.h"
 #include <string.h>
-#include <clibwto.h>
-#include <osio.h>
-#include <osdcb.h>
+#include <mvs/wto.h>
+#include <mvs/osio.h>
+#include <ibm/mvs/dcbd.h>
 
 /* ============================================================
 ** ufsd_blk_read

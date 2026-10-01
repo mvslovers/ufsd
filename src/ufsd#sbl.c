@@ -28,7 +28,7 @@
 #include "ufsd.h"
 #include <string.h>
 #include <stdlib.h>
-#include <clibwto.h>
+#include <mvs/wto.h>
 
 /* Forward declaration */
 static int sb_scan_refill(UFSD_DISK *disk);

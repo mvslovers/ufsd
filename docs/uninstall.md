@@ -27,11 +27,11 @@ below takes that qualifier back, and the FMID is `TUFS120` rather than
 `TUFS130`.
 
 One id per release since 1.3.0, so read `TUFS130` as *the release you are
-removing* — 1.3.1 would be `TUFS131`.
+removing* — 1.4.0 would be `TUFS140`.
 
 **Its predecessors are not finished with, and there is more than one of them.**
 Every upgrade deletes the level before it and leaves that id behind as a
-`DELBY` tombstone in both zones, so a system that came 1.2.x → 1.3.0 → 1.3.1
+`DELBY` tombstone in both zones, so a system that came 1.2.x → 1.3.0 → 1.4.0
 carries two of them and a `DEL SYSMOD` for the release plus its immediate
 predecessor clears only the newest. The job in step 2 therefore names **every
 id UFSD has ever spent**, which is why it lists more than you installed — see
@@ -81,7 +81,7 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL LMOD(UFSDSSIR) .
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
-  DEL SYSMOD(TUFS131) .
+  DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
   DEL SYSMOD(TUFS120) .
   DEL SYSMOD(TUFS110) .
@@ -95,7 +95,7 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
-  DEL SYSMOD(TUFS131) .
+  DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
   DEL SYSMOD(TUFS120) .
   DEL SYSMOD(TUFS110) .
@@ -104,8 +104,8 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
  RESETRC .
- LIST CDS  SYSMOD(TUFS131) .
- LIST ACDS SYSMOD(TUFS131) .
+ LIST CDS  SYSMOD(TUFS140) .
+ LIST ACDS SYSMOD(TUFS140) .
  LIST CDS  SYSMOD(TUFS130) .
  LIST ACDS SYSMOD(TUFS130) .
  LIST CDS  SYSMOD(TUFS120) .
@@ -134,12 +134,12 @@ empty list means the id is free" rule in step 3 reads it as still occupied. The
 id is spent, and it stays spent until something clears it.
 
 **Tombstones accumulate, one per upgrade.** A system that went 1.2.x → 1.3.0 →
-1.3.1 holds two: `TUFS120` marked `DELBY = TUFS130`, and `TUFS130` marked
-`DELBY = TUFS131`. Deleting the release and its immediate predecessor clears
+1.4.0 holds two: `TUFS120` marked `DELBY = TUFS130`, and `TUFS130` marked
+`DELBY = TUFS140`. Deleting the release and its immediate predecessor clears
 the newer one and leaves the older standing for good — and because the `LIST`
 in step 3 only asks about the ids you named, the job reports complete success
 while a tombstone survives. That is why the block above names **every id UFSD
-has ever spent** (`TUFS110`, `TUFS120`, `TUFS130`, `TUFS131`) rather than the
+has ever spent** (`TUFS110`, `TUFS120`, `TUFS130`, `TUFS140`) rather than the
 one you are removing plus one.
 
 A plain `DEL SYSMOD` clears a tombstone — measured on drnmig3a 2026-09-14 by

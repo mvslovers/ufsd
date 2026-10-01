@@ -20,7 +20,7 @@
 */
 
 #include <mbtcheck.h>
-#include <clibos.h>
+#include <mvs/xmem.h>
 #include "ufsd.h"
 
 /* State names for the failure messages -- a bare 0/1/2 in a test log
