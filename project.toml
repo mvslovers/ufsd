@@ -18,7 +18,11 @@ libc370 = "2.0.0-dev"
 # <buildstamp.h>` (mbt#59). As a header it is a real prerequisite via -MMD,
 # so a new commit recompiles the banner TU instead of leaving it stamped
 # with the previous hash.
-cflags = ["-I", "include"]
+#
+# mbt compiles with -O1 alone, so a warning -- an implicit declaration
+# among them -- passes silently. Set here until mbt makes them its default
+# (mbt#133); drop them again then.
+cflags = ["-I", "include", "-Wall", "-Wextra", "-Werror"]
 
 # ── Load modules ─────────────────────────────────────────
 # UFSD — main daemon (threading → crt1)

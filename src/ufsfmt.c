@@ -11,7 +11,6 @@
 **   //SYSTERM  DD  SYSOUT=*
 **   //SYSIN    DD  *
 **      BLKSIZE  4096
-**   /*
 **
 ** Derived from Michael Rayborn's format.c in ufs370-tools, restructured
 ** and with format_root() rewritten so that no ufs370 library code is
