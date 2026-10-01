@@ -10,8 +10,8 @@
 #include "ufsd.h"
 #include <string.h>
 #include <ctype.h>
-#include <clibos.h>
-#include <clibwto.h>
+#include <mvs/apf.h>
+#include <mvs/wto.h>
 
 static void cmd_stats(UFSD_STC *ufsd);
 static void cmd_help(UFSD_STC *ufsd);

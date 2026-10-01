@@ -57,10 +57,11 @@
 #include "ufsd.h"
 #include <ctype.h>
 #include <string.h>
-#include <clibos.h>
-#include <clibstae.h>
-#include <clibver.h>
-#include <clibwto.h>
+#include <mvs/apf.h>
+#include <mvs/xmem.h>
+#include <mvs/recovery.h>
+#include <ext/version.h>
+#include <mvs/wto.h>
 
 /* upcase -- copy `src` into `dst` in upper case, NUL-terminated, writing
 ** at most `n` bytes including the NUL.  Returns `dst` so a call can be

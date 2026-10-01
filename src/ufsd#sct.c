@@ -5,8 +5,10 @@
 */
 
 #include "ufsd.h"
-#include <clibos.h>
-#include <clibwto.h>
+#include <mvs/apf.h>
+#include <mvs/link.h>
+#include <mvs/storage.h>
+#include <mvs/wto.h>
 
 /* ============================================================
 ** ufsd_ssct_init

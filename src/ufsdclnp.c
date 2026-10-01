@@ -32,8 +32,8 @@
 */
 
 #include "ufsd.h"
-#include <clibos.h>
-#include <clibwto.h>
+#include <mvs/apf.h>
+#include <mvs/wto.h>
 
 int
 main(int argc, char **argv)

@@ -23,9 +23,10 @@
 #include "ufsd.h"
 #include <string.h>
 #include <stdlib.h>
-#include <clibos.h>
-#include <clibecb.h>
-#include <clibwto.h>
+#include <mvs/apf.h>
+#include <mvs/xmem.h>
+#include <mvs/ecb.h>
+#include <mvs/wto.h>
 
 /* ============================================================
 ** ufsd_server_ecb_reset

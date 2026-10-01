@@ -15,8 +15,8 @@
 #include "ufsd.h"
 #include <string.h>
 #include <stdlib.h>
-#include <clibos.h>
-#include <clibwto.h>
+#include <mvs/apf.h>
+#include <mvs/wto.h>
 
 /* ============================================================
 ** ufsd_gft_init

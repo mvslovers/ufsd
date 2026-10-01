@@ -13,12 +13,11 @@
 #ifndef UFSD_H
 #define UFSD_H
 
-#include <clibecb.h>
-#include <clibcib.h>
-#include <clibssct.h>
-#include <clibssvt.h>
-#include <time64.h>
-#include <clib64.h>
+#include <mvs/ecb.h>
+#include <mvs/console.h>
+#include <mvs/subsys.h>
+#include <ext/time64.h>
+#include <ext/int64.h>
 #include "ufsdmnt.h"
 
 /* ============================================================
@@ -173,7 +172,7 @@ struct ufsd_dirent {
 struct ufsd_disk {
     char           ddname[9];       /* DD name + NUL (generated)     */
     char           dsn[45];         /* dataset name from config/JFCB */
-    void          *dcb;             /* BDAM DCB (opaque: see osio.h) */
+    void          *dcb;             /* BDAM DCB (opaque: mvs/osio.h) */
     unsigned       flags;           /* UFSD_DISK_*                   */
     unsigned short blksize;         /* physical block size from DCB  */
     unsigned short io_error;        /* set by SYNAD / blk I/O error  */

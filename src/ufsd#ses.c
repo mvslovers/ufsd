@@ -27,10 +27,10 @@
 #include "ufsd.h"
 #include <string.h>
 #include <stdlib.h>
-#include <clibos.h>
-#include <clibwto.h>
-#include <cvt.h>
-#include <ihaasvt.h>
+#include <mvs/apf.h>
+#include <mvs/wto.h>
+#include <ibm/mvs/cvt.h>
+#include <ibm/mvs/ihaasvt.h>
 
 /* The serial counter lives in UFSD_STC (stc->sess_serial), reached through
 ** anchor->server_stc.  It must not be a C static: UFSD is linked AC(1), and

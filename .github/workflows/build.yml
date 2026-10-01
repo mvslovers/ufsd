@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     uses: mvslovers/mbt/.github/workflows/build.yml@main
+    # libc370 main is still 1.x; drop this once 2.0 is on main (#81).
+    with:
+      libc370_ref: v2.0.0-dev
 
   # An AC(1) module fetched from an APF-authorized library is loaded into
   # key-0 storage, so a key-8 store into its own statics abends S0C4 (#64).

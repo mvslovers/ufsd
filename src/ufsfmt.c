@@ -78,10 +78,11 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <time.h>
-#include <time64.h>
-#include <osio.h>
-#include <osdcb.h>
-#include <osjfcb.h>
+#include <ext/time64.h>
+#include <mvs/osio.h>
+#include <ibm/mvs/dcbd.h>
+#include <ibm/mvs/iefjfcbn.h>
+#include <mvs/dd.h>
 
 /* Build stamp, same source as the server banner (ufsd.c): mbt generates
 ** buildstamp.h at every build, so MBT_VERSION is the project version and
