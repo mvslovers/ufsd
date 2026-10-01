@@ -4,12 +4,11 @@ version = "1.4.0-dev"
 type = "application"
 
 [toolchain]
-# Pins the refs release.yml builds the published artifacts against. build.yml
-# normally floats on main so a cc370/libc370 regression surfaces in a PR build
-# (mbt#68); while libc370 main is still 1.x it is held on v2.0.0-dev as well,
-# and that hold comes off once 2.0 is on main (#81). cc370 is omitted -- it
-# defaults to main and has no releases to pin to yet.
-libc370 = "2.0.0-dev"
+# Pins the refs release.yml builds the published artifacts against; build.yml
+# deliberately keeps floating on main so a cc370/libc370 regression surfaces
+# in a PR build (mbt#68). cc370 is omitted -- it defaults to main and has no
+# releases to pin to yet.
+libc370 = "2.0.0"
 
 [build]
 # The build stamp behind UFSD000I/UFSD006W is no longer injected here: mbt
