@@ -149,7 +149,7 @@ Session lifecycle: OPEN → use → CLOSE. ABEND cleanup via ASID scan.
 
 ## 7. Disk I/O and On-Disk Format
 
-UFSD reimplements block I/O directly (does not link UFS370 library). The on-disk format is fully specified in `doc/ufsdisk-spec.md`.
+UFSD reimplements block I/O directly (does not link UFS370 library). The on-disk format is fully specified in `docs/ufsdisk-spec.md`.
 
 Key characteristics:
 - Block sizes: 512–8192 (default 4096)

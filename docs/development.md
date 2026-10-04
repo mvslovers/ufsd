@@ -73,7 +73,8 @@ ufsd/
   client/            Client library and test programs
   samplib/           Sample JCL procedures and Parmlib member
   jcl/               Batch JCL
-  docs/              Documentation and design docs (concept, disk spec)
+  docs/              User documentation (installation, configuration, API, disk spec)
+  internals/         Maintainer documentation (design concept, cross-AS reference)
   mbt/               MVS Build Tools submodule (cc370 build system)
   project.toml       Build configuration, modules, dependencies
   Makefile           Two-line include of mbt/mk/mbt.mk
