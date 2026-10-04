@@ -27,6 +27,8 @@ cflags = ["-I", "include", "-Wall", "-Wextra", "-Werror"]
 # UFSD — main daemon (threading → crt1)
 [[module]]
 name = "UFSD"
+rent = true
+reus = true
 startup = "crt1"
 ac = 1
 sources = ["src/ufsd*.c"]
@@ -35,6 +37,8 @@ exclude = ["src/ufsdclnp.c", "src/ufsd#ssi.c"]
 # UFSDSSIR — SSI thin router (loaded into CSA, no CRT)
 [[module]]
 name = "UFSDSSIR"
+rent = true
+reus = true
 entry = "UFSDSSIR"
 startup = false
 ac = 1
@@ -44,18 +48,24 @@ sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c"]
 # Wraps the shared reclaim routine (ufsd#rcl.c, also part of UFSD).
 [[module]]
 name = "UFSDCLNP"
+rent = true
+reus = true
 ac = 1
 sources = ["src/ufsdclnp.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
 # UFSFMT — disk format utility (batch, unauthorized: plain BSAM/BDAM I/O)
 [[module]]
 name = "UFSFMT"
+rent = false          # s_quiet is written (SYSIN QUIET), set before first use on every run
+reus = true
 ac = 0
 sources = ["src/ufsfmt.c", "src/ufsfmtg.c"]
 
 # ── Tests ────────────────────────────────────────────────
 [[test]]
 name = "LIBUFTST"
+rent = true
+reus = true
 host = false                                        # MVS-only: drives the server through the SSI
 sources = ["client/libufstst.c", "client/libufs.c"]
 
@@ -63,12 +73,16 @@ sources = ["client/libufstst.c", "client/libufs.c"]
 # runs natively via `make test-host` as well as on the target.
 [[test]]
 name = "TSTUFSG"
+rent = false          # mbtcheck.h keeps file-static counters
+reus = false
 sources = ["test/mvs/tstufsg.c", "src/ufsfmtg.c"]
 
 # TSTUFSAV — the ASVT scan behind the #53 liveness guard. Portable C,
 # so it runs natively via `make test-host` as well as on the target.
 [[test]]
 name = "TSTUFSAV"
+rent = false          # mbtcheck.h keeps file-static counters
+reus = false
 sources = ["test/mvs/tstufsav.c", "src/ufsd#asv.c"]
 
 # TSTUFSMP — the mount point table do_dirread crosses a mount with (#52).
@@ -76,12 +90,16 @@ sources = ["test/mvs/tstufsav.c", "src/ufsd#asv.c"]
 # target.
 [[test]]
 name = "TSTUFSMP"
+rent = false          # mbtcheck.h keeps file-static counters
+reus = false
 sources = ["test/mvs/tstufsmp.c", "src/ufsd#mnt.c"]
 
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
 [[test]]
 name = "TSTUFSRC"
+rent = false          # mbtcheck.h keeps file-static counters
+reus = false
 host = false                                                          # MVS-only: needs a live ASVT
 sources = ["test/mvs/tstufsrc.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
