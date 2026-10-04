@@ -27,10 +27,8 @@ Read the relevant doc **before** making changes:
 
 | Document | When to read |
 |----------|-------------|
-| `doc/AP-2a.md` | **Always** — current work package scope and deliverables |
-| `doc/concept.md` | Architecture questions, control block layouts, design rationale |
-| `doc/cross-as-reference.md` | Cross-AS mechanics (POST/WAIT/ECB constraints on MVS 3.8j) |
-| `doc/completed/AP-1*.md` | Only if you need history on a specific completed package |
+| `internals/concept.md` | Architecture questions, control block layouts, design rationale |
+| `internals/cross-as-reference.md` | Cross-AS mechanics (POST/WAIT/ECB constraints on MVS 3.8j) |
 
 ## Critical MVS 3.8j Constraints
 
