@@ -6,7 +6,7 @@
 ** compiler.  That is what makes the scan -- the one part of the #53
 ** liveness guard that can silently break (off-by-one, high-bit skip) --
 ** testable without an MVS round-trip (test/mvs/tstufsav.c,
-** `make test-host`).
+** `mbt test`).
 **
 ** Everything that navigates real control blocks (CVT -> ASVT, anchor ->
 ** server_ascb) stays in src/ufsd#rcl.c and is target-only.

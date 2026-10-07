@@ -1,12 +1,17 @@
+schema = 3
+
 [project]
 name = "ufsd"
 version = "1.4.0-dev"
-type = "application"
+kind = "application"
 
 [toolchain]
-# Pins the refs release.yml builds the published artifacts against; build.yml
-# deliberately keeps floating on main so a cc370/libc370 regression surfaces
-# in a PR build (mbt#68).
+# mbt: the mbt 3 release line this project is built with; a newer installed
+# mbt switches to a matching 3.0.x by itself.
+#
+# cc370 and libc370 pin what release.yml (mbt's release3.yml) builds the
+# published artifacts against; build.yml deliberately keeps floating on main
+# so a cc370/libc370 regression surfaces in a PR build (mbt#68).
 # 2.3.1: the C runtime startup is a member of libc.a from 2.3.0 on,
 # so no module names a startup object (mvslovers/mbt#158). An older libc.a
 # would quietly link crt0 where these modules used to have crt1. 2.3.1
@@ -19,24 +24,11 @@ type = "application"
 # cc370: libc370 2.4.0 and later need cc370 >= 1.4.0; 1.4.0 is current.
 cc370 = "1.4.0"
 libc370 = "2.6.1"
-
-[build]
-# The build stamp behind UFSD000I/UFSD006W is no longer injected here: mbt
-# generates .mbt/buildstamp.h and puts it on the include path, so ufsd.c
-# gets MBT_VERSION / MBT_COMMIT / MBT_COMMIT_DIRTY from `#include
-# <buildstamp.h>` (mbt#59). As a header it is a real prerequisite via -MMD,
-# so a new commit recompiles the banner TU instead of leaving it stamped
-# with the previous hash.
-#
-# mbt compiles with -O1 alone, so a warning -- an implicit declaration
-# among them -- passes silently. Set here until mbt makes them its default
-# (mbt#133); drop them again then.
-cflags = ["-I", "include", "-Wall", "-Wextra", "-Werror"]
+mbt = "3.0"
 
 # ── Load modules ─────────────────────────────────────────
 # UFSD — main daemon
-[[module]]
-name = "UFSD"
+[module.UFSD]
 rent = true
 reus = true
 ac = 1
@@ -44,8 +36,7 @@ sources = ["src/ufsd*.c"]
 exclude = ["src/ufsdclnp.c", "src/ufsd#ssi.c"]
 
 # UFSDSSIR — SSI thin router (loaded into CSA, no CRT)
-[[module]]
-name = "UFSDSSIR"
+[module.UFSDSSIR]
 rent = true
 reus = true
 entry = "UFSDSSIR"
@@ -55,60 +46,54 @@ sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c"]
 
 # UFSDCLNP — cleanup utility (all defaults: entry=@@CRT0)
 # Wraps the shared reclaim routine (ufsd#rcl.c, also part of UFSD).
-[[module]]
-name = "UFSDCLNP"
+[module.UFSDCLNP]
 rent = true
 reus = true
 ac = 1
 sources = ["src/ufsdclnp.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
 # UFSFMT — disk format utility (batch, unauthorized: plain BSAM/BDAM I/O)
-[[module]]
-name = "UFSFMT"
+[module.UFSFMT]
 rent = false          # s_quiet is written (SYSIN QUIET), set before first use on every run
 reus = true
 ac = 0
 sources = ["src/ufsfmt.c", "src/ufsfmtg.c"]
 
 # ── Tests ────────────────────────────────────────────────
-[[test]]
-name = "LIBUFTST"
+# Defaults for every test; test/**/*.c and *.asm are tests unless excluded.
+[tests]
+rent = false
+reus = false
+
+[test.LIBUFTST]
 rent = true
 reus = true
 host = false                                        # MVS-only: drives the server through the SSI
 sources = ["client/libufstst.c", "client/libufs.c"]
 
 # TSTUFSG — UFSFMT geometry: the counters #50 fixes. Portable C, so it
-# runs natively via `make test-host` as well as on the target.
-[[test]]
-name = "TSTUFSG"
+# runs natively via `mbt test` as well as on the target.
+[test.TSTUFSG]
 rent = false          # mbtcheck.h keeps file-static counters
-reus = false
 sources = ["test/mvs/tstufsg.c", "src/ufsfmtg.c"]
 
 # TSTUFSAV — the ASVT scan behind the #53 liveness guard. Portable C,
-# so it runs natively via `make test-host` as well as on the target.
-[[test]]
-name = "TSTUFSAV"
+# so it runs natively via `mbt test` as well as on the target.
+[test.TSTUFSAV]
 rent = false          # mbtcheck.h keeps file-static counters
-reus = false
 sources = ["test/mvs/tstufsav.c", "src/ufsd#asv.c"]
 
 # TSTUFSMP — the mount point table do_dirread crosses a mount with (#52).
-# Portable C, so it runs natively via `make test-host` as well as on the
+# Portable C, so it runs natively via `mbt test` as well as on the
 # target.
-[[test]]
-name = "TSTUFSMP"
+[test.TSTUFSMP]
 rent = false          # mbtcheck.h keeps file-static counters
-reus = false
 sources = ["test/mvs/tstufsmp.c", "src/ufsd#mnt.c"]
 
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
-[[test]]
-name = "TSTUFSRC"
+[test.TSTUFSRC]
 rent = false          # mbtcheck.h keeps file-static counters
-reus = false
 host = false                                                          # MVS-only: needs a live ASVT
 sources = ["test/mvs/tstufsrc.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
@@ -121,19 +106,19 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 # ── Deploy (development library) ──────────────────────────
 # UFSD.LINKLIB belongs to SMP and nothing else may write to it: a deploy into
 # it leaves the inventory describing a level that is not on disk, and SMP
-# cannot notice. `make deploy` therefore stages into a separate development
-# library, which a STEPLIB concatenation names ahead of UFSD.LINKLIB -- first
-# one wins, so a deploy overrides the installed level and removing the DD
-# goes back to it. No HLQ on purpose: the name has to be reachable from a
-# fixed STC procedure, so it cannot be per-developer. It needs its own
-# IEAAPF00 entry beside the SMP one (dsname *and* volser), because an
-# unauthorized library anywhere in an authorized concatenation
+# cannot notice. `mbt deploy` therefore stages into a separate development
+# library, UFSD.DEV.LINKLIB -- mbt's default <NAME>.DEV.LINKLIB, so this
+# table names no target. A STEPLIB concatenation names it ahead of
+# UFSD.LINKLIB -- first one wins, so a deploy overrides the installed level
+# and removing the DD goes back to it. No HLQ on purpose: the name has to be
+# reachable from a fixed STC procedure, so it cannot be per-developer. It
+# needs its own IEAAPF00 entry beside the SMP one (dsname *and* volser),
+# because an unauthorized library anywhere in an authorized concatenation
 # de-authorizes the whole task.
 [deploy]
-target = "UFSD.DEV.LINKLIB"
 
 # ── Distribution (SMP4 install package) ──────────────────
-# Turns `make package` into an installable product. Two transports, on purpose:
+# Turns `mbt package` into an installable product. Two transports, on purpose:
 #
 #   load modules  -> XMIT -> staging LKLIB -> SMP ++MOD -> UFSD.LINKLIB
 #   samplib/      -> XMIT -> TSO RECEIVE   -> UFSD.SAMPLIB
@@ -174,10 +159,10 @@ target = "UFSD.DEV.LINKLIB"
 [distribution]
 readme = "docs/installation.md"
 
-[distribution.smp]
+[smp]
 # The id is the release: T + three product letters + the three version digits.
 # One per release, spent exactly once, and each release deletes the one before
-# it -- that is what `delete` below is. No version component may ever exceed 9:
+# it -- that is what `prefix` below derives. No version component may ever exceed 9:
 # a 7-character id has no room for a second digit, so at patch 9 the next
 # release is a new minor. ufsd 1.3.10 cannot be expressed and must not be
 # released.
@@ -186,7 +171,7 @@ readme = "docs/installation.md"
 # TUFS120 back when the rule was one id per *minor*, so the id space skips --
 # the gap is deliberate, not an oversight to correct.
 #
-# `delete` is the whole upgrade story. SMP keys element ownership on MOD(name)
+# The delete is the whole upgrade story. SMP keys element ownership on MOD(name)
 # in the CDS, not on the library the element lives in, so without it a
 # successor cannot install at all: it reports NOT SEL for every module, copies
 # nothing, and still ends RC 00 with an empty target library. With it, SMP
@@ -199,19 +184,11 @@ readme = "docs/installation.md"
 # (TMVS804, TJES801, ...) and stays clear of IBM's H/J namespace. A test
 # install needs a throwaway id *and* throwaway module names -- a throwaway id
 # alone just measures the ownership wall above.
-fmid = "TUFS140"
-delete = ["TUFS130"]            # the level this one replaces; SMP deletes it
-system = "Z038"
+prefix = "TUFS"  # FMID and delete follow from the version
 prereq = []                     # no [dependencies]; RAKF is a *runtime* one
 accept_fmid = true              # accept the FMID once so a PTF can be RESTOREd
 lklib = "UFSD.UFSDLOAD"         # staging: what the load XMIT is received into
 target = "UFSD.LINKLIB"         # where the load modules end up
-distlib = "UFSD.AUFSDLOD"
 
-[[distribution.library]]
-dir = "samplib"
+[distribution.library.samplib]
 target = "UFSD.SAMPLIB"
-
-# ── Release ──────────────────────────────────────────────
-[release]
-version_files = ["VERSION"]

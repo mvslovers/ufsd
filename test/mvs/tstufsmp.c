@@ -1,7 +1,7 @@
 /* TSTUFSMP.C - Mount point table tests (issue #52)
 **
 ** Covers the table do_dirread crosses a mount with (src/ufsd#mnt.c).
-** Dual-target: `make test-host` runs it natively, `make test-mvs` runs
+** Dual-target: `mbt test` runs it natively, `mbt test --mvs` runs
 ** it as a load module.
 **
 ** Two failure modes here are silent on a running system and both send

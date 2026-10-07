@@ -3,7 +3,7 @@
 ** The arithmetic half of UFSFMT (see src/ufsfmt.c), plus the two
 ** report helpers that have to decide what an absent owner looks like
 ** (#62).  Portable C: no MVS headers, no I/O, no 64-bit time -- so
-** `make test-host` can run it natively (test/mvs/tstufsg.c).  The
+** `mbt test` can run it natively (test/mvs/tstufsg.c).  The
 ** string work here never reaches a disk; every byte that does is
 ** written by src/ufsfmt.c.
 **

@@ -2,7 +2,7 @@
 **
 ** The arithmetic half of the reclaim liveness guard (see
 ** src/ufsd#rcl.c).  Portable C: no MVS headers, no control block
-** navigation, no EBCDIC -- so `make test-host` can run it natively
+** navigation, no EBCDIC -- so `mbt test` can run it natively
 ** (test/mvs/tstufsav.c).
 **
 ** The scan compares ASVT entries against an ASCB address and reads

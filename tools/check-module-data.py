@@ -46,7 +46,7 @@ The precise cross-check for any of this is to compile with `cc370 -S` and look
 for a store through a register loaded from `=A(@Vn)` -- that is what found the
 two offenders in the first place.
 
-Usage: tools/check-module-data.py [project.toml]
+Usage: tools/check-module-data.py [mbt.toml]
 """
 
 import glob
@@ -172,14 +172,14 @@ def sources_of(module, root):
 
 
 def main(argv):
-    toml = argv[1] if len(argv) > 1 else 'project.toml'
+    toml = argv[1] if len(argv) > 1 else 'mbt.toml'
     root = os.path.dirname(os.path.abspath(toml)) or '.'
     with open(toml, 'rb') as fh:
         project = tomllib.load(fh)
 
     findings = []
     checked = 0
-    for module in project.get('module', []):
+    for name, module in project.get('module', {}).items():
         if module.get('ac', 0) != 1:
             continue
         for path in sources_of(module, root):
@@ -188,7 +188,7 @@ def main(argv):
                                    errors='replace').read())
             for line, head, depth in declarations(src):
                 if mutable(head, depth):
-                    findings.append((module['name'],
+                    findings.append((name,
                                      os.path.relpath(path, root), line, head))
 
     if not findings:

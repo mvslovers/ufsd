@@ -5,7 +5,7 @@
 ** the on-disk geometry, so the same source compiles for cc370 and for
 ** a host compiler.  That is what makes the counter arithmetic -- the
 ** part of #50 that had three defects -- testable without an MVS
-** round-trip (test/mvs/tstufsg.c, `make test-host`).
+** round-trip (test/mvs/tstufsg.c, `mbt test`).
 **
 ** Everything that touches an actual disk, an EBCDIC string or a
 ** control block lives in src/ufsfmt.c and is target-only.  In
