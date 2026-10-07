@@ -179,6 +179,7 @@ def main(argv):
 
     findings = []
     checked = 0
+    # mbt.toml keys modules by name: [module.UFSD], not [[module]] name = ...
     for name, module in project.get('module', {}).items():
         if module.get('ac', 0) != 1:
             continue
@@ -190,6 +191,11 @@ def main(argv):
                 if mutable(head, depth):
                     findings.append((name,
                                      os.path.relpath(path, root), line, head))
+
+    if not checked:
+        print(f"check-module-data: no AC(1) module sources found in {toml} "
+              f"-- nothing was checked")
+        return 1
 
     if not findings:
         print(f"check-module-data: {checked} sources clean "
