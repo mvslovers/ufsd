@@ -7,59 +7,55 @@ This document covers building UFSD from source, the server architecture, the com
 ### Prerequisites
 
 - Linux or macOS build host
-- The `cc370` cross-toolchain (`cc370`, `as370`, `ld370`, `ar370`) on `PATH`, GNU Make, Python 3.12+
-- MVS 3.8j system running the [mvsMF](https://github.com/mvslovers/mvsmf) REST API (port 1080 by default) — only needed for `make deploy` and `make test-mvs`; the build itself runs entirely on the host
-- The `mbt` submodule is included in the repository
+- The `cc370` cross-toolchain (`cc370`, `as370`, `ld370`, `ar370`, `xmit370`) and the libc370 sysroot, installed
+- [mbt 3](https://github.com/mvslovers/mbt/releases) on `PATH` — a single program, installed once per machine, not per project
+- MVS 3.8j system running the [mvsMF](https://github.com/mvslovers/mvsmf) REST API (port 1080 by default) — only needed for `mbt deploy` and `mbt test --mvs`; the build itself runs entirely on the host
 
 ### Build Commands
 
 ```sh
-git clone --recurse-submodules https://github.com/mvslovers/ufsd
+git clone https://github.com/mvslovers/ufsd
 cd ufsd
-cp .env.example .env
-```
-
-Edit `.env` and set at minimum:
-
-```sh
-MBT_MVS_HOST=192.168.1.x       # IP of your Hercules system
-MBT_MVS_PORT=1080               # mvsMF port
-MBT_MVS_USER=IBMUSER
-MBT_MVS_PASS=SYS1
-MBT_MVS_HLQ=IBMUSER             # high-level qualifier for build datasets
-MBT_MVS_DEPS_HLQ=IBMUSER.DEPS   # HLQ for dependency datasets
+mbt doctor --offline     # check the toolchain and the sysroot
 ```
 
 Then build:
 
 ```sh
-make deps         # download + stage declared dependencies (none for ufsd today)
-make              # build the load modules on the host (default target)
-make lib          # build the libufs static archive (build/libufs.a)
-make package      # produce distribution archives in dist/
-make deploy       # XMIT + upload the load modules into the MVS LINKLIB
+mbt deps          # download + stage declared dependencies (none for ufsd today)
+mbt build         # build the load modules on the host
+mbt build --all   # load modules + the libufs static archive (build/libufs.a)
+mbt package       # produce distribution archives in dist/
+mbt deploy        # XMIT + upload the load modules into UFSD.DEV.LINKLIB
 ```
 
 The entire build runs on the host with the `cc370` toolchain (`cc370` → `.o`,
-`as370`, `ld370`, `ar370`); MVS is touched only by `make deploy`. The load
-modules are written locally under `build/` (e.g. `build/UFSD.iebcopy`) and reach
-the MVS `LINKLIB` only after `make deploy`. The build is driven by `project.toml`
-(project metadata, modules, dependencies). `libc370` is the cc370 sysroot
-(`-lc`), not a declared dependency; `ufsd` itself currently declares no
-`[dependencies]`, so `make deps` is a no-op until one is added.
+`as370`, `ld370`, `ar370`); MVS is touched only by `mbt deploy` and
+`mbt test --mvs`. The load modules are written locally under `build/` (e.g.
+`build/UFSD.iebcopy`) and reach MVS only after `mbt deploy`. The build is driven
+by `mbt.toml` (project metadata, toolchain, modules, tests, distribution);
+`[toolchain] mbt` names the mbt release it is built with, and a newer installed
+mbt switches to that one by itself. `libc370` is the cc370 sysroot (`-lc`), not a
+declared dependency; `ufsd` itself currently declares no `[dependencies]`, so
+`mbt deps` is a no-op until one is added.
 
-Other targets: `make all` (modules + library), `make modules`, the test targets
-(`make test` / `test-host` / `test-mvs` / `check`, see [Testing](#testing)),
-`make doctor` (check the toolchain + MVS connectivity), `make compiledb` (write
-`compile_commands.json` for clangd), and `make clean` / `distclean`.
-`VERBOSE=1 make` echoes the full cc370/as370/ld370/ar370 commands.
+The MVS system `mbt deploy` and `mbt test --mvs` talk to is a *target*, kept once
+per machine in `~/.mbt/targets.toml` rather than in the project. Create one from
+an existing mbt 2 `.env` with `mbt target import .env --name <name>`, check it with
+`mbt target info <name>`, and pick it per run with `--target <name>`.
+
+Other commands: `mbt build NAME` (one module), the test commands (see
+[Testing](#testing)), `mbt doctor` (toolchain + MVS connectivity), `mbt compiledb`
+(write `compile_commands.json` for clangd), and `mbt clean` / `distclean`. `-v`
+on a command echoes the full cc370/as370/ld370/ar370 commands. `mbt` alone lists
+every command.
 
 **The startup banner is generated, and stays current on its own.** The version
 and commit in `UFSD000I` / `UFSD001I` come from `.mbt/buildstamp.h`, which mbt
-regenerates at every `make` (`MBT_VERSION`, `MBT_COMMIT`, `MBT_COMMIT_DIRTY`;
+regenerates at every build (`MBT_VERSION`, `MBT_COMMIT`, `MBT_COMMIT_DIRTY`;
 `ufsd.c` includes it as `<buildstamp.h>`). Because it is a header, `-MMD` makes
 it a prerequisite of `ufsd.o`, so a version bump or a new commit recompiles that
-one object — no `make clean` needed. And because mbt rewrites the file only when
+one object — no `mbt clean` needed. And because mbt rewrites the file only when
 a value actually changed, an unchanged commit recompiles nothing. `UFSD006W`
 follows the same stamp: it appears when the build carried uncommitted *tracked*
 changes.
@@ -75,11 +71,9 @@ ufsd/
   jcl/               Batch JCL
   docs/              User documentation (installation, configuration, API, disk spec)
   internals/         Maintainer documentation (design concept, cross-AS reference)
-  mbt/               MVS Build Tools submodule (cc370 build system)
-  project.toml       Build configuration, modules, dependencies
-  Makefile           Two-line include of mbt/mk/mbt.mk
-  VERSION            Version string for release automation
-  mbt.lock           Resolved dependency pins (committed; empty when no deps)
+  test/              Tests (every test/**/*.c is one, see Testing)
+  tools/             Build-side checks (check-module-data.py)
+  mbt.toml           Build configuration: version, toolchain, modules, tests, SMP package
 ```
 
 ### Installing libufs for Consumers
@@ -87,18 +81,19 @@ ufsd/
 Programs that call libufs need the header at compile time and the `libufs.a`
 archive at link time. Both ship together in one release artifact.
 
-The mbt v2 way — declare the dependency in your `project.toml`:
+Declare the dependency in your `mbt.toml` (mbt 3) and run `mbt deps`, or in your
+`project.toml` (mbt 2) and run `make deps` — the entry is the same:
 
 ```toml
 [dependencies]
 "mvslovers/ufsd" = ">=1.0.0-dev"
 ```
 
-`make deps` then resolves the range against the ufsd GitHub Releases, downloads
+The dependency step then resolves the range against the ufsd GitHub Releases, downloads
 `ufsd-<version>-lib.tar.gz`, and stages its `include/` + `lib/libufs.a` under
 `.mbt/deps/ufsd/`. The build wires these in automatically: `-I .mbt/deps/ufsd/include`
 on compile and `.mbt/deps/ufsd/lib/libufs.a` autocalled by `ld370` on link — no
-MVS-side link library or `SYSLIB` concatenation is involved. `make deps` also
+MVS-side link library or `SYSLIB` concatenation is involved. It also
 writes the resolved version + SHA256 to `mbt.lock` (commit it).
 
 To fetch the artifact by hand instead, download `ufsd-<version>-lib.tar.gz` from
@@ -107,9 +102,13 @@ the [Releases](https://github.com/mvslovers/ufsd/releases) page and extract its
 
 ## Testing
 
-Tests are declared as `[[test]]` blocks in `project.toml` (one translation unit
-with a `main()` each). UFSD ships one: `LIBUFTST` (`client/libufstst.c` +
-`client/libufs.c`), an integration test that exercises the libufs client API.
+Every `test/**/*.c` is a test, named after its file in upper case
+(`test/mvs/tstufsg.c` is `TSTUFSG`), one translation unit with a `main()` each.
+A `[test.NAME]` entry in `mbt.toml` adds what differs from that: the source
+under test, `host = false` for a test only the target can run. `LIBUFTST`
+(`client/libufstst.c` + `client/libufs.c`) lives outside `test/` and is declared
+there in full: an integration test that drives the libufs client API through a
+running server.
 
 Tests use `#include <mbtcheck.h>` and its `CHECK` / `CHECK_EQ` /
 `mbt_test_summary` macros — portable C, so the same source runs both natively on
@@ -117,16 +116,15 @@ the host and on the MVS target. The only hard contract is the return code
 (`0` = all passed), which becomes the job-step condition code on MVS.
 
 ```sh
-make test        # build the test load modules
-make test-host   # build + run the tests natively on the host — fast inner loop
-make test-mvs    # build + deploy the tests to a TESTLIB + run them on MVS
-make check       # run every available suite (host first, then MVS)
+mbt build --tests   # build the test load modules
+mbt test            # build + run the tests natively on the host — fast inner loop
+mbt test --mvs      # build + deploy the tests to a TESTLIB + run them on MVS
+mbt check           # run every available suite (host first, then MVS)
 ```
 
-`make test-mvs` deploys to a separate `…TESTLIB` and prints a per-test pass/fail
-matrix. The production `LINKLIB` must already be deployed, since the MVS tests
-`LOAD` the server modules from it. Run only selected tests with
-`make test-mvs ARGS="--only LIBUFTST"`.
+`mbt test --mvs` deploys to a separate `…TESTLIB` and prints a per-test pass/fail
+matrix. `LIBUFTST` needs a running UFSD: it drives the server through the
+SSI. Run only selected tests with `mbt test --mvs --only LIBUFTST`.
 
 ## Architecture
 
@@ -189,7 +187,7 @@ The UFS370 on-disk format is documented in [docs/ufsdisk-spec.md](ufsdisk-spec.m
 
 ## libufs API Reference
 
-Include `libufs.h` and link against the `libufs.a` archive (staged by `make deps`, autocalled by `ld370`).
+Include `libufs.h` and link against the `libufs.a` archive (staged by `mbt deps`, autocalled by `ld370`).
 
 ```c
 #include "libufs.h"
@@ -406,8 +404,8 @@ reported through `ufs_last_rc()` after one of those, never through
 ```c
 /*
  * Copy a local MVS dataset member into a UFSD filesystem.
- * Build via mbt v2: declare "mvslovers/ufsd" in project.toml, run
- * `make deps`, then `make` -- ld370 autocalls libufs.a from .mbt/deps.
+ * Build: declare "mvslovers/ufsd" under [dependencies] in mbt.toml, run
+ * `mbt deps`, then `mbt build` -- ld370 autocalls libufs.a from .mbt/deps.
  */
 #include <stdio.h>
 #include <string.h>

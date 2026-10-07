@@ -1,8 +1,8 @@
 /* TSTUFSAV.C - ASVT membership scan tests (issue #53)
 **
 ** Covers the scan the reclaim liveness guard rests on
-** (src/ufsd#asv.c).  Dual-target: `make test-host` runs it natively,
-** `make test-mvs` runs it as a load module.
+** (src/ufsd#asv.c).  Dual-target: `mbt test` runs it natively,
+** `mbt test --mvs` runs it as a load module.
 **
 ** The guard decides whether UFSDCLNP tears down the CSA of a running
 ** UFSD or refuses.  Its dangerous direction is a false "not found":

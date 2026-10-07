@@ -7,7 +7,9 @@ on:
 
 jobs:
   build:
-    uses: mvslovers/mbt/.github/workflows/build.yml@main
+    uses: mvslovers/mbt/.github/workflows/build3.yml@main
+    with:
+      host_tests: true
 
   # An AC(1) module fetched from an APF-authorized library is loaded into
   # key-0 storage, so a key-8 store into its own statics abends S0C4 (#64).

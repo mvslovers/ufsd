@@ -56,11 +56,14 @@ These are hard-won from implementation. Violating them causes abends:
 
 ## Build
 
-Same pipeline as all mvslovers projects:
+mbt 3, driven by `mbt.toml`; the whole build runs on the host with cc370:
 ```
-make                # C → c2asm370 → mvsasm (via mvsMF API)
-make link           # mvslink on MVS
+mbt build --all     # load modules + libufs.a
+mbt test            # host tests (TSTUFSAV, TSTUFSG, TSTUFSMP)
+mbt package         # dist/: load + lib archives, SMP install package
+mbt deploy          # -> UFSD.DEV.LINKLIB (touches MVS)
 ```
+`python3 tools/check-module-data.py` checks constraint 7 against `mbt.toml`.
 
 ## Module Map
 
@@ -108,19 +111,29 @@ One id per release, **spent exactly once**, and each release's SYSMOD deletes
 its predecessor:
 
 ```toml
-[distribution.smp]
-fmid   = "TUFS140"
-delete = ["TUFS130"]
+[smp]
+prefix = "TUFS"     # 1.4.0 -> FMID TUFS140, DELETE(TUFS130)
 ```
 
 **No version component may ever exceed 9** — a 7-character id has no room for
 a second digit. At patch 9 cut the next minor, at minor 9 the next major;
 ufsd 1.3.10 cannot be expressed and must not be released.
 
-Current: **`TUFS140`** for 1.4.0, deleting `TUFS130`. **The FMID does not move
-by itself** -- `make release` bumps `VERSION` and `project.toml`'s version and
-stops there, so bumping `fmid` and `delete` is part of preparing the next
-release, not of cutting the last one.
+Current: **`TUFS140`** for 1.4.0, deleting `TUFS130`, both derived by mbt
+from `[project] version` and `[smp] prefix`. The derivation covers an `x.y.0`
+release only (measured with mbt 3.0.0-dev 6db906e):
+
+- **A patch release stops the package.** For 1.4.1 mbt reports `version 1.4.1
+  is a patch release: its FMID would be TUFS140 again, the minor's id, and a
+  patch is a PTF, which mbt does not build yet -- set [smp] fmid (and delete)
+  explicitly`. Per the rule above the patch is a function level of its own:
+  set `fmid = "TUFS141"` and `delete = ["TUFS140"]`.
+- **The minor after a patch needs `delete` by hand too.** 1.5.0 derives
+  `DELETE(TUFS140)` whatever was released in between; after a 1.4.1 that is
+  the wrong id, and a successor that does not delete the installed owner of
+  `MOD(UFSD)` should install nothing at RC 00 -- the element-ownership wall in
+  the root CLAUDE.md, inferred for this case, not measured. Write
+  `delete = ["TUFS141"]` beside the derived `fmid`.
 
 Burned here: `TUFS110` (1.1.x, never released but accepted on a test system),
 `TUFS120` (1.2.0-1.2.2, `REC APP ACC` on mvsdev) and `TUFS130` (1.3.0,

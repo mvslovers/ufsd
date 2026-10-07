@@ -1,8 +1,8 @@
 /* TSTUFSG.C - UFSFMT geometry tests
 **
 ** Covers the arithmetic UFSFMT derives a filesystem layout from
-** (src/ufsfmtg.c).  Dual-target: `make test-host` runs it natively,
-** `make test-mvs` runs it as a load module.
+** (src/ufsfmtg.c).  Dual-target: `mbt test` runs it natively,
+** `mbt test --mvs` runs it as a load module.
 **
 ** The three defects issue #50 lists are all counter defects, so this
 ** is where they are pinned down:

@@ -14,7 +14,7 @@
 ** cc370 and for a host compiler and the index arithmetic -- the part
 ** that silently breaks when a filesystem is unmounted and the disk
 ** array is compacted underneath it -- is testable without an MVS round
-** trip (test/mvs/tstufsmp.c, `make test-host`).
+** trip (test/mvs/tstufsmp.c, `mbt test`).
 **
 ** Everything that reads a disk (inode lookup at mount time, crossing
 ** into another disk's root inode) stays in src/ufsd#ini.c and

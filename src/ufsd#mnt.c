@@ -3,7 +3,7 @@
 ** The index arithmetic behind the mount crossing in do_dirread.
 ** Portable C: no MVS headers, no disk I/O, no EBCDIC -- see
 ** include/ufsdmnt.h for why, and test/mvs/tstufsmp.c for the tests
-** `make test-host` runs on it natively.
+** `mbt test` runs on it natively.
 */
 
 #include "ufsdmnt.h"
