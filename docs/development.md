@@ -123,9 +123,8 @@ mbt check           # run every available suite (host first, then MVS)
 ```
 
 `mbt test --mvs` deploys to a separate `…TESTLIB` and prints a per-test pass/fail
-matrix. The server must already be running from a deployed library, since the
-MVS tests `LOAD` the server modules from it. Run only selected tests with
-`mbt test --mvs --only LIBUFTST`.
+matrix. `LIBUFTST` needs a running UFSD: it drives the server through the
+SSI. Run only selected tests with `mbt test --mvs --only LIBUFTST`.
 
 ## Architecture
 
