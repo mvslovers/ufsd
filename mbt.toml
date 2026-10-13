@@ -18,12 +18,17 @@ kind = "application"
 # rather than 2.3.0 for the subtask cleanup fix (mvslovers/libc370#431).
 # 2.4.0 needs cc370 >= 1.4.0 and ships no crt0.o/crt1.o; mbt 2.2.0 needs
 # neither.
-# 2.6.1: the current release, a drop-in for 2.4.0 here. Since 2.5.0 stdio
-# skips the stream's ENQ while the program has no threads; ufsd creates
-# none, so nothing it serialized loses its lock.
-# cc370: libc370 2.4.0 and later need cc370 >= 1.4.0; 1.4.0 is current.
-cc370 = "1.4.0"
-libc370 = "2.6.1"
+# 2.6.1: a drop-in for 2.4.0 here. Since 2.5.0 stdio skips the stream's
+# ENQ while the program has no threads; ufsd creates none, so nothing it
+# serialized loses its lock.
+# 2.10.3: a failed write no longer STOWs the member on close
+# (mvslovers/libc370#524). 2.6.2 to 2.10.2 change nothing ufsd calls
+# (fseek/ftell, rand, VSAM, __listds, the COBOL entry); the IBM macros
+# come from maclib370 since 2.8.0.
+# cc370: libc370 2.8.0 and later need cc370 >= 1.6.0 (every header
+# #errors below it); 1.6.1 is current.
+cc370 = "1.6.1"
+libc370 = "2.10.3"
 mbt = "3.0"
 
 # ── Load modules ─────────────────────────────────────────

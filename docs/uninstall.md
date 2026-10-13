@@ -13,7 +13,7 @@ its FMID for a re-install.
 
 | | |
 |---|---|
-| FMID | `TUFS130` |
+| FMID | `TUFS140` |
 | Load modules | `UFSD`, `UFSDSSIR`, `UFSDCLNP`, `UFSFMT` |
 | Target library | `UFSD.LINKLIB` |
 | Distribution library | `UFSD.AUFSDLOD` |
@@ -24,10 +24,10 @@ installation on the system and these are its datasets whatever release put them
 there. Releases before 1.3.0 versioned them — if ISPF 3.4 on `UFSD.*` shows
 `UFSD.V1R2M2.LINKLIB` and friends, you are removing one of those: every name
 below takes that qualifier back, and the FMID is `TUFS120` rather than
-`TUFS130`.
+`TUFS140`.
 
-One id per release since 1.3.0, so read `TUFS130` as *the release you are
-removing* — 1.4.0 would be `TUFS140`.
+One id per release since 1.3.0, so read `TUFS140` as *the release you are
+removing* — 1.5.0 would be `TUFS150`.
 
 **Its predecessors are not finished with, and there is more than one of them.**
 Every upgrade deletes the level before it and leaves that id behind as a
@@ -69,10 +69,10 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 //UCLIN   EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN CDS .
-  DEL SYSMOD(TUFS130) MOD(UFSD) .
-  DEL SYSMOD(TUFS130) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS130) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS130) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS140) MOD(UFSD) .
+  DEL SYSMOD(TUFS140) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS140) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS140) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
@@ -87,10 +87,10 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL SYSMOD(TUFS110) .
  ENDUCL .
  UCLIN ACDS .
-  DEL SYSMOD(TUFS130) MOD(UFSD) .
-  DEL SYSMOD(TUFS130) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS130) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS130) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS140) MOD(UFSD) .
+  DEL SYSMOD(TUFS140) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS140) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS140) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
@@ -163,7 +163,7 @@ both zones:
 THE FOLLOWING SELECTED ENTRIES WERE NOT FOUND OR WERE NOT ELIGIBLE
 FOR PROCESSING
  TYPE        NAME
- SYSMOD      TUFS130
+ SYSMOD      TUFS140
 ```
 
 with `HIGHEST RETURN CODE IS 04`. **RC 04 and an empty list means the FMID is
