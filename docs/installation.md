@@ -27,7 +27,7 @@ One placeholder is used throughout:
 
 | | |
 |---|---|
-| `<version>` | the release, e.g. `1.3.0` — it appears in every shipped file name |
+| `<version>` | the release, e.g. `1.4.0` — it appears in every shipped file name |
 
 It is already filled in inside the shipped jobs; you only need it to recognise
 which file is which.
@@ -372,7 +372,7 @@ A healthy start ends in `UFSD001I … READY`:
 
 ```
 UFSD000I UFSD <version> (A3F2C91) STARTING
-UFSD005I LIBC370 V1.0.2 (22B4870)
+UFSD005I LIBC370 2.10.3 (A790DC4)
 UFSD030I CSA ALLOCATED: ANCHOR=00BDxxxx
 UFSD034I SSCT REGISTERED, SUBSYSTEM NAME=UFS1
 UFSD035I SSI ROUTER LOADED AT 00A8xxxx
@@ -437,8 +437,8 @@ alloc job would fail on `DISP=(NEW,CATLG)` — harmlessly, but it has nothing to
 do.
 
 **There is no `UCLIN` step any more.** Each release carries its own FMID and
-deletes the one before it — 1.3.0 is `TUFS130` and its `++VER` reads
-`DELETE(TUFS120)`. SMP deletes the predecessor's load modules from the target
+deletes the one before it — 1.4.0 is `TUFS140` and its `++VER` reads
+`DELETE(TUFS130)`. SMP deletes the predecessor's load modules from the target
 library and copies the new ones in, and the module entries in its inventory
 become this release's. The `UCLIN` job in
 [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
@@ -454,8 +454,8 @@ backup entry in `SYS1.SMPSCDS` and never will, so the step reports success and
 *then* a 4:
 
 ```
-HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS130
-HMA2461    SYSMOD TUFS120 NOT FOUND ON SMPSCDS LIBRARY
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS140
+HMA2461    SYSMOD TUFS130 NOT FOUND ON SMPSCDS LIBRARY
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
 ```
 
