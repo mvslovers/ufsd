@@ -112,14 +112,14 @@ its predecessor:
 
 ```toml
 [smp]
-prefix = "TUFS"     # 1.4.0 -> FMID TUFS140, DELETE(TUFS130)
+prefix = "TUFS"     # 1.5.0 -> FMID TUFS150, DELETE(TUFS140)
 ```
 
 **No version component may ever exceed 9** — a 7-character id has no room for
 a second digit. At patch 9 cut the next minor, at minor 9 the next major;
 ufsd 1.3.10 cannot be expressed and must not be released.
 
-Current: **`TUFS140`** for 1.4.0, deleting `TUFS130`, both derived by mbt
+Current: **`TUFS150`** for 1.5.0, deleting `TUFS140`, both derived by mbt
 from `[project] version` and `[smp] prefix`. The derivation covers an `x.y.0`
 release only (measured with mbt 3.0.0-dev 6db906e):
 
@@ -134,11 +134,18 @@ release only (measured with mbt 3.0.0-dev 6db906e):
   `MOD(UFSD)` should install nothing at RC 00 -- the element-ownership wall in
   the root CLAUDE.md, inferred for this case, not measured. Write
   `delete = ["TUFS141"]` beside the derived `fmid`.
+- **A release deletes only its immediate predecessor**, so a system that
+  skipped a release still has an older owner of `MOD(UFSD)` and takes the
+  same wall. 1.4.0 met it: `TUFS140` does not delete `TUFS120`, and its
+  package README still described 1.3.0's path from 1.2.x (fixed after the
+  release; the release page carries the correction). `docs/installation.md`
+  section 10 opens with the `LIST CDS/ACDS MOD(UFSD)` check -- keep it, and
+  update its "direct upgrade" owner with every release.
 
 Burned here: `TUFS110` (1.1.x, never released but accepted on a test system),
-`TUFS120` (1.2.0-1.2.2, `REC APP ACC` on mvsdev) and `TUFS130` (1.3.0,
-released 2026-09-14). `TUFS121` and `TUFS122` are never assigned -- those
-releases shipped under `TUFS120` when the rule was one id per *minor*, so the
+`TUFS120` (1.2.0-1.2.2, `REC APP ACC` on mvsdev), `TUFS130` (1.3.0,
+released 2026-09-14) and `TUFS140` (1.4.0, released 2026-10-13). `TUFS121`
+and `TUFS122` are never assigned -- those releases shipped under `TUFS120` when the rule was one id per *minor*, so the
 id space skips. `TUFS131` was assigned to 1.3.1, which was never cut -- the
 libc370 2.0 port made the next release 1.4.0 -- so it is unspent and stays
 unassigned. The gaps are deliberate.
