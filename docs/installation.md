@@ -253,12 +253,14 @@ bottom with an empty library. ISPF 3.4 does it, or submit this:
 
 If the listing is empty while the job log said success, the `APPLY` printed
 `NOT SEL` instead of `HMA2380`: some other SYSMOD owns those module names in
-the SMP inventory. **This should not happen on an ordinary system** — 1.3.0
-deletes `TUFS120`, and every release from here deletes the one before it, so
-the owner is cleared as part of the install. It is reachable only if the names
-were claimed by something this release does not know about: a test install
-under a throwaway id, or ufsd 1.1.x, which was never released but was applied
-on at least one system under `TUFS110`. `LIST CDS MOD(UFSD) .` names the owner;
+the SMP inventory. Each release deletes **only the one immediately before
+it**, so the owner is cleared as part of the install only when you come from
+that release. The usual cause is skipping a release: a system still on 1.2.x
+(`TUFS120`) installing anything later than 1.3.0 -- see section 10, which
+starts with the check that tells the cases apart. Otherwise the names were
+claimed by something this release does not know about: a test install under a
+throwaway id, or ufsd 1.1.x, which was never released but was applied on at
+least one system under `TUFS110`. `LIST CDS MOD(UFSD) .` names the owner;
 step 2 of
 [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
 removes it.
@@ -428,7 +430,26 @@ in [recovery.md](https://github.com/mvslovers/ufsd/blob/main/docs/recovery.md).
 
 ## 10. Upgrading from an earlier release
 
-An upgrade is **step 3 and step 5, and nothing else**. The dataset names do
+**First ask SMP which FMID owns the modules**, because each release deletes
+only the one immediately before it:
+
+```
+//LIST    EXEC SMPAPP
+//SMPCNTL  DD  *
+ LIST CDS  MOD(UFSD) .
+ LIST ACDS MOD(UFSD) .
+/*
+```
+
+- **`TUFS130`:** an upgrade from 1.3.0. Run `/P UFSD`, the install job, then `/S UFSD`.
+- **`TUFS120`:** an upgrade from 1.2.x. See [Coming from 1.2.x](#coming-from-12x).
+- **not found:** a fresh install. Run the allocation job, then the install job.
+
+From the release after this one, the owner of a direct upgrade is the release
+before it (`TUFS140` for 1.5.0), and any older owner takes the 1.2.x route.
+
+An upgrade from the immediately preceding release is **step 3 and step 5, and
+nothing else**. The dataset names do
 not change between releases, and the SYSMOD removes its predecessor on its own
 — there is no inventory work for you to do first.
 
@@ -480,57 +501,68 @@ not the UFSD build -- it will not tell you whether the upgrade took.)
 ### Coming from 1.2.x
 
 1.2.0, 1.2.1 and 1.2.2 put their datasets in `UFSD.V1R2M0.*`, `UFSD.V1R2M1.*`
-or `UFSD.V1R2M2.*`, and all three shipped under the same FMID `TUFS120`. This
-release installs into `UFSD.*` instead, so the first upgrade across the rename
+or `UFSD.V1R2M2.*`, and all three shipped under the same FMID `TUFS120`. Later
+releases install into `UFSD.*` instead, so the first upgrade across the rename
 is a **move**: the old datasets are not written to, and you scratch them
 yourself once the new server is up.
 
+**Only 1.3.0 deletes `TUFS120`.** Every release deletes the one immediately
+before it and nothing older, so this release (`TUFS140`, `DELETE(TUFS130)`)
+leaves `TUFS120` owning `MOD(UFSD)`. SMP then prints `NOT SEL` for every
+module, copies nothing and ends `RC 00`: the trap described under section 5 of this guide.
+Release the inventory by hand first, in step 2.
+
 1. `/P UFSD`.
-2. **Step 4 of this guide** — the alloc job creates `UFSD.LINKLIB` and
+2. **Step 2 of [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#2-cut-the-fmid-out-of-the-smp-inventory)
+   only** -- the `UCLIN` job, which edits the CDS and the ACDS and touches no
+   library. Read its `LIST` as step 3 there says. **Do not run its step 4**,
+   which scratches libraries.
+3. **Step 4 of this guide** — the alloc job creates `UFSD.LINKLIB` and
    `UFSD.AUFSDLOD` beside the old ones. This is the one upgrade that runs it.
-3. **Steps 3 and 5**, unchanged. The SYSMOD's `DELETE(TUFS120)` retires the old
-   release from the SMP inventory as part of the APPLY; you do not run `UCLIN`.
-   **It does not touch the old datasets.** SMP records the *ddname* an element
-   was installed through and never the dataset behind it, so it resolves
-   `LINKLIB` in this job — where it names the new library — deletes from there,
-   prints `HMA2240 SUCCESSFULLY DELETED LMOD … ON LINKLIB LIBRARY`, and copies
-   the new modules in. `UFSD.V1R2Mx.LINKLIB` is never opened. This is SMP's
-   behaviour, not UFSD's: it was measured on 2026-09-14 with a throwaway module
-   name in throwaway libraries belonging to no product
+4. **Steps 3 and 5**, unchanged. After step 2, this is a fresh install as far
+   as SMP is concerned. **It does not touch the old datasets.** SMP records the
+   *ddname* an element was installed through and never the dataset behind it,
+   so it resolves `LINKLIB` in this job — where it names the new library — and
+   copies the new modules there. `UFSD.V1R2Mx.LINKLIB` is never opened. This is
+   SMP's behaviour, not UFSD's: it was measured on 2026-09-14 with a throwaway
+   module name in throwaway libraries belonging to no product
    ([mvslovers/ftpd#145](https://github.com/mvslovers/ftpd/issues/145), jobs
-   TTMPDINS/TTMPEINS/TTMPECHK). The one product-specific condition is that the
-   old and new dataset names end in the same qualifier — `LINKLIB` before and
-   after — which UFSD satisfies for all four of its libraries.
-4. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
+   TTMPDINS/TTMPEINS/TTMPECHK).
+5. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
    procedures, any client JCL, and — if you took the APF route — the entry in
    `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
    name does not change again.
-5. `/S UFSD`, then read `UFSD000I` (step 8). **It must name the version and
-   commit you just installed.** If it still names the old build, step 4 did not
+6. `/S UFSD`, then read `UFSD000I` (step 8). **It must name the version and
+   commit you just installed.** If it still names the old build, step 5 did not
    take -- the STC is loading out of a library you did not re-point -- and
    nothing below this line is safe to do yet.
-6. Only once `UFSD000I` names the new build, scratch the release you came
+7. Only once `UFSD000I` names the new build, scratch the release you came
    from:
    `DELETE UFSD.V1R2Mx.LINKLIB / .AUFSDLOD / .SAMPLIB NONVSAM SCRATCH PURGE`.
    Copy anything you still want out of the old SAMPLIB first.
 
-> **Steps 4 and 6 are the upgrade, not housekeeping.** The old library survives
+> **Steps 5 and 7 are the upgrade, not housekeeping.** The old library survives
 > the install untouched — still populated, still a working load module, and
 > still APF-authorised if it was before. Nothing in the job log mentions it. A
 > `STEPLIB` that was not re-pointed goes on loading the **old** server, an
 > install that reported success from top to bottom will look like it did
 > nothing, and `UFSD000I` will report the previous build. If you stop after
-> step 3 you have not upgraded.
+> step 4 you have not upgraded.
 
-The gate in step 5 is the point of the sequence: **an upgrade is proven by a
+The gate in step 6 is the point of the sequence: **an upgrade is proven by a
 positive statement, never by the absence of a failure.** Nothing above it
 reports the old server still running, so there is no error to wait for --
 `UFSD000I` naming the new commit is the only evidence that exists.
 
-Steps 4 to 6 are therefore a **deliberate rollback window, then a scratch**:
+Steps 5 to 7 are therefore a **deliberate rollback window, then a scratch**:
 both installations sit on the disk side by side until you end it, so a bad
-start at step 5 is one procedure edit away from being undone. Treat it as a
+start at step 6 is one procedure edit away from being undone. Treat it as a
 window you chose and then close — not as a state you can leave the system in.
+
+Each step was measured on its own (the `UCLIN`, a fresh install, and 1.3.0's
+move across the rename). The sequence as a whole has not been run from 1.2.x to
+1.4.0. The alternative is to install 1.3.0 first and then this release: two
+ordinary upgrades.
 
 ---
 
