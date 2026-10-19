@@ -151,16 +151,18 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 readme = "docs/installation.md"
 
 [smp]
-# The id is the release: T + three product letters + the three version digits.
-# One per release, spent exactly once, and each release deletes the one before
-# it -- that is what `prefix` below derives. No version component may ever exceed 9:
-# a 7-character id has no room for a second digit, so at patch 9 the next
-# release is a new minor. ufsd 1.3.10 cannot be expressed and must not be
-# released.
+# One FMID per minor release: T + three product letters + major + minor + 0,
+# so every 1.5.x is TUFS150. Each id is spent exactly once, and each release
+# deletes the one before it -- that is what `prefix` below derives. A patch is
+# meant to become a PTF against its minor's FMID once mbt builds PTFs; until
+# then a patch release needs an explicit `fmid` of its own (1.5.1 as TUFS151),
+# and the next minor an explicit `delete` naming that id. No version component
+# may ever exceed 9: a 7-character id has no room for a second digit, so at
+# patch 9 the next release is a new minor. ufsd 1.3.10 cannot be expressed and
+# must not be released.
 #
-# TUFS121 and TUFS122 are never assigned. 1.2.0 through 1.2.2 all shipped under
-# TUFS120 back when the rule was one id per *minor*, so the id space skips --
-# the gap is deliberate, not an oversight to correct.
+# The id space skips, and that is deliberate: 1.2.0 through 1.2.2 all shipped
+# under TUFS120, so TUFS121 and TUFS122 are never assigned. Do not fill a gap.
 #
 # The delete is the whole upgrade story. SMP keys element ownership on MOD(name)
 # in the CDS, not on the library the element lives in, so without it a
