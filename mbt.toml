@@ -173,8 +173,9 @@ readme = "docs/installation.md"
 # 2026-09-14. The UCLIN in docs/uninstall.md is for *removing* UFSD now, not
 # for upgrading it.
 #
-# The T matches the form the MVS 3.8j sysgen uses for its own function SYSMODs
-# (TMVS804, TJES801, ...) and stays clear of IBM's H/J namespace. A test
+# The T keeps clear of IBM's FMID namespace, which on MVS 3.8j is E??nnnn
+# (EBB1102 is MVS itself). Never TMVS... or another name MVS/CE and TK5
+# already use for applied usermods (TMVS804, TJES801, TNIP800, ...). A test
 # install needs a throwaway id *and* throwaway module names -- a throwaway id
 # alone just measures the ownership wall above.
 prefix = "TUFS"  # FMID and delete follow from the version
