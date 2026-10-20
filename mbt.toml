@@ -30,8 +30,11 @@ kind = "application"
 # iefssreq() refuses an unauthorized caller with -1/EPERM instead of S047
 # and no longer drops a supervisor-state caller to problem state
 # (mvslovers/libc370#402; libufs is its only caller here); the standard
-# streams, SYSENV and TZ are set up on first use (#564), so stdin is a
-# macro and `if (!stdin)` in UFSFMT still holds; getmain/freemain/__estae/
+# streams, SYSENV and TZ are set up on first use (#564); stdin was already
+# the (*__gtin()) macro in 2.10.3. UFSFMT in a throwaway container gives the
+# same SYSPRINT and CC 0 with SYSIN data, no SYSIN DD and SYSIN DD DUMMY, and
+# the same SYSTERM and CC 8 on its error paths; only an unused SYSTERM is no
+# longer spooled as an empty data set. getmain/freemain/__estae/
 # __crtget no longer link printf and stdio (#283, #564), which shrinks
 # UFSDSSIR (CSA) from 0xB840 to 0x6B10 bytes and UFSDCLNP from 0x13C10 to
 # 0xA978. No member linked into UFSD, UFSDCLNP or UFSDSSIR gains writable
