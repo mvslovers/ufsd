@@ -21,6 +21,15 @@ console messages and, for an install problem, the job output.
 **Questions and general support** are on Discord:
 <https://discord.gg/gaUAFKGCR>
 
+## The manuals
+
+This guide is complete for installing, upgrading and removing UFSD. For
+everything else there are two manuals: the _UFSD User's Guide_ (ML05-0001) and
+the _UFSD Reference_ (ML05-0002). They are attached to each release from 1.6.0
+on as `ml05-0001-<edition>.pdf` and `ml05-0002-<edition>.pdf`, and their
+sources are in `docs/books` in the repository. Where this guide sends you to a
+chapter, it means one of these.
+
 ---
 
 One placeholder is used throughout:
@@ -82,8 +91,9 @@ UFSD.AUFSDLOD    SMP's distribution library, the base a RESTORE returns to
 UFSD enters supervisor state and works in key-0 CSA, so it has to run
 authorised. It obtains that itself at startup (`clib_apf_setup()`), which is
 why it runs on a stock TK4-/TK5 with no APF entry — but that path goes through
-**SVC 244, which comes from RAKF**. On a system without RAKF it is not
-available and the start ends with:
+**SVC 244, which comes from RAKF**. The start then shows
+`UFSD007I AUTHORIZED BY SVC (MODULE KEY 8)`. On a system without RAKF the SVC
+is not available and the start ends with:
 
 ```
 UFSD091E APF SETUP FAILED RC=n (STEPLIB NOT APF AUTHORIZED?)
@@ -92,7 +102,12 @@ UFSD091E APF SETUP FAILED RC=n (STEPLIB NOT APF AUTHORIZED?)
 The clean alternative is to add `UFSD.LINKLIB` to the APF list in
 `SYS1.PARMLIB(IEAAPF00)`. On MVS 3.8j the APF list is only read at IPL, so the
 entry costs one IPL — once. The library name does not change between releases,
-so no later upgrade asks for another one.
+so no later upgrade asks for another one. The start then shows
+`UFSD007I AUTHORIZED BY LIBRARY (MODULE KEY 0)`.
+
+Release 1.5.0 was tested on the RAKF route. A start from an APF-authorized
+library was not run for that release, and neither was changing the APF list on
+MVS/CE.
 
 The two routes are not quite the same underneath. UFSD is link-edited AC(1),
 so from an APF-authorized library the job step is already authorized when
@@ -243,6 +258,15 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00
 ```
 
+The status report that follows lists the predecessor as `DELETED` even on a
+fresh install, because the SYSMOD names it in its `DELETE` operand:
+
+```
+SYSMOD   STATUS    TYPE      FMID     REQUISITE AND SUPEDBY SYSMODS
+TUFS140  DELETED   FUNCTION
+TUFS150  APPLIED   FUNCTION  TUFS150
+```
+
 An upgrade ends the `APPLY` with RC 04 (`HMA2461`) instead, and that is also
 correct — see [section 10](#10-upgrading-from-an-earlier-release).
 
@@ -313,9 +337,9 @@ your copy of the procedure, or override it when starting:
 /S UFSD,D='SYS1.PARMLIB'
 ```
 
-On MVS/CE, `SYS2.PARMLIB` exists and the default is fine. `M=` selects the
-member (default `UFSDPRM0`), so a second configuration can live alongside the
-first.
+On MVS/CE `SYS2.PARMLIB` exists, so the default is expected to be right; that
+was not checked on a running MVS/CE for this release. `M=` selects the member
+(default `UFSDPRM0`), so a second configuration can live alongside the first.
 
 ### Editing UFSDPRM0
 
@@ -342,8 +366,9 @@ run HTTPD, delete that line.
   first non-blank column comments a line out — it has to be first, because a
   `#` anywhere else is data (dataset names may contain one).
 
-The full keyword reference is in
-[configuration.md](https://github.com/mvslovers/ufsd/blob/main/docs/configuration.md).
+The statements are described in the _UFSD User's Guide_, chapter 4,
+"Configuring UFSD", and in full in the _UFSD Reference_, chapter 2, "The
+UFSDPRM Statements".
 
 ---
 
@@ -358,10 +383,10 @@ nothing to upload. Edit the dataset name, the `SPACE` and the `OWNER`, then
 submit it once per filesystem.
 
 The member carries a space-planning table in its comments. At `BLKSIZE=4096`,
-256 blocks is about 1 MB and holds 62 files; the inode count scales with the
-block count, and below 512 blocks a two-block minimum for the inode list caps
-any disk at 62 files no matter how much space is free. Subdirectories consume
-an inode too.
+256 blocks is about 1 MB. The number of inodes is fixed when the disk is
+formatted and follows the block count, but the inode list is never shorter than
+two blocks: at the defaults a disk of up to 799 blocks (3.1 MB) holds at most
+62 files, however much space is free. Subdirectories consume an inode too.
 
 Two constraints the job explains and it is worth repeating:
 
@@ -370,13 +395,19 @@ Two constraints the job explains and it is worth repeating:
   formatted and never be reachable.
 - **The dataset must be `DISP=OLD`.** UFSFMT refuses a `DISP=SHR` allocation
   rather than wipe a dataset someone else may be reading, and it will not
-  overwrite an existing UFS filesystem unless `FORCE` is given.
+  overwrite an existing UFS filesystem unless `FORCE` is given. That check is
+  skipped when the `BLKSIZE` of the dataset is outside 512 to 8192 (for
+  instance 0 or 32760): then an existing filesystem is overwritten without
+  `FORCE`. Give the same `BLKSIZE` in the allocation as in the format step.
+  UFSD takes the block size from the data set label when it mounts, so a
+  difference fails the mount with `UFSD062E` and `UFSD124E`.
 
 It reports what it actually did as `UFSFMT26I` — MVS rounds an allocation up to
 a track boundary, so the disk is often slightly larger than you asked for.
 
-The full reference, including the control statements and the report, is in
-[disk-setup.md](https://github.com/mvslovers/ufsd/blob/main/docs/disk-setup.md).
+Planning, the control statements and the report are described in the _UFSD
+User's Guide_, chapter 3, "Creating Disks", and in the _UFSD Reference_,
+chapter 3, "The UFSFMT Utility".
 
 ---
 
@@ -388,17 +419,27 @@ The full reference, including the control statements and the report, is in
 /S UFSD,D='SYS1.PARMLIB'     alternate PARMLIB -- TK5, see step 6
 ```
 
-A healthy start ends in `UFSD001I … READY`:
+A healthy start ends in `UFSD001I … READY`. The set of lines depends on your
+configuration; this is the console of a 1.5.0 system with three filesystems.
+The version, the build stamps and the addresses are those of that system:
 
 ```
-UFSD000I UFSD <version> (A3F2C91) STARTING
-UFSD005I LIBC370 2.10.3 (A790DC4)
-UFSD030I CSA ALLOCATED: ANCHOR=00BDxxxx
+UFSD000I UFSD 1.5.0 (1AA3EB6) STARTING
+UFSD005I LIBC370 2.24.1 (EF09210)
+UFSD007I AUTHORIZED BY SVC (MODULE KEY 8)
+UFSD030I CSA ALLOCATED: ANCHOR=00BBE7F8
+UFSD031I   REQUEST POOL: 32 BLOCKS, 9K
+UFSD032I   BUFFER POOL:  16 BLOCKS, 64K
+UFSD033I   TRACE BUFFER: 256 ENTRIES, 4K
 UFSD034I SSCT REGISTERED, SUBSYSTEM NAME=UFS1
-UFSD035I SSI ROUTER LOADED AT 00A8xxxx
+UFSD035I SSI ROUTER LOADED AT 00ACD4C8
+UFSD045I SESSION TABLE: 64 SLOTS
+UFSD047I GLOBAL FILE TABLE: 256 SLOTS
 UFSD060I MOUNTED UFSD.ROOT ON / (ROOT)
+UFSD060I MOUNTED UFSD.SCRATCH ON /tmp (RW)
+UFSD060I MOUNTED HERC01.UFSHOME ON /u/herc01 (RW, OWNER=HERC01)
 UFSD040I 3 FILESYSTEM(S) MOUNTED
-UFSD001I UFSD <version> READY -- 3 DISKS, 78K CSA, 64 SESSIONS, 256 FILES
+UFSD001I UFSD 1.5.0 READY -- 3 DISKS, 78K CSA, 64 SESSIONS, 256 FILES
 ```
 
 The two build stamps identify exactly what is running: `UFSD000I` gives the
@@ -421,19 +462,26 @@ Operator commands:
 /P UFSD                      orderly stop
 ```
 
+The commands are described in the _UFSD User's Guide_, chapter 5, "Running
+UFSD", and in full in the _UFSD Reference_, chapter 1, "Operator Commands".
+
 ---
 
 ## 9. Recovery
 
-A clean `/P UFSD` frees all CSA. After a cancel (`/C UFSD`) or an abend the
-recovery handler deliberately **retains** the CSA, so that a dump still has
-something to describe.
+A clean `/P UFSD` frees all CSA. After a cancel (`/C UFSD`), an abend, or a
+stop that found clients still at work, the CSA is deliberately **retained**,
+so that a dump still has something to describe. The console shows `UFSD098W`
+for the stop with clients, and `UFSD098E` and then `UFSD097W` for a cancel or
+an abend.
 
 You do not normally have to do anything about it: `/S UFSD` reclaims the
 retained CSA and the stale SSCT before it registers. Just start it again.
 
-`UFSDCLNP` is the fallback for when that does not work — it deregisters the
-SSCT, unloads the SSI router and frees every CSA pool:
+The start refuses to reclaim when the server it finds is still running
+(`UFSD155W`, `UFSD002E`), and when it cannot check that (`UFSD156W`).
+`UFSDCLNP` frees the same storage without starting a server. Use it when the
+start refuses with `UFSD156W` and you know that no server runs:
 
 ```
 /S UFSDCLNP                  (or submit it as a batch job, PGM=UFSDCLNP)
@@ -441,8 +489,11 @@ SSCT, unloads the SSI router and frees every CSA pool:
 ```
 
 It is safe to run when UFSD is not registered; it reports that there is nothing
-to do and ends RC 0. Full procedures and the complete WTO message reference are
-in [recovery.md](https://github.com/mvslovers/ufsd/blob/main/docs/recovery.md).
+to do and ends RC 0. When the server is running it refuses with `UFSD157W` and
+RC 8.
+
+Recovery is described in the _UFSD User's Guide_, chapter 6, "Recovery After a
+Failure"; the messages are in the _UFSD Reference_, appendix A.
 
 ---
 
@@ -547,10 +598,7 @@ Release the inventory by hand first, in step 2.
    *ddname* an element was installed through and never the dataset behind it,
    so it resolves `LINKLIB` in this job — where it names the new library — and
    copies the new modules there. `UFSD.V1R2Mx.LINKLIB` is never opened. This is
-   SMP's behaviour, not UFSD's: it was measured on 2026-09-14 with a throwaway
-   module name in throwaway libraries belonging to no product
-   ([mvslovers/ftpd#145](https://github.com/mvslovers/ftpd/issues/145), jobs
-   TTMPDINS/TTMPEINS/TTMPECHK).
+   SMP's behaviour, not UFSD's.
 5. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
    procedures, any client JCL, and — if you took the APF route — the entry in
    `SYS1.PARMLIB(IEAAPF00)`. **That is one more IPL, and the last one**: the
@@ -675,10 +723,15 @@ linkage convention are documented in
 | `S806` (module not found) at `/S UFSD` | `STEPLIB` in the procedure does not name the LINKLIB the APPLY wrote to |
 | `/S UFSD` rejected — procedure not found | Procedure not copied into a PROCLIB in the started-task concatenation |
 | `UFSD091E APF SETUP FAILED` | No RAKF (so no SVC 244) and no APF entry — see step 2 |
-| `S0C4` right after `UFSD047I`, only with an APF-authorized LINKLIB | Release 1.2.0 or earlier: the module is fetched key 0 there, and a static counter is written key 8 (issue #64). Upgrade, or drop the APF entry and let SVC 244 do it |
-| `UFSD061E PARMLIB … UNUSABLE` (release 1.2.1 and earlier: `NOT FOUND`) | Preceded by `UFSD100W` (cannot open): `D=`/`M=` wrong, or the member is in a PARMLIB the procedure does not name. On TK5 this is usually `SYS2.PARMLIB` not existing — step 6. Preceded by `UFSD106E` instead, the member was found but could not be read to the end — a media or DCB problem, not a configuration one |
-| Mount fails / `UFSD124E` superblock validation | The `ROOT`/`MOUNT` dataset does not exist or is not UFS-formatted — step 7 |
+| `S0C4` right after `UFSD047I`, only with an APF-authorized LINKLIB | Release 1.2.0 or earlier. Upgrade, or drop the APF entry and let SVC 244 do it |
+| `UFSD100W`, then `UFSD061E PARMLIB (DD:UFSDPRM) UNUSABLE -- SHUTTING DOWN` | The member cannot be opened: `D=` or `M=` is wrong, or the member is in a PARMLIB the procedure does not name. On TK5 this is usually `SYS2.PARMLIB` not existing — step 6. The text of `UFSD100W` says `USING DEFAULTS`, but there are none: the start ends with RC 8 |
+| `UFSD106E` instead of `UFSD100W` | The member was found but could not be read to the end — a medium or DCB problem, not a configuration one |
+| `UFSD105W PARMLIB: ROOT STATEMENT MISSING` and `UFSD061E` | The member has no `ROOT` statement |
+| `UFSD120E` for the root or a mount | The data set cannot be allocated: it does not exist, or it is in use. Create it first — step 7 |
+| `UFSD044E ddname: NOT A VALID UFS DISK (TYPE=xxxx)` | The data set exists, but its first block is not that of a UFS file system. It was not formatted with UFSFMT — step 7 |
+| `UFSD062E` or `UFSD124E` | A check of the superblock failed. The data set was not formatted with UFSFMT, or it is damaged |
 | `S106` at start on a freshly installed library | The XMIT was uploaded in text mode. Re-upload in **binary** and re-run the install job |
 
-For diagnostics and the message-ID reference, see
-[recovery.md](https://github.com/mvslovers/ufsd/blob/main/docs/recovery.md).
+The meaning of every message, with the action to take, is in the _UFSD
+Reference_, appendix A, "Messages". For what to do after a failure, see
+step 9 and the _UFSD User's Guide_, chapter 6, "Recovery After a Failure".

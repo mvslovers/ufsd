@@ -210,7 +210,7 @@ MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 ### 8.2 Root Disk
 
 The ROOT dataset must already exist and be UFS-formatted before startup —
-create it with `ufsd-utils` (see `docs/disk-setup.md`). UFSD opens it via
+create it with `UFSFMT` or `ufsd-utils` (see `docs/disk-setup.md`). UFSD opens it via
 DYNALLOC and fails to start if it is missing; it does **not** allocate or format
 disks itself. The root disk is mounted read-write only briefly during startup so
 the configured mount points can be created as directories, then flipped to
