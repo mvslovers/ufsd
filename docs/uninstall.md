@@ -1,50 +1,55 @@
 # Removing UFSD
 
 This is the supported way to take UFSD back off an MVS 3.8j system and free
-its FMID for a re-install.
+its FMID for a re-install. The same procedure is chapter 7, "Removing UFSD",
+of the _UFSD User's Guide_ (ML05-0001).
 
 > **If you are holding a 1.2.0 archive, its removal instructions are wrong.**
-> `README.md` in `ufsd-1.2.0-dist.zip` says to run `RESTORE` and then `REJECT`.
-> Both are refused once the FMID has been accepted — which the install job
-> does, in the same run as the APPLY. Every archive from 1.2.1 on points here
-> instead.
+> Its `docs/installation.md` says to run `RESTORE` and then `REJECT`. Both are
+> refused once the FMID has been accepted, which the install job does in the
+> same run as the APPLY. Every archive from 1.2.1 on points here instead.
+
+> **If you are upgrading rather than removing, you are in the wrong document.**
+> A release deletes its predecessor as part of its own install, and step 4
+> below would scratch the libraries the new release installs into. See
+> [Upgrading](https://github.com/mvslovers/ufsd/blob/main/docs/installation.md#10-upgrading-from-an-earlier-release).
 
 ## What this release put on the system
 
 | | |
 |---|---|
-| FMID | `TUFS140` |
+| FMID | `TUFS150` |
 | Load modules | `UFSD`, `UFSDSSIR`, `UFSDCLNP`, `UFSFMT` |
 | Target library | `UFSD.LINKLIB` |
 | Distribution library | `UFSD.AUFSDLOD` |
 | Sample library | `UFSD.SAMPLIB` |
 
-The names carry no version qualifier (issue #71), so there is exactly one UFSD
-installation on the system and these are its datasets whatever release put them
-there. Releases before 1.3.0 versioned them — if ISPF 3.4 on `UFSD.*` shows
-`UFSD.V1R2M2.LINKLIB` and friends, you are removing one of those: every name
-below takes that qualifier back, and the FMID is `TUFS120` rather than
-`TUFS140`.
+The data set names carry no version (issue #71), so there is only one UFSD
+installation on a system, whichever release put it there. Releases before 1.3.0
+put the version into the names (`UFSD.V1R2M2.LINKLIB` and so on). If you find
+data sets of this kind, add the qualifier to every name below, and the FMID is
+the one of that release (`TUFS120` for 1.2.x).
 
-One id per release since 1.3.0, so read `TUFS140` as *the release you are
-removing* — 1.5.0 would be `TUFS150`.
+The staging library `UFSD.UFSDLOAD` is not on the list, because the cleanup
+step of the install job scratched it.
 
-**Its predecessors are not finished with, and there is more than one of them.**
-Every upgrade deletes the level before it and leaves that id behind as a
-`DELBY` tombstone in both zones, so a system that came 1.2.x → 1.3.0 → 1.4.0
-carries two of them and a `DEL SYSMOD` for the release plus its immediate
-predecessor clears only the newest. The job in step 2 therefore names **every
-id UFSD has ever spent**, which is why it lists more than you installed — see
-[Why the job names ids you never installed](#why-the-job-names-ids-you-never-installed).
+**Earlier releases left their FMIDs behind.** Each upgrade deletes the release
+before it and leaves its id in the inventory as a mark, in both zones:
 
-The staging library `UFSD.UFSDLOAD` is not listed because the install job's
-`CLEANUP` step already scratched it.
+```
+TUFS140   TYPE            = FUNCTION
+          DELBY           = TUFS150
+```
 
-> **If you are upgrading rather than removing, you are in the wrong document.**
-> Since 1.3.0 a release deletes its predecessor as part of its own install —
-> there is no FMID to free by hand, and step 4 below would scratch the very
-> libraries the new release installs into. See
-> [Upgrading](https://github.com/mvslovers/ufsd/blob/main/docs/installation.md#10-upgrading-from-an-earlier-release).
+A system that went from 1.2.x through 1.3.0 and 1.4.0 to 1.5.0 carries one such
+mark for every step. Deleting the id of the current release and of its
+predecessor clears only the newest of them. The job below therefore names
+**every id UFSD has ever used** (`TUFS110`, `TUFS120`, `TUFS130`, `TUFS140` and
+`TUFS150`). An id that was never on the system is reported as not existing and
+raises the return code of the step to 08 (see step 2). That does no harm, and
+you need not know which releases the system has seen.
+
+If a later release adds an id, it is added to this list too.
 
 ---
 
@@ -54,25 +59,25 @@ The staging library `UFSD.UFSDLOAD` is not listed because the install job's
 /P UFSD
 ```
 
-If anything is still holding CSA afterwards, run `/S UFSDCLNP` before going
-on — see
-[recovery.md](https://github.com/mvslovers/ufsd/blob/main/docs/recovery.md).
+If common storage is still held afterwards, run `/S UFSDCLNP` before you go on.
+See chapter 6, "Recovery After a Failure", of the _UFSD User's Guide_.
 
 ## 2. Cut the FMID out of the SMP inventory
 
-Submit this. It edits the CDS and the ACDS and touches no library:
+Submit this job. It changes the two SMP data bases, the CDS (what is applied)
+and the ACDS (what is accepted), and no library:
 
 ```
 //UFSDUCL  JOB (SYS),'UFSD UNINSTALL',
 //             CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1),
 //             REGION=4096K
-//UCLIN   EXEC SMPAPP
+//UCLCDS  EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN CDS .
-  DEL SYSMOD(TUFS140) MOD(UFSD) .
-  DEL SYSMOD(TUFS140) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS140) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS140) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS150) MOD(UFSD) .
+  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
@@ -81,20 +86,25 @@ Submit this. It edits the CDS and the ACDS and touches no library:
   DEL LMOD(UFSDSSIR) .
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
+  DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
   DEL SYSMOD(TUFS120) .
   DEL SYSMOD(TUFS110) .
  ENDUCL .
+/*
+//UCLACDS EXEC SMPAPP
+//SMPCNTL  DD  *
  UCLIN ACDS .
-  DEL SYSMOD(TUFS140) MOD(UFSD) .
-  DEL SYSMOD(TUFS140) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS140) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS140) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS150) MOD(UFSD) .
+  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
+  DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
   DEL SYSMOD(TUFS120) .
@@ -104,6 +114,8 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
  RESETRC .
+ LIST CDS  SYSMOD(TUFS150) .
+ LIST ACDS SYSMOD(TUFS150) .
  LIST CDS  SYSMOD(TUFS140) .
  LIST ACDS SYSMOD(TUFS140) .
  LIST CDS  SYSMOD(TUFS130) .
@@ -116,92 +128,143 @@ Submit this. It edits the CDS and the ACDS and touches no library:
 //
 ```
 
-Every `DEL` reports `HMA2550 UPDATE COMPLETE`, and each `UCLIN` block ends
-`RC 00`.
-
-### Why the job names ids you never installed
-
-An upgrade does not remove its predecessor from the inventory. It leaves the id
-behind as a *tombstone*:
+Every `DEL` that finds its entry reports `HMA2550 UPDATE COMPLETE`. An id that
+was never in the zone is reported as `HMA2532` and `HMA2560`, and the step ends
+with return code 08. That is expected for the ids your system never had, and the
+statements after it are still processed. This is the output of step `UCLCDS` on
+a system that had installed 1.5.0 new, so that `TUFS130` and the older ids were
+never in its zone:
 
 ```
-TUFS120   TYPE            = FUNCTION
-          DELBY           = TUFS130
+ UCLIN CDS .
+  DEL SYSMOD(TUFS150) MOD(UFSD) .
+HMA2550    UPDATE COMPLETE FOR TUFS150
+  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
+HMA2550    UPDATE COMPLETE FOR TUFS150
+  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
+HMA2550    UPDATE COMPLETE FOR TUFS150
+  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
+HMA2550    UPDATE COMPLETE FOR TUFS150
+  DEL MOD(UFSD) .
+HMA2550    UPDATE COMPLETE FOR UFSD
+  DEL MOD(UFSDSSIR) .
+HMA2550    UPDATE COMPLETE FOR UFSDSSIR
+  DEL MOD(UFSDCLNP) .
+HMA2550    UPDATE COMPLETE FOR UFSDCLNP
+  DEL MOD(UFSFMT) .
+HMA2550    UPDATE COMPLETE FOR UFSFMT
+  DEL LMOD(UFSD) .
+HMA2550    UPDATE COMPLETE FOR UFSD
+  DEL LMOD(UFSDSSIR) .
+HMA2550    UPDATE COMPLETE FOR UFSDSSIR
+  DEL LMOD(UFSDCLNP) .
+HMA2550    UPDATE COMPLETE FOR UFSDCLNP
+  DEL LMOD(UFSFMT) .
+HMA2550    UPDATE COMPLETE FOR UFSFMT
+  DEL SYSMOD(TUFS150) .
+HMA2550    UPDATE COMPLETE FOR TUFS150
+  DEL SYSMOD(TUFS140) .
+HMA2550    UPDATE COMPLETE FOR TUFS140
+  DEL SYSMOD(TUFS130) .
+HMA2532 ** SYSMOD ENTRY TUFS130 TO BE DELETED DOES NOT EXIST
+HMA2560    UPDATE PROCESSING TERMINATED - UPDATE NOT COMPLETE
+  DEL SYSMOD(TUFS120) .
+HMA2532 ** SYSMOD ENTRY TUFS120 TO BE DELETED DOES NOT EXIST
+HMA2560    UPDATE PROCESSING TERMINATED - UPDATE NOT COMPLETE
+  DEL SYSMOD(TUFS110) .
+HMA2532 ** SYSMOD ENTRY TUFS110 TO BE DELETED DOES NOT EXIST
+HMA2560    UPDATE PROCESSING TERMINATED - UPDATE NOT COMPLETE
+ ENDUCL .
+HMA2050    UCLIN PROCESSING COMPLETED - HIGHEST RETURN CODE IS 08
+HMA2050    HMASMP PROCESSING COMPLETED - HIGHEST RETURN CODE IS 08
 ```
 
-A `LIST` answers **RC 00** for that stanza, not RC 04, so the "RC 04 and an
-empty list means the id is free" rule in step 3 reads it as still occupied. The
-id is spent, and it stays spent until something clears it.
+Step `UCLACDS` gives the same, without the `LMOD` statements. Any other message
+is not expected.
 
-**Tombstones accumulate, one per upgrade.** A system that went 1.2.x → 1.3.0 →
-1.4.0 holds two: `TUFS120` marked `DELBY = TUFS130`, and `TUFS130` marked
-`DELBY = TUFS140`. Deleting the release and its immediate predecessor clears
-the newer one and leaves the older standing for good — and because the `LIST`
-in step 3 only asks about the ids you named, the job reports complete success
-while a tombstone survives. That is why the block above names **every id UFSD
-has ever spent** (`TUFS110`, `TUFS120`, `TUFS130`, `TUFS140`) rather than the
-one you are removing plus one.
-
-A plain `DEL SYSMOD` clears a tombstone — measured on drnmig3a 2026-09-14 by
-the httpd project (`TSTHCLN JOB00043`, 29 × `HMA2550`, COND 0000, both ids gone
-from both zones afterwards). An id that was never on this system reports
-nothing to do, so every line is safe whether it hits or not. **That is the
-whole reason the list is unconditional**: it needs no judgement from you about
-which releases this system has seen, and getting that judgement wrong is
-exactly the failure it prevents.
-
-If a future release adds an id, it is added here too — the list grows one line
-per release, on the same cadence as the version bump in `mbt.toml` (the id
-follows from `[project] version` and `[smp] prefix`).
+**The two zones have a step each for a reason.** After a step has ended with
+return code 08, SMP does not execute the next `UCLIN` of the same step: it
+answers `HMA2293 ** CONTROL STATEMENT IGNORED DUE TO PREVIOUS ERROR` and does
+nothing. With both blocks in one step, the ids that the system never had would
+leave the ACDS untouched. The `LIST` step shows that, as step 3 explains.
 
 ## 3. Read the LIST — this is the actual result
 
-The `LIST` step is what tells you whether it worked. Every id must answer, in
-both zones:
+The last step of the job is the result. For every id, in both zones, it must
+answer that the entry was not found. These are the first two of the ten
+statements, as the step printed them:
 
 ```
-THE FOLLOWING SELECTED ENTRIES WERE NOT FOUND OR WERE NOT ELIGIBLE
-FOR PROCESSING
+ RESETRC .
+ LIST CDS  SYSMOD(TUFS150) .
+LIST     SELECT SUMMARY REPORT FOR SMPCDS
+THE FOLLOWING SELECTED ENTRIES WERE NOT FOUND OR WERE NOT ELIGIBLE FOR PROCESSING
  TYPE        NAME
- SYSMOD      TUFS140
+ SYSMOD      TUFS150
+ LIST ACDS SYSMOD(TUFS150) .
+LIST     SELECT SUMMARY REPORT FOR SMPACDS
+THE FOLLOWING SELECTED ENTRIES WERE NOT FOUND OR WERE NOT ELIGIBLE FOR PROCESSING
+ TYPE        NAME
+ SYSMOD      TUFS150
 ```
 
-with `HIGHEST RETURN CODE IS 04`. **RC 04 and an empty list means the FMID is
-free.** Both zones matter: the CDS records what is applied, the ACDS what is
-accepted, and they are separate inventories — an id gone from one and present
-in the other is not free.
+The step must end with the highest return code 04. **Return code 04 together
+with this answer means that the FMID is free.** Both zones count: an id gone
+from one and still in the other is not free.
 
-**Read the stanzas, not the step's return code.** The `LIST` reports RC 04 for
-the ids that are gone, so a single surviving tombstone — which answers RC 00 —
-does not raise the step's highest return code above the 04 you were expecting.
-There are eight `LIST` statements above and all eight must show the id as not
-found; a stanza naming `TYPE = FUNCTION` and `DELBY` is one that is still
-there.
+**Read the stanzas, not the return code of the step.** A mark that is still
+there answers with return code 00, so it does not raise the return code of the
+step above the 04 that you expect. The job has ten `LIST` statements, and all
+ten must show the id as not found. A stanza that names `TYPE = FUNCTION` is an
+entry that is still there, whether it shows the status `REC APP ACC` of the FMID
+or only a `DELBY` of its successor. This is what the statements
+`LIST CDS SYSMOD(TUFS150)` and `LIST CDS SYSMOD(TUFS140)` print on a system with
+1.5.0 installed:
+
+```
+ LIST CDS  SYSMOD(TUFS150) .
+SMPCDS   SYSMOD ENTRIES
+  NAME
+TUFS150   TYPE            = FUNCTION
+          STATUS          = REC  APP  ACC
+          FMID            = TUFS150
+          JCLIN           = YES
+          DATE/TIME REC   = 26.293  21:09:08
+                    APP   = 26.293  21:09:25
+                    ACC   = 26.293  21:09:36
+          DELETE VER(001) = TUFS140
+          MOD             = UFSD      UFSDCLNP  UFSDSSIR  UFSFMT
+
+ LIST CDS  SYSMOD(TUFS140) .
+SMPCDS   SYSMOD ENTRIES
+  NAME
+TUFS140   TYPE            = FUNCTION
+          DELBY           = TUFS150
+```
 
 ## 4. Scratch the libraries
 
-`UCLIN` edits the inventory only. The load modules are still in the target
-library and SMP's accepted copies are still in the distribution library. The
-allocation job in the install guide is a `DISP=(NEW,CATLG)` step, so it would
-fail against either of them:
+`UCLIN` changes only the inventory. The load modules are still in the target
+library, and the copies that SMP accepted are in the distribution library. The
+allocation job of the installation creates both with `DISP=(NEW,CATLG)`, so it
+would fail against either of them. Delete them in a job of your own:
 
 ```
   DELETE UFSD.LINKLIB  NONVSAM SCRATCH PURGE
   DELETE UFSD.AUFSDLOD NONVSAM SCRATCH PURGE
 ```
 
-**Only when you are removing UFSD for good.** For an upgrade these are the
-datasets the next release installs into; leave them.
-
-Leave `UFSD.SAMPLIB` alone either way if you like — the install job's `DELOLD`
-step scratches it on its own.
+**Do this only when you remove UFSD for good.** After an upgrade, these are the
+data sets that the next release installs into; leave them. `UFSD.SAMPLIB` may
+stay. The install job scratches it itself the next time.
 
 ## 5. What is not removed, because SMP never owned it
 
-- The procedures and the configuration member you copied into your PROCLIB and
-  PARMLIB.
-- **Your UFS disks.** The datasets named by `ROOT` and `MOUNT` in `UFSDPRM0`
-  hold your files and are untouched by any of the above.
+- The procedures and the member of the configuration that you copied into the
+  procedure library and the parameter library of the system.
+- The entry for `UFSD.LINKLIB` in the APF list, if you made one.
+- **Your file systems.** The data sets that `ROOT` and `MOUNT` name in the
+  member hold your files. None of the steps above touches them.
 
 Those are yours to delete.
 
@@ -209,9 +272,11 @@ Those are yours to delete.
 
 ## Why `RESTORE` and `REJECT` do not work
 
-Worth knowing, because the messages point away from the cause.
+Worth knowing, because the messages point away from the cause. The install job
+accepts the FMID in the same run in which it applies it. That closes both of the
+usual ways back.
 
-**`RESTORE` refuses an accepted SYSMOD.**
+**`RESTORE` refuses a SYSMOD that has been accepted.**
 
 ```
 HMA2452 ** SYSMOD <fmid> SELECTED FOR RESTORE HAS BEEN ACCEPTED
@@ -220,7 +285,7 @@ HMA3703 ** RESTORE PROCESSING TERMINATED BECAUSE FUNCTION SYSMOD
 HMA2050    RESTORE PROCESSING COMPLETED - HIGHEST RETURN CODE IS 12
 ```
 
-**`REJECT` then fails for an unrelated-looking reason.**
+**`REJECT` then fails for a reason that looks unrelated.**
 
 ```
 HMA2462 ** SYSMOD <fmid> NOT FOUND ON SMPPTS LIBRARY
@@ -228,20 +293,13 @@ HMA2260    REJECT PROCESSING TERMINATED FOR SYSMOD <fmid>
 HMA2050    REJECT PROCESSING COMPLETED - HIGHEST RETURN CODE IS 12
 ```
 
-The `ACCEPT` removes the modification control statements from `SYS1.SMPPTS`,
-and `REJECT` works from that member. So accepting a function SYSMOD closes
-both documented routes at once: `RESTORE` because it was accepted, `REJECT`
-because accepting took away what it needs. `UCLIN` is not a workaround here,
-it is the only way.
-
-This was measured on 2026-08-14 against an accepted FMID installed from a
-package built by this generator, on an MVS/CE system running SMP 4 level
-04.48.
+The `ACCEPT` removes the modification control statements from the `SMPPTS` data
+set, and `REJECT` needs them. `UCLIN` is not a workaround: it is the only way.
 
 ## Why the install job accepts at all
 
 The `ACCEPT` fills the distribution library, which is the base a later
 `RESTORE` of a **PTF** returns to. Without it, a `RESTORE` would delete the
 module rather than revert it, because there would be no previous level to go
-back to. The cost is what this document is about: the FMID itself becomes
+back to. The price is what this document is about: the FMID itself becomes
 permanent by documented means.

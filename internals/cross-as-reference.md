@@ -143,10 +143,20 @@ Until #55 this failed earlier and more confusingly, with `IEF612I PROCEDURE
 NOT FOUND` — not because the router rejected anything (the long-held theory
 here), but because the subsystem was named `UFSD` like the procedure, which
 put the start on the master-subsystem path. The subsystem is now `UFS1`; see
-`docs/recovery.md`, "Why the Subsystem is not called UFSD".
+"Why the subsystem is not called UFSD" below.
 
 If UFSD abends, SSCT and CSA stay allocated by design — the next `/S UFSD`
 reclaims them (#49), UFSDCLNP is the standalone fallback. The ESTAE exit is
 still mandatory: without it the abend leaves the SSVT entry live, and
 clients keep being dispatched into a router whose address space is gone
 (see concept.md, "SSI Router").
+
+## Why the subsystem is not called UFSD
+
+The MVS subsystem is named **`UFS1`** (`UFSD_SSNAME`, `include/ufsd.h`); only the started task keeps the name `UFSD`. `F UFSD,…` and `P UFSD` address the jobname and are unaffected.
+
+The two must differ. While a subsystem of the same name is registered, MVS converts `S <name>` onto the **master-subsystem** start path, and the master's `IEFPDSI` knows only `SYS1.PROCLIB` — so with a subsystem named `UFSD`, every start issued over a registered SSCT (the reclaim start after an abend, or a second start while the server runs) either failed with `IEF612I PROCEDURE NOT FOUND` before any UFSD code ran, or had to be served by a companion member in `SYS1.PROCLIB`. That companion then shadowed `SYS2.PROCLIB(UFSD)` for *all* starts, because JES2's `PROC00` concatenation searches `SYS1.PROCLIB` first. This is the anti-pattern IBM later codified as "do not assign a subsystem the same name as a started procedure"; the non-JES products avoid it by naming (DB2 `DSN1`, MQ `MQ01`).
+
+Note that the name is compiled into every client through the statically linked libufs, so server and consumers (HTTPD, FTPD, mvsMF, HTTPLUA, HTTPREXX) must be deployed together.
+
+The rename is not backward compatible in either direction: a 1.0.0 client cannot find `UFS1`, and a 1.1.0 server does not see an SSCT named `UFSD`. The user-facing steps for a system that ran 1.0.0 are in the User's Guide (`docs/books/guide/ug-recover.typ`, "Changing the Subsystem Name"). Two details the book leaves out: a companion `SYS1.PROCLIB(UFSD)` that is left in place keeps shadowing `SYS2.PROCLIB(UFSD)`, so the server starts from the wrong member, silently, with `SYSPRINT`/`SYSTERM` on `DUMMY`; and a leftover `UFSD.SYSUDUMP` data set from the companion can be deleted.
