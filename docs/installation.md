@@ -420,7 +420,8 @@ chapter 3, "The UFSFMT Utility".
 ```
 
 A healthy start ends in `UFSD001I … READY`. The set of lines depends on your
-configuration; this is the console of a system with three filesystems:
+configuration; this is the console of a 1.5.0 system with three filesystems.
+The version, the build stamps and the addresses are those of that system:
 
 ```
 UFSD000I UFSD 1.5.0 (1AA3EB6) STARTING

@@ -49,7 +49,7 @@ Each mounted filesystem lives in a BDAM dataset, and there are two ways to creat
 - **On MVS**, with the `UFSFMT` batch utility. No host toolchain, nothing to upload — allocate the dataset and format it in a single job (`samplib/ufsfmt`). This is the route for the root disk and for any empty filesystem.
 - **On a host**, with [`ufsd-utils`](https://github.com/mvslovers/ufsd-utils), when the disk should arrive with content already on it: create an image, fill it with `cp -r`, then upload.
 
-Both produce the same on-disk layout. See [docs/disk-setup.md](docs/disk-setup.md) for the complete workflow.
+Both produce the same on-disk layout. See [docs/disk-setup.md](docs/disk-setup.md) for the host route. `UFSFMT` is described in the _UFSD User's Guide_ (ML05-0001), chapter 3, "Creating Disks".
 
 ### Starting and Stopping
 
@@ -62,7 +62,7 @@ Both produce the same on-disk layout. See [docs/disk-setup.md](docs/disk-setup.m
 /P UFSD                         Stop the server
 ```
 
-For the complete parmlib reference and all operator commands, see [docs/configuration.md](docs/configuration.md).
+The operator commands are in the _UFSD User's Guide_ (ML05-0001), chapter 5, "Running UFSD", and in full in the _UFSD Reference_ (ML05-0002), chapter 1, "Operator Commands".
 
 ## Configuration
 
@@ -70,7 +70,7 @@ The server is configured through a Parmlib member referenced by the `UFSDPRM` DD
 
 | Statement | Parameters | Description |
 |-----------|-----------|-------------|
-| `ROOT` | `DSN` [, `BLKSIZE`] | Root filesystem (always mounted at `/`, read-only for clients) |
+| `ROOT` | `DSN` | Root filesystem (always mounted at `/`, read-only for clients) |
 | `MOUNT` | `DSN`, `PATH`, `MODE`, `OWNER` | Additional filesystem mount |
 
 | Parameter | Values | Default | Description |
@@ -80,7 +80,7 @@ The server is configured through a Parmlib member referenced by the `UFSDPRM` DD
 | `MODE(RO\|RW)` | `RO` or `RW` | `RO` | Read-only or read-write |
 | `OWNER(userid)` | RACF userid | — | Restrict writes to this userid |
 
-For the complete reference, see [docs/configuration.md](docs/configuration.md).
+The statements are in the _UFSD User's Guide_, chapter 4, "Configuring UFSD", and in full in the _UFSD Reference_, chapter 2, "The UFSDPRM Statements". [docs/configuration.md](docs/configuration.md) says which book answers which question.
 
 ## Ecosystem
 
