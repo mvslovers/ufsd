@@ -95,12 +95,29 @@ sources = ["test/mvs/tstufsav.c", "src/ufsd#asv.c"]
 rent = false          # mbtcheck.h keeps file-static counters
 sources = ["test/mvs/tstufsmp.c", "src/ufsd#mnt.c"]
 
+# TSTLIBUF — client/libufs.c on the host, with a stub standing in for the one
+# call it makes into MVS: iefssreq() (SVC 34). The stub is defined in the test,
+# so libufs.c is compiled unchanged; test/host/include holds the few libc370 /
+# IBM headers it needs, as type-only stand-ins. Host-only (mvs = false):
+# LIBUFTST is the test that runs libufs against a live server.
+[test.TSTLIBUF]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs the stand-in headers and its own iefssreq
+sources = ["test/host/tstlibuf.c", "client/libufs.c"]
+
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
 [test.TSTUFSRC]
 rent = false          # mbtcheck.h keeps file-static counters
 host = false                                                          # MVS-only: needs a live ASVT
 sources = ["test/mvs/tstufsrc.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
+
+# The host compiler has no libc370 or IBM macro headers; test/host/include has
+# type-only stand-ins for the ones libufs.c reads. -Dasm(x)= drops the
+# asm("UFS#...") external names libufs.h puts on its prototypes: they are MVS
+# member names and the host assembler cannot take them.
+[build.host]
+cflags = ["-Dasm(x)=", "-I", "test/host/include"]
 
 # ── Library (consumed by HTTPD and others) ───────────────
 [lib]
