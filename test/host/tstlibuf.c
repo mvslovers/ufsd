@@ -40,7 +40,7 @@
 ** The stub transport
 ** ============================================================ */
 
-#define MAXSTEP 16
+#define MAXSTEP 24
 
 typedef struct step {
     int      r15;                       /* iefssreq return value            */
@@ -1064,6 +1064,7 @@ test_error_propagation(void)
 
         begin();
         s_rc(UFSD_RC_INVALID);
+        s_rc(UFSD_RC_INVALID);      /* INVALID is retried once, inline (#80) */
         memset(buf, 'z', sizeof(buf));
         CHECK_EQ(ufs_fwrite(buf, 1, 300, fp), 0, "rejected/fwrite 4K: no bytes counted");
         CHECK_EQ(ufs_ferror(fp), UFSD_RC_INVALID, "rejected/fwrite 4K: ferror is the server's rc");
@@ -1089,6 +1090,161 @@ test_error_propagation(void)
     close_session(&ufs);
 }
 
+/* ============================================================
+** 4K write while the router's CSA buffer pool is empty (#80)
+**
+** The router has no buffer to copy the client's data into, so the request
+** reaches do_fwrite with data_len 8 and no data: it answers
+** UFSD_RC_INVALID before it writes anything and answers a byte count of 0
+** (data_len 4).  That is back-pressure, not a bad request -- the same chunk
+** must go again through the inline path.
+** ============================================================ */
+
+/* The empty-pool answer as do_fwrite gives it: rc INVALID, byte count 0. */
+static void
+s_pool_empty(void)
+{
+    STEP *s = s_resp(4U);
+
+    put_u32(s->data, 0U);
+    s->rc   = UFSD_RC_INVALID;
+    s->retn = UFSD_RC_INVALID;
+}
+
+/* The same rejection with no response data at all. */
+static void
+s_pool_empty_nolen(void)
+{
+    s_rc(UFSD_RC_INVALID);
+}
+
+static void
+test_write_pool_empty(void)
+{
+    UFS      *ufs;
+    UFSFILE  *fp;
+    char      src[4096 + 300];
+    unsigned  i;
+
+    for (i = 0; i < sizeof(src); i++)
+        src[i] = (char)('A' + (i % 26));
+
+    ufs = new_session();
+    if (!ufs) return;
+
+    /* 300 bytes: 4K path refused, the same bytes go inline in 248 + 52 */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_pool_empty();
+        s_ok_u32(248U);
+        s_ok_u32(52U);
+        CHECK_EQ(ufs_fwrite(src, 1, 300, fp), 300, "pool empty: all 300 bytes written");
+        CHECK_EQ(ufs_ferror(fp), 0, "pool empty: no error on the handle");
+        EXPECT_CALLS(3, "pool empty, 300 bytes");
+        CHECK(g_seen[0].buf_ptr == (void *)src, "pool empty: first try is the 4K path");
+        CHECK_EQ(g_seen[1].func, UFSREQ_FWRITE, "pool empty: retry is FWRITE");
+        CHECK(g_seen[1].buf_ptr == NULL, "pool empty: retry carries no buffer pointer");
+        CHECK_EQ(get_u32(g_seen[1].data + 4), 248, "pool empty: retry count is the inline maximum");
+        CHECK_EQ(g_seen[1].data_len, 8 + 248, "pool empty: retry carries header + data");
+        CHECK(memcmp(g_seen[1].data + 8, src, 248) == 0, "pool empty: retry bytes, first piece");
+        CHECK(g_seen[2].buf_ptr == NULL, "pool empty: second piece is inline too");
+        CHECK_EQ(get_u32(g_seen[2].data + 4), 52, "pool empty: second piece count");
+        CHECK(memcmp(g_seen[2].data + 8, src + 248, 52) == 0, "pool empty: retry bytes, second piece");
+        close_file(&fp);
+    }
+
+    /* the same refusal without a returned length is recognised too */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_pool_empty_nolen();
+        s_ok_u32(248U);
+        s_ok_u32(52U);
+        CHECK_EQ(ufs_fwrite(src, 1, 300, fp), 300, "pool empty, no length: all 300 bytes written");
+        CHECK_EQ(ufs_ferror(fp), 0, "pool empty, no length: no error on the handle");
+        EXPECT_CALLS(3, "pool empty, no length");
+        close_file(&fp);
+    }
+
+    /* 4396 bytes: the pool is only skipped for the chunk it refused */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        unsigned n;
+
+        begin();
+        s_pool_empty();
+        for (n = 0; n < 16; n++) s_ok_u32(248U);
+        s_ok_u32(128U);             /* 16 * 248 + 128 = 4096 */
+        s_ok_u32(300U);             /* the rest goes the 4K way again */
+        CHECK_EQ(ufs_fwrite(src, 1, sizeof(src), fp), sizeof(src),
+                 "pool empty: 4396 bytes all written");
+        CHECK_EQ(ufs_ferror(fp), 0, "pool empty, 4396: no error on the handle");
+        EXPECT_CALLS(1 + 17 + 1, "pool empty, 4396 bytes");
+        CHECK(g_seen[0].buf_ptr == (void *)src, "pool empty, 4396: first try is the 4K path");
+        CHECK_EQ(g_seen[0].buf_len, 4096, "pool empty, 4396: first try is a full chunk");
+        CHECK(g_seen[1].buf_ptr == NULL, "pool empty, 4396: refused chunk goes inline");
+        CHECK_EQ(g_seen[17].data_len, 8 + 128, "pool empty, 4396: last inline piece");
+        CHECK(memcmp(g_seen[17].data + 8, src + 16 * 248, 128) == 0,
+              "pool empty, 4396: last inline piece bytes");
+        CHECK(g_seen[18].buf_ptr == (void *)(src + 4096),
+              "pool empty, 4396: next chunk tries the 4K path again");
+        close_file(&fp);
+    }
+
+    /* a write that is invalid for real fails on the retry too: reported */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_pool_empty();
+        s_rc(UFSD_RC_INVALID);
+        (void)ufs_fwrite(src, 1, 300, fp);
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_INVALID, "invalid write: ferror is INVALID");
+        EXPECT_CALLS(2, "invalid write retried once");
+        close_file(&fp);
+    }
+
+    /* inline-sized write answered INVALID: there is nothing to retry */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_rc(UFSD_RC_INVALID);
+        (void)ufs_fwrite(src, 1, 100, fp);
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_INVALID, "inline invalid: ferror is INVALID");
+        EXPECT_CALLS(1, "inline invalid, no retry");
+        close_file(&fp);
+    }
+
+    /* INVALID after part of the data was written is no refusal: no retry */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        STEP *st;
+
+        begin();
+        st = s_resp(4U);
+        put_u32(st->data, 100U);
+        st->rc   = UFSD_RC_INVALID;
+        st->retn = UFSD_RC_INVALID;
+        CHECK_EQ(ufs_fwrite(src, 1, 300, fp), 100, "partial then INVALID: the 100 bytes counted");
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_INVALID, "partial then INVALID: ferror is INVALID");
+        EXPECT_CALLS(1, "partial then INVALID, no retry");
+        close_file(&fp);
+    }
+
+    /* any other error on the 4K path is not back-pressure: no retry */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_rc(UFSD_RC_IO);
+        (void)ufs_fwrite(src, 1, 300, fp);
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_IO, "4K path IO error: ferror is IO");
+        EXPECT_CALLS(1, "4K path IO error, no retry");
+        close_file(&fp);
+    }
+
+    close_session(&ufs);
+}
+
 int
 main(void)
 {
@@ -1102,6 +1258,7 @@ main(void)
     test_short_response();
     test_success();
     test_error_propagation();
+    test_write_pool_empty();
 
     CHECK_EQ(g_badssob, 0, "every SSOB/SSIB/UFSSSOB libufs built was well formed");
 

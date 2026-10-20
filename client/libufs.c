@@ -938,6 +938,7 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
     unsigned    done;
     unsigned    want;
     unsigned    written;
+    unsigned    inline_until;
 
     if (!ptr || !fp || fp->fd < 0)  return 0;
     if (fp->flags & LIBUFS_F_ERR)   return 0;
@@ -947,10 +948,16 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
 
     src  = (const char *)ptr;
     done = 0;
+    inline_until = 0;
 
     while (done < total) {
         want = total - done;
         if (want > LIBUFS_WRITE_CHUNK) want = LIBUFS_WRITE_CHUNK;
+        if (done < inline_until) {
+            /* Resending a refused chunk: stay inline up to its end. */
+            want = inline_until - done;
+            if (want > LIBUFS_WRITE_INLINE) want = LIBUFS_WRITE_INLINE;
+        }
 
         memset(&ufsssob, 0, sizeof(ufsssob));
         memcpy(ufsssob.eye, UFSSSOB_EYE, 4);
@@ -982,6 +989,18 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
         ** only if one was sent. */
         written = (ufsssob.data_len >= (unsigned)sizeof(unsigned))
                   ? *(unsigned *)ufsssob.data : 0U;
+
+        if (ufsssob.rc == UFSD_RC_INVALID && written == 0
+            && want > LIBUFS_WRITE_INLINE) {
+            /* The router had no CSA buffer for the 4K path, so do_fwrite
+            ** found a count and no data and refused before it wrote
+            ** anything (INVALID, byte count 0).  That is back-pressure,
+            ** not a bad request: send this chunk again inline, 248 bytes
+            ** at a time.  The inline request cannot hit the same
+            ** refusal, so this cannot loop. */
+            inline_until = done + want;
+            continue;
+        }
 
         if (ufsssob.rc != UFSD_RC_OK) {
             /* A failed write may still have moved part of the data --

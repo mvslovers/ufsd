@@ -46,6 +46,7 @@
 **   LUFTST15I Session closed
 */
 
+#include <stdlib.h>
 #include <string.h>
 #include <mvs/apf.h>
 #include <mvs/wto.h>
@@ -53,6 +54,8 @@
 
 #define TESTDIR  "/tmp/LIBUFSTEST"
 #define TESTFILE "/tmp/LIBUFSTEST/HELLO.TXT"
+#define BIGFILE  "/tmp/LIBUFSTEST/BIG.TXT"
+#define BIGLEN   5000U  /* one full 4K chunk and a 904 byte one (#80) */
 
 static const char testdata[] = "Hello from libufs!";
 #define TESTLEN  18U  /* strlen("Hello from libufs!") */
@@ -71,6 +74,7 @@ main(int argc, char **argv)
     int       rc;
     int       mp_fail = 0;   /* #52: listing vs stat mismatches */
     int       wr_fail = 0;   /* #79: a rejected write counted as written */
+    int       big_fail = 0;  /* #80: 4K write path failed        */
 
     (void)argc;
 
@@ -434,6 +438,53 @@ main(int argc, char **argv)
     }
 
     /* ============================================================
+    ** Step 9a: 4K write path -- BIGLEN bytes written, read back, compared
+    ** (#80: must hold whether or not the router has a CSA buffer free)
+    ** ============================================================ */
+    {
+        char     *wbig = (char *)malloc(BIGLEN);
+        char     *rbig = (char *)malloc(BIGLEN);
+        unsigned  i;
+
+        if (!wbig || !rbig) {
+            wtof("LUFTST09E 4K write: no storage");
+            big_fail = 1;
+        } else {
+            for (i = 0; i < BIGLEN; i++)
+                wbig[i] = (char)('A' + (i % 26));
+            memset(rbig, 0, BIGLEN);
+
+            fp = ufs_fopen(ufs, BIGFILE, "w");
+            if (!fp) {
+                wtof("LUFTST09E 4K write: fopen failed");
+                big_fail = 1;
+            } else {
+                items = ufs_fwrite(wbig, 1, BIGLEN, fp);
+                wtof("LUFTST16I FWRITE %u bytes: items=%u, error=%d",
+                     BIGLEN, items, ufs_ferror(fp));
+                if (items != BIGLEN) big_fail = 1;
+                ufs_fclose(&fp);
+            }
+
+            fp = big_fail ? NULL : ufs_fopen(ufs, BIGFILE, "r");
+            if (fp) {
+                items = ufs_fread(rbig, 1, BIGLEN, fp);
+                wtof("LUFTST17I FREAD %u bytes: items=%u", BIGLEN, items);
+                if (items != BIGLEN || memcmp(rbig, wbig, BIGLEN) != 0) {
+                    wtof("LUFTST09E 4K write: read-back differs");
+                    big_fail = 1;
+                }
+                ufs_fclose(&fp);
+            }
+            if (!big_fail)
+                wtof("LUFTST18I 4K write path: OK");
+            ufs_remove(ufs, BIGFILE);
+        }
+        free(wbig);
+        free(rbig);
+    }
+
+    /* ============================================================
     ** Step 10: REMOVE
     ** ============================================================ */
 remove_file:
@@ -469,10 +520,11 @@ close_sess:
     ufsfree(&ufs);
     wtof("LUFTST15I Session closed");
 
-    /* The mount view check (step 1e) and the rejected write (step 7a)
-    ** are the steps whose verdict reaches the runner: they compare
-    ** answers from the server rather than reporting one, so a mismatch
-    ** is a defect and nothing about the test environment can excuse it.
-    ** The older steps keep reporting through WTO only. */
-    return (mp_fail || wr_fail) ? 8 : 0;
+    /* The mount view check (step 1e), the rejected write (step 7a) and
+    ** the 4K write (step 9a) are the steps whose verdict reaches the
+    ** runner: they compare answers from the server rather than
+    ** reporting one, so a mismatch is a defect and nothing about the
+    ** test environment can excuse it.  The older steps keep reporting
+    ** through WTO only. */
+    return (mp_fail || wr_fail || big_fail) ? 8 : 0;
 }
