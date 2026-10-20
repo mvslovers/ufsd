@@ -48,14 +48,14 @@ kind = "application"
 # and the B37/D37/E37 extent-end test in UFSFMT only looks at a real space
 # abend, which try() still returns unchanged; UFSFMT run against 2.24.0
 # formats 1280 of 1280 requested blocks, ends the extent on D37 and sets CC 0.
-# Since libc370 2.15.0 UFSD needs the key-8 warm-up fopen in ufsd_ssi_load()
-# (#107, libc370#693); without it the server abends S0C4 at start.
+# libc370 2.15.0 to 2.24.0 abend UFSD with S0C4 at start unless a key-8
+# fopen() precedes the key-0 __loadhi() window (libc370#693, #107).
 # 2.24.1: libc370#693 is fixed in the library: the open-file list, the
 # standard streams and SYSENV are created in the task's key, also inside a
 # key-0 window. UFSD source from before the key-8 warm-up (#107): S0C4 at
 # start linked against 2.24.0, READY against 2.24.1 (throwaway container).
-# The warm-up fopen stays in ufsd_ssi_load() for now (one fopen/fclose of
-# STEPLIB; dropping it is a separate change). 2.24.0 to 2.24.1 change no
+# The warm-up fopen is gone from ufsd_ssi_load() (#114), so this pin is a
+# floor: with 2.24.0 or older the warm-up is needed again. 2.24.0 to 2.24.1 change no
 # prototype ufsd calls; the build and the 518 host assertions are identical
 # against both, and so are the 446 MVS assertions in a container. The other
 # 2.24.1 change (select()/socket() errno, #161) is in code no ufsd module
