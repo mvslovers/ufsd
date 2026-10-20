@@ -75,8 +75,8 @@ int
 iefssreq(SSOB *ssob)
 {
     UFSSSOB *u;
-    SSIB    *s;
-    STEP    *st;
+    const SSIB *s;
+    const STEP *st;
     SEEN    *sn;
     unsigned n;
 
@@ -85,7 +85,7 @@ iefssreq(SSOB *ssob)
         return SSRTLERR;
     }
     u = (UFSSSOB *)ssob->SSOBINDV;
-    s = (SSIB *)ssob->SSOBSSIB;
+    s = (const SSIB *)ssob->SSOBSSIB;
 
     if (memcmp(ssob->SSOBID, SSOBID_EYE, 4) != 0
         || ssob->SSOBLEN != (unsigned short)sizeof(SSOB)
@@ -107,7 +107,7 @@ iefssreq(SSOB *ssob)
         sn->buf_ptr  = u->buf_ptr;
         sn->buf_len  = u->buf_len;
     }
-    if (n >= g_nstep) {
+    if (n >= g_nstep || n >= MAXSTEP) {
         g_overrun++;
         return SSRTDIST;
     }
@@ -324,21 +324,20 @@ close_file(UFSFILE **fp)
 #define SENTINEL_LEN  0x55U
 
 static int
-raw_call(UFSSSOB *u, SSOB *ssob)
+raw_call(UFSSSOB *u, SSOB *ssob, SSIB *ssib)
 {
     static const char ssib_id[4] = { 'S', 'S', 'I', 'B' };
-    SSIB ssib;
 
-    memset(&ssib, 0, sizeof(ssib));
-    memcpy(ssib.SSIBID, ssib_id, 4);
-    ssib.SSIBLEN = (unsigned short)sizeof(ssib);
-    memcpy(ssib.SSIBSSNM, UFSD_SSNAME, 4);
+    memset(ssib, 0, sizeof(*ssib));
+    memcpy(ssib->SSIBID, ssib_id, 4);
+    ssib->SSIBLEN = (unsigned short)sizeof(*ssib);
+    memcpy(ssib->SSIBSSNM, UFSD_SSNAME, 4);
 
     memset(ssob, 0, sizeof(*ssob));
     memcpy(ssob->SSOBID, SSOBID_EYE, 4);
     ssob->SSOBLEN  = (unsigned short)sizeof(*ssob);
     ssob->SSOBFUNC = (unsigned short)UFSD_SSOBFUNC;
-    ssob->SSOBSSIB = &ssib;
+    ssob->SSOBSSIB = ssib;
     ssob->SSOBINDV = u;
 
     memset(u, 0, sizeof(*u));
@@ -356,13 +355,14 @@ test_stub_conditions(void)
 {
     UFSSSOB u;
     SSOB    ssob;
+    SSIB    ssib;
     int     r15;
 
     printf("\n--- stub: the four conditions ---\n");
 
     begin();
     s_transport(SSRTNOSS);
-    r15 = raw_call(&u, &ssob);
+    r15 = raw_call(&u, &ssob, &ssib);
     CHECK_EQ(r15, SSRTNOSS, "transport failure: R15 is the scripted one");
     CHECK(u.rc == SENTINEL_RC && u.data_len == SENTINEL_LEN
           && (unsigned char)u.data[0] == 0x5A,
@@ -370,7 +370,7 @@ test_stub_conditions(void)
 
     begin();
     s_refused(UFSD_RC_CORRUPT);
-    r15 = raw_call(&u, &ssob);
+    r15 = raw_call(&u, &ssob, &ssib);
     CHECK_EQ(r15, SSRTOK, "router refusal: R15 is 0");
     CHECK_EQ(ssob.SSOBRETN, UFSD_RC_CORRUPT, "router refusal: SSOBRETN set");
     CHECK(u.rc == SENTINEL_RC && u.data_len == SENTINEL_LEN,
@@ -378,26 +378,26 @@ test_stub_conditions(void)
 
     begin();
     s_rc(UFSD_RC_NOFILE);
-    r15 = raw_call(&u, &ssob);
+    r15 = raw_call(&u, &ssob, &ssib);
     CHECK_EQ(r15, SSRTOK, "server error: R15 is 0");
     CHECK_EQ(u.rc, UFSD_RC_NOFILE, "server error: ufsssob.rc set");
     CHECK_EQ(u.data_len, 0, "server error: empty response");
 
     begin();
     s_resp(2U);
-    r15 = raw_call(&u, &ssob);
+    r15 = raw_call(&u, &ssob, &ssib);
     CHECK(r15 == SSRTOK && u.rc == 0, "short response: rc 0");
     CHECK_EQ(u.data_len, 2, "short response: data_len is what was scripted");
 
     begin();
     s_silent();
-    r15 = raw_call(&u, &ssob);
+    r15 = raw_call(&u, &ssob, &ssib);
     CHECK(r15 == SSRTOK && ssob.SSOBRETN == 0, "no answer: R15 and SSOBRETN 0");
     CHECK(u.rc == SENTINEL_RC && u.data_len == SENTINEL_LEN,
           "no answer: response area never written");
 
     begin();
-    r15 = raw_call(&u, &ssob);
+    r15 = raw_call(&u, &ssob, &ssib);
     CHECK_EQ(r15, SSRTDIST, "unscripted request: R15 is a hard failure");
     CHECK_EQ(g_overrun, 1, "unscripted request: counted");
     begin();
@@ -433,12 +433,12 @@ test_wire(void)
 
     begin();
     s_rc(UFSD_RC_OK);
-    CHECK_EQ(ufs_mkdir(ufs, "/tmp/x"), UFSD_RC_OK, "mkdir: ok");
+    CHECK_EQ(ufs_mkdir(ufs, "/work/x"), UFSD_RC_OK, "mkdir: ok");
     EXPECT_CALLS(1, "mkdir");
     CHECK_EQ(g_seen[0].func, UFSREQ_MKDIR, "mkdir: MKDIR");
     CHECK_EQ(g_seen[0].token, TOKEN, "mkdir: session token");
-    CHECK_EQ(g_seen[0].data_len, 7, "mkdir: path length + NUL");
-    CHECK(strcmp(g_seen[0].data, "/tmp/x") == 0, "mkdir: path in data[]");
+    CHECK_EQ(g_seen[0].data_len, sizeof("/work/x"), "mkdir: path length + NUL");
+    CHECK(strcmp(g_seen[0].data, "/work/x") == 0, "mkdir: path in data[]");
 
     begin();
     s_ok_u32(7U);
@@ -521,12 +521,11 @@ test_transport_failure(void)
     UFSFILE   *fp;
     UFSDLIST   st;
     char       buf[64];
-    int        i;
     static const int r15s[] = { SSRTNSUP, SSRTNTUP, SSRTNOSS, SSRTDIST, SSRTLERR };
 
     printf("\n--- transport failure (R15 != 0) ---\n");
 
-    for (i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {
         begin();
         s_transport(r15s[i]);
         CHECK(ufsnew() == NULL, "ufsnew: NULL for every non-zero R15");
@@ -697,8 +696,8 @@ test_server_error(void)
 
     begin();
     s_rc(UFSD_RC_OK);
-    CHECK_EQ(ufs_chgdir(ufs, "/tmp"), UFSD_RC_OK, "chgdir: ok");
-    CHECK(strcmp(ufs->cwd.path, "/tmp") == 0, "chgdir: cwd mirrored on success");
+    CHECK_EQ(ufs_chgdir(ufs, "/work"), UFSD_RC_OK, "chgdir: ok");
+    CHECK(strcmp(ufs->cwd.path, "/work") == 0, "chgdir: cwd mirrored on success");
 
     begin();
     s_rc(UFSD_RC_EACCES);
@@ -759,7 +758,7 @@ test_short_response(void)
 {
     UFS      *ufs;
     UFSDLIST  st;
-    UFSDDESC *dd;
+    const UFSDDESC *dd;
 
     printf("\n--- short or missing response ---\n");
 
@@ -833,7 +832,7 @@ test_success(void)
     UFS      *ufs;
     UFSFILE  *fp;
     UFSDLIST  st;
-    UFSDLIST *e;
+    const UFSDLIST *e;
     UFSDDESC *dd;
     char      buf[64];
 
