@@ -164,9 +164,11 @@ The size of the file system is not read from the catalog or the volume. UFSFMT
 writes blocks until MVS reports the end of the extent. The completion codes
 B37, D37 and E37 are taken as that end. Any other abend of a write is
 #cmd("UFSFMT28E"), which gives the number of blocks written before it. If the
-end of the extent is not reached after 1048576 blocks, the program stops
-with #cmd("UFSFMT24E"). A file system has at most that many blocks, so a
-data set with a larger primary extent is refused and not cut. If not even the first block can be written, the message is #cmd("UFSFMT24E NO
+end of the extent is not reached after 1048575 blocks, the program stops
+with #cmd("UFSFMT24E"), which names 1048576 as the count. The count is a
+safeguard against a loop that never ends, not a limit of the file system. In
+practice it means that an extent of 1048576 blocks or more (4 GB at the block
+size 4096) is refused and not cut. If not even the first block can be written, the message is #cmd("UFSFMT24E NO
 BLOCKS COULD BE WRITTEN").
 
 A data set that is too small is refused with #cmd("UFSFMT27E"). That is a
@@ -193,6 +195,9 @@ exist:
     [No file system, or block 0 cannot be read], [The format goes on. A data
       set that was never written cannot be read, and there is nothing to
       protect.],
+    [The block size of the data set is outside 512 to 8192], [The probe is
+      skipped and the format goes on, also over an existing file system, and
+      also without #cmd("FORCE").],
   )
 ]
 

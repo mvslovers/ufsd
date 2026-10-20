@@ -36,12 +36,23 @@ that UFSD gives to its clients. Where a limit is checked, the message is named.
     [Length of #cmd("DSN()")], [44], [Longer values are cut.],
     [Length of #cmd("PATH()")], [127], [Longer values are cut.],
     [Length of #cmd("OWNER()")], [8], [Longer values are cut.],
-    [Length of a file name], [59], [A longer name gets the return code 64.],
+    [Length of a file name], [59], [A longer name is not found, and a client gets the return code 28 (NOFILE), also when it wants to create the file.],
+    [Length of a path in a request], [255], [The client library cuts a longer path to
+      255 characters for most functions. The functions that open a file
+      take 251 characters, and some others refuse a path of 256 characters or
+      more. Keep paths well below 250 characters.],
+    [Entries in a directory], [_b_/64 × 16], [A directory has direct blocks
+      only: 16 blocks of _b_/64 entries, the entries "." and ".." included.
+      At 4096 this is 1024 entries. More gets the return code 44 (no space),
+      also when the disk is empty.],
     [Inodes in a file system], [fixed at format], [Set by #cmd("INODES") of
       #cmd("UFSFMT"). A directory takes an inode, too.],
-    [Blocks in a file system], [1048576], [The largest data set #cmd("UFSFMT")
-      formats (#cmd("UFSFMT24E")).],
-    [Block size], [512 to 8192], [A multiple of 512. The default is 4096.],
+    [Blocks in a file system], [not fixed], [#cmd("UFSFMT") refuses an extent of 1048576 blocks or more
+      (#cmd("UFSFMT24E")), a safeguard of the program.],
+    [Block size], [512 to 8192], [A multiple of 512. The default is 4096. UFSD takes the block size
+      from the data set label at the mount; a data set whose label differs from
+      the block size of the disk fails the mount with #cmd("UFSD062E") and
+      #cmd("UFSD124E").],
     [Size of a file], [(16 + _b_/4) × _b_], [_b_ is the block size. At 4096 this
       is 4.06 MB. See @ref-lim-file.],
   )
@@ -145,10 +156,16 @@ see @ref-fmt-geometry.
     [Offset], [Length], [Content],
     [000], [4], [The first data block.],
     [004], [4], [The number of blocks of the disk.],
+    [008], [1], [The lock byte of the free blocks. #cmd("UFSFMT") writes 0;
+      UFSD 1.5.0 neither sets nor reads it.],
+    [009], [1], [The lock byte of the free inodes. The same.],
     [00A], [1], [The flag: modified.],
     [00B], [1], [The flag: read only.],
+    [00C], [4], [The time of the last update. #cmd("UFSFMT") writes 0;
+      UFSD 1.5.0 neither sets nor reads it.],
     [010], [4], [The total number of free blocks.],
     [014], [4], [The total number of free inodes.],
+    [018], [4], [The time of the creation. The same as 00C.],
     [01C], [4], [The number of entries in the cache of free blocks.],
     [020], [204], [The cache of free blocks, 51 entries.],
     [0EC], [4], [The number of entries in the cache of free inodes.],
@@ -156,12 +173,15 @@ see @ref-fmt-geometry.
     [1F0], [4], [The number of inodes in a block.],
     [1F4], [4], [The block size as a shift count (12 for 4096).],
     [1F8], [4], [The block where the inode list begins.],
+    [1FC], [4], [The block where the last scan for free blocks stopped. UFSD
+      sets it during the scan and writes it with the rest of the superblock,
+      so the value reaches the disk; UFSD 1.5.0 never reads it, and
+      #cmd("UFSFMT") writes 0.],
   )
 ]
 
-The rest of the 512 bytes is reserved or not used by UFSD 1.5.0. The times of
-the superblock are not set by #cmd("UFSFMT"); it keeps the times in the boot
-block.
+The times of the superblock are not set by #cmd("UFSFMT"); it keeps the times
+in the boot block.
 
 === The Inode
 
@@ -223,7 +243,7 @@ passes the code to the program. In the trace (#cmd("TRACE DUMP"),
     [52], [0034], [IO], [An input/output error.],
     [56], [0038], [BADFD], [The file descriptor is not valid.],
     [60], [003C], [NOTEMPTY], [The directory is not empty.],
-    [64], [0040], [NAMETOOLONG], [The name is longer than 59 characters.],
+    [64], [0040], [NAMETOOLONG], [A component of a mount point path is longer than 59 characters. Only UFSD itself gives this code, when it creates the mount points at the start. A client never gets it.],
     [68], [0044], [ROFS], [The file system is mounted read only.],
     [72], [0048], [EACCES], [The user ID of the session is not the #cmd("OWNER()")
       of the mount (@ref-cfg-access).],

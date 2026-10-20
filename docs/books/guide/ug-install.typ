@@ -95,7 +95,8 @@ UFSD091E APF SETUP FAILED RC=n (STEPLIB NOT APF AUTHORIZED?)
 Settle the question before you start UFSD for the first time.
 
 #note[The release 1.5.0 was tested on the RAKF route. A start from an
-APF-authorised library was not run for this release.]
+APF-authorised library was not run for this release, and neither was the
+change of the APF list on MVS/CE.]
 
 == Sending the Two XMIT Files <ug-install-upload>
 
@@ -305,7 +306,8 @@ procedure or override it when you start:
 /S UFSD,D='SYS1.PARMLIB'
 ```)
 
-On MVS/CE, #cmd("SYS2.PARMLIB") exists and the default is right.
+On MVS/CE the default is expected to be right, because #cmd("SYS2.PARMLIB")
+exists there. That was not checked on a running MVS/CE for this release.
 
 === Edit UFSDPRM0 <ug-install-prm>
 

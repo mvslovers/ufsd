@@ -9,9 +9,8 @@ the one in the code of release 1.5.0.
 
 A message of UFSD or UFSDCLNP has the form #cmd("UFSDnnnx"), a message of the
 format utility #cmd("UFSFMTnnx"). The letter at the end is the severity:
-#cmd("I") information, #cmd("W") warning, #cmd("E") error. Both programs use
-the same letter for different cases in some numbers (#cmd("UFSD045E") and
-#cmd("UFSD045I") are not the same message), so look for the whole id.
+#cmd("I") information, #cmd("W") warning, #cmd("E") error. Some numbers are used with more than one letter (#cmd("UFSD045E") and
+#cmd("UFSD045I") are different messages), so look for the whole id.
 
 In the texts, #cmd("n") stands for a number, #cmd("xxxx") for a number in
 hexadecimal, #cmd("dsn") for a data set name, #cmd("ddname") for a DD name,
@@ -25,12 +24,13 @@ sets no routing code and no descriptor code. The texts are in upper case except
 where a text shows a value as it is. A line is never longer than about 124
 characters. UFSDCLNP has no prefix of its own; its messages are the numbers 140
 to 157, shared with the reclaim of the start. An id can have more than one
-text; each text has its own line. An id that UFSD uses for the success and for the
-failure of one thing (for example #cmd("UFSD046E") and #cmd("UFSD046I")) has one
-line for each.
+text; each text has its own line. A number that UFSD uses for the success and
+for the failure of one thing (for example #cmd("UFSD046E") and
+#cmd("UFSD046I")) has one line for each id.
 
-Unless the table says otherwise, a message of the E kind during the start ends
-the start with return code 8.
+Not every message of the E kind ends the start. Where the start ends, the
+table says "return code 8"; an E message about one file system, for instance
+the failed mount of a file system other than the root, lets the start go on.
 
 
 === Start and Stop (000 to 009) <apx-messages-start>
@@ -64,7 +64,7 @@ The answers to the MODIFY command are described with the commands in @ref-cmd.
     [#cmd("UFSD013I TRACE ENTRIES:  n")], [STATS: the size of the trace table.],
     [#cmd("UFSD014I REQUESTS SERVED: n")], [STATS: the requests handled since the start.],
     [#cmd("UFSD015I ERRORS:          n")], [STATS: the hard errors since the start. A refused write or a missing file does not count.],
-    [#cmd("UFSD017I POSTS SAVED:     n")], [STATS: how often a client was posted without a wait. Printed before UFSD016I.],
+    [#cmd("UFSD017I POSTS SAVED:     n")], [STATS: how often a request was put on a queue that was not empty, so that the server did not have to be posted. Printed before UFSD016I.],
     [#cmd("UFSD016I IN FLIGHT:       n")], [STATS: the requests in the router at this moment.],
     [#cmd("UFSD018I MOUNT path DSN=dsn RW(owner) FREEBLK=free/total FREEINODE=free/total")], [STATS: the line of a read/write file system that has an owner.],
     [#cmd("UFSD018I MOUNT path DSN=dsn mode FREEBLK=free/total FREEINODE=free/total")], [STATS: the line of any other file system. The mode is RO or RW. The path is padded to 12 characters, the data set name to 20.],
@@ -143,13 +143,13 @@ The answers to the MODIFY command are described with the commands in @ref-cmd.
     [Message], [Meaning and action],
     [#cmd("UFSD060I MOUNTED dsn ON path (mode, OWNER=owner)")], [A file system is mounted. The mode is ROOT for the root, otherwise RW or RO. The owner is shown if the mount has one.],
     [#cmd("UFSD060I MOUNTED dsn ON path (mode)")], [The same, for a mount without an owner.],
-    [#cmd("UFSD061E MOUNT: DISK TABLE FULL (n SLOTS)")], [The table of mounted file systems has 16 slots, the root included. The mount fails (return code 8), and a UFSD123W follows when the statement was in the configuration.],
+    [#cmd("UFSD061E MOUNT: DISK TABLE FULL (n SLOTS)")], [The table of mounted file systems has 16 slots, the root included. The mount fails, and a UFSD123W follows when the statement was in the configuration.],
     [#cmd("UFSD061E PARMLIB (DD:UFSDPRM) UNUSABLE -- SHUTTING DOWN")], [The configuration could not be read, or has no ROOT statement. The reason is in the message before it: UFSD100W, UFSD105W or UFSD106E. UFSD ends with return code 8.],
     [#cmd("UFSD061E CANNOT MOUNT ROOT FILESYSTEM -- SHUTTING DOWN")], [The root data set could not be mounted. The message before it says why (UFSD043E, UFSD044E, UFSD120E, UFSD124E). UFSD ends with return code 8.],
     [#cmd("UFSD062E SUPERBLOCK VALIDATION FAILED FOR dsn")], [The superblock of the data set was read but a field in it is wrong. The data set is damaged or is not a file system of this version. UFSD124E follows.],
     [#cmd("UFSD063E I/O ERROR ON DSN=dsn BLOCK=n (READ)")], [A block could not be read. UFSD gives this message once for each mounted file system, however many errors follow. The block number is the sector.],
     [#cmd("UFSD063E I/O ERROR ON DSN=dsn BLOCK=n (WRITE)")], [A block could not be written. Once for each mounted file system, as the read form.],
-    [#cmd("UFSD064I UNMOUNTING dsn FROM path")], [The answer to UNMOUNT, before the superblock is written back. A stop issues it for each file system, too.],
+    [#cmd("UFSD064I UNMOUNTING dsn FROM path")], [The answer to UNMOUNT, before the superblock is written back. Only UNMOUNT issues it. A stop writes the file systems back with UFSD130W or UFSD131I.],
     [#cmd("UFSD065E MOUNT: PATH MUST BE ABSOLUTE")], [The path of a mount does not begin with a slash. The mount fails.],
     [#cmd("UFSD067E MOUNT: path ALREADY MOUNTED")], [Another file system is mounted at this path. The mount fails.],
     [#cmd("UFSD068I n FILESYSTEM(S) MOUNTED:")], [The first line of the answer to MOUNT LIST.],
@@ -185,7 +185,7 @@ The answers to the MODIFY command are described with the commands in @ref-cmd.
     [#cmd("UFSD095I SSCT DEREGISTERED")], [A stop removed the subsystem entry.],
     [#cmd("UFSD096E RECOVERY: STC BLOCK NOT FOUND -- NOTHING QUIESCED, CSA RETAINED")], [After an abend, the recovery routine did not find the control block of the server. Nothing was shut down and the storage is kept. The next start frees it.],
     [#cmd("UFSD096I CSA FREED")], [A stop freed the common storage.],
-    [#cmd("UFSD097E CANNOT ENTER SUPERVISOR STATE -- CSA RETAINED, RUN UFSDCLNP BEFORE RESTART")], [A stop could not enter supervisor state. The storage is kept and the anchor stays flagged active, so a start refuses. Run UFSDCLNP, then start.],
+    [#cmd("UFSD097E CANNOT ENTER SUPERVISOR STATE -- CSA RETAINED, RUN UFSDCLNP BEFORE RESTART")], [A stop could not enter supervisor state. The storage is kept and the anchor stays flagged active. The next start reclaims it if the address space of the server is gone, and refuses only with UFSD155W or UFSD156W; UFSDCLNP then frees it.],
     [#cmd("UFSD097W ABEND SHUTDOWN -- CSA RETAINED, RECLAIMED AT NEXT START")], [The last message after an abend. The storage is kept on purpose and the next start frees it.],
     [#cmd("UFSD098E UFSD ABEND INTERCEPTED -- EMERGENCY SHUTDOWN")], [The first message after an abend. UFSD writes back what it can and stops.],
     [#cmd("UFSD098I UFSD SHUTTING DOWN")], [A stop begins (P UFSD or SHUTDOWN). It is not issued after an abend.],
@@ -251,13 +251,13 @@ The messages 143 to 148 and 152 to 156 come from the reclaim routine. They appea
     [#cmd("UFSD147I RECLAIM: CSA POOLS FREED")], [The request pool, the buffer pool and the trace table are freed.],
     [#cmd("UFSD148I RECLAIM: ANCHOR FREED")], [The anchor is freed.],
     [#cmd("UFSD149I UFSDCLNP COMPLETE")], [UFSDCLNP freed the storage. Return code 0.],
-    [#cmd("UFSD150E CORRUPT REQUEST BLOCK (EYE CATCHER MISMATCH)")], [A request block in the common storage has the wrong eye catcher. The request is answered with an error, the error counter of STATS is incremented, and the block is not returned to the pool.],
+    [#cmd("UFSD150E CORRUPT REQUEST BLOCK (EYE CATCHER MISMATCH)")], [A request block in the common storage has the wrong eye catcher. UFSD posts the waiting client, increments the error counter of STATS, and does not return the block to the pool.],
     [#cmd("UFSD151E INVALID FUNCTION CODE xxxx")], [A request has a function code that UFSD does not know. The request is refused with an error and the error counter of STATS is incremented. The code is in hexadecimal.],
     [#cmd("UFSD152W RECLAIM: n CLIENT(S) STILL IN FLIGHT AFTER DRAIN -- ASSUMING LEAKED, FREEING")], [The reclaim waited about 12 seconds for clients to leave the router and then freed the storage anyway.],
     [#cmd("UFSD153W RECLAIM: ANCHOR EYE MISMATCH AT address")], [The anchor has the wrong eye catcher. It is not freed. The subsystem entry is removed.],
     [#cmd("UFSD154I RECLAIM: NO ANCHOR (SSCTSUSE=NULL)")], [The subsystem entry points to no anchor. The entry is removed.],
     [#cmd("UFSD155W RECLAIM: UFSD IS ACTIVE IN ASCB address -- NOT RECLAIMED (VERIFY WITH D A,L)")], [The server's address space exists. Nothing is freed. A start then gives UFSD002E, UFSDCLNP gives UFSD157W.],
-    [#cmd("UFSD156W RECLAIM: ANCHOR FLAGGED ACTIVE AND THE SERVER ASCB CANNOT BE CHECKED -- NOT RECLAIMED")], [The anchor is flagged active but names no address space to check. A start does not reclaim and gives UFSD002E. UFSDCLNP reclaims in this case.],
+    [#cmd("UFSD156W RECLAIM: ANCHOR FLAGGED ACTIVE AND THE SERVER ASCB CANNOT BE CHECKED -- NOT RECLAIMED")], [The anchor is flagged active, but the address space of the server cannot be checked: the anchor names none, or the system tables cannot be read. A start does not reclaim and gives UFSD002E. UFSDCLNP reclaims in this case.],
     [#cmd("UFSD157W UFSDCLNP: CLEANUP SUPPRESSED -- STOP UFSD FIRST (/P UFSD)")], [UFSDCLNP found a running server and freed nothing. Return code 8.],
   )
 ]
@@ -322,7 +322,7 @@ UFSFMT first writes zero blocks into the primary extent until the extent is full
     [#cmd("UFSFMT22E CANNOT OPEN DD name FOR READ")], [#cmd("SYSTERM")], [The data set cannot be opened for reading. Return code 8.],
     [#cmd("UFSFMT22E CANNOT OPEN DD name FOR OUTPUT")], [#cmd("SYSTERM")], [The data set cannot be opened for output. Return code 8.],
     [#cmd("UFSFMT23E CANNOT ALLOCATE n BYTE BUFFER")], [#cmd("SYSTERM")], [No storage for the block of zeros. Return code 8.],
-    [#cmd("UFSFMT24E DD name DID NOT REACH END OF EXTENT AFTER n BLOCKS")], [#cmd("SYSTERM")], [UFSFMT wrote 1048576 blocks, the most a file system can have, and the extent did not end. Return code 8.],
+    [#cmd("UFSFMT24E DD name DID NOT REACH END OF EXTENT AFTER n BLOCKS")], [#cmd("SYSTERM")], [UFSFMT wrote 1048576 blocks and the extent did not end. The count is a safeguard, not a limit of the file system; an extent of that size or larger is refused. Return code 8.],
     [#cmd("UFSFMT24E NO BLOCKS COULD BE WRITTEN TO DD name")], [#cmd("SYSTERM")], [The first write already met the end of the extent. Return code 8.],
     [#cmd("UFSFMT25E DD name IS ALLOCATED DISP=SHR -- DISP=OLD IS REQUIRED")], [#cmd("SYSTERM")], [The DD statement has DISP=SHR. Nothing was written. Return code 8.],
     [#cmd("UFSFMT26I Initialized n blocks (n.nn MB)")], [#cmd("SYSPRINT")], [The fill is over. The count is the size of the file system. QUIET suppresses it.],

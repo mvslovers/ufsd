@@ -33,8 +33,9 @@ afterwards. It follows from the statement #cmd("INODES"), which is not a
 percentage of the disk: it is a percentage of the blocks that would be
 needed to index everything. At the block size 4096 the default of 10.0
 gives about one inode for every 10 blocks, so one file for every 40 KB. The inode list is never shorter than two blocks.
-Therefore a disk of up to 2 MB holds at most 62 files, however much space is
-free. A directory takes an inode, too.
+Therefore at the defaults a disk of up to 799 blocks (3.1 MB at the block
+size 4096) holds at most 62 files, however much space is free. A directory takes an
+inode, too.
 
 This is the planning table from the job, for the block size 4096 and
 #cmd("INODES 10.0"):
@@ -54,8 +55,8 @@ This is the planning table from the job, for the block size 4096 and
 ]
 
 A root disk holds only the directories that serve as mount points, so 256
-blocks are enough. The largest file is 4.06 MB (@ug-intro-limits). A file system
-has at most 1048576 blocks.
+blocks are enough. The largest file is 4.06 MB (@ug-intro-limits). UFSFMT
+refuses an extent of 1048576 blocks or more (4 GB at the block size 4096).
 
 == Allocating the Data Set <ug-disks-alloc>
 
@@ -76,7 +77,9 @@ The first step of the job allocates the data set:
       it with BDAM.],
     [#cmd("RECFM")], [#cmd("U")], [Undefined record format.],
     [#cmd("BLKSIZE")], [#cmd("4096")], [Must be the same as the #cmd("BLKSIZE")
-      statement of the format step.],
+      statement of the format step. UFSD takes the block size of the data set from
+      the data set label when it mounts the disk, not from the disk itself. If
+      the two differ, the mount fails with #cmd("UFSD062E") and #cmd("UFSD124E").],
     [Space], [blocks], [The primary quantity only.],
   )
 ]
@@ -176,6 +179,10 @@ old boot block under it. #cmd("UFSFMT05E") on a new data set means that the
 space was used before and nothing is wrong. Specify #cmd("FORCE"). The check
 is best effort: on a data set that has never been written, reading block 0
 fails and the format goes on, which is the case with nothing to protect.
+The check is also skipped when the block size of the data set is outside the
+range 512 to 8192, for instance 0 or 32760: then an existing file
+system is overwritten without #cmd("FORCE"). Give the same #cmd("BLKSIZE") in
+the allocation as in the format step.
 
 == The Report <ug-disks-report>
 

@@ -41,6 +41,11 @@ jobs:
       - name: Attach the manuals and their sums
         run: |
           cd docs/books
-          gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" -p SHA256SUMS || : > SHA256SUMS
+          assets=$(gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if printf '%s\n' "$assets" | grep -qx SHA256SUMS; then
+            gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" -p SHA256SUMS
+          else
+            : > SHA256SUMS
+          fi
           sha256sum ml05-0001-*.pdf ml05-0002-*.pdf >> SHA256SUMS
           gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber ml05-0001-*.pdf ml05-0002-*.pdf SHA256SUMS

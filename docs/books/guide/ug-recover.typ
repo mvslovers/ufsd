@@ -115,7 +115,8 @@ Three of these rows need a word.
   predecessor's address, believe it belongs to a live server and refuse. Two
   address spaces that exist at the same time never share an ASCB, so the row
   cannot hide a live server.
-- *No ASCB to look at.* The anchor does not name an address space. A start
+- *No ASCB to look at.* The anchor does not name an address space, or the
+  system tables that list the address spaces cannot be read. A start
   refuses because it cannot be sure. #cmd("UFSDCLNP") reclaims, because this
   is the case it exists for.
 
@@ -202,7 +203,17 @@ start the cleanup program in between.
 If you lose the address space but the start refuses all the same, check
 with #cmd("D A,L") (see above). A server that cannot even enter supervisor
 state at the stop gives #cmd("UFSD097E"): the storage is retained, and the
-active flag stays set, so run #cmd("UFSDCLNP") before the next start.
+active flag stays set. The address space ends after the message, so the
+next start finds a flagged anchor whose ASCB belongs to no address space, and
+reclaims it like the leftovers of an abend (the table above). It refuses only
+when the ASCB cannot be checked (#cmd("UFSD156W")) or has been handed to
+another address space (#cmd("UFSD155W")). #cmd("UFSDCLNP") is the safe choice
+in either case. This path was read from the source and has not been run.
+
+After a restart that followed an abend you can have the caches of free blocks
+and free inodes of the read/write file systems rebuilt with #cmd("REBUILD")
+(@ug-ops-rebuild). That is a repair of the caches, not of the files, and the
+guide has not measured that it is needed after an abend.
 
 == Messages of an Abnormal End <ug-recover-msg>
 
@@ -212,8 +223,9 @@ active flag stays set, so run #cmd("UFSDCLNP") before the next start.
     [#cmd("UFSD097W")], [The abend path is over. The storage is kept and the
       next start frees it. This is the last message of an abend.],
     [#cmd("UFSD097E")], [Supervisor state could not be entered at the end. The
-      storage is kept and the active flag stays set. Run #cmd("UFSDCLNP")
-      before the next start.],
+      storage is kept and the active flag stays set. The next start reclaims
+      it when the server's address space is gone; if it refuses, run
+      #cmd("UFSDCLNP").],
     [#cmd("UFSD098W")], [Clients were still at work when the stop ran out of
       time. The storage is kept; the next start frees it.],
     [#cmd("UFSD096E")], [The recovery after an abend did not find the control
@@ -221,6 +233,9 @@ active flag stays set, so run #cmd("UFSDCLNP") before the next start.
       next start frees it.],
     [#cmd("UFSD002E")], [A start was refused because a server is running, or
       because the anchor cannot be checked.],
+    [#cmd("UFSD003E")], [A start could not free the storage of an earlier run,
+      because it could not enter supervisor state (#cmd("UFSD143E") before it).
+      The step ends with return code 8.],
   )
 ]
 

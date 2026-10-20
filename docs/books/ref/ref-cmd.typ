@@ -78,7 +78,7 @@ for each mounted file system.
     [#cmd("UFSD011I")], [Free request blocks and all request blocks (32 in release 1.5.0). Equal when no request is under way.],
     [#cmd("UFSD012I")], [Free 4096-byte data buffers and all of them (16).],
     [#cmd("UFSD013I")], [The number of entries of the trace table (256).],
-    [#cmd("UFSD014I")], [Requests handled since the start.],
+    [#cmd("UFSD014I")], [Requests handled since the start, not counting those that ended in a hard error; #cmd("UFSD015I") counts these.],
     [#cmd("UFSD015I")], [Requests that ended in a hard error: input/output error, no space, no inodes, a damaged request block, an unknown function code, an invalid session or argument. A missing file, an existing name and a refused write are normal answers and are not counted.],
     [#cmd("UFSD017I")], [Requests that were put on a queue that was not empty, so that the server did not have to be posted. A measure of how busy the server is.],
     [#cmd("UFSD016I")], [Requests inside the router at this moment.],
@@ -172,10 +172,13 @@ you mount, and never mount a read/write data set twice.
 #cmd(", OWNER=owner") if an owner was given. If the mount point does not exist
 in the file system above it, #cmd("UFSD126W MOUNT POINT path NOT FOUND ON PARENT
 DISK") comes first, and the mount is made all the same. The causes of failure are the
-messages #cmd("UFSD021E") (#cmd("PATH= NOT FOUND"), #cmd("DSN= NOT FOUND")),
-#cmd("UFSD065E"), #cmd("UFSD067E"), #cmd("UFSD061E MOUNT: DISK TABLE FULL"),
-#cmd("UFSD120E"), #cmd("UFSD043E"), #cmd("UFSD044E"), #cmd("UFSD062E") and
-#cmd("UFSD124E"). A mount whose owner differs from the owner stored in the
+messages #cmd("UFSD021E") (the syntax, #cmd("PATH= NOT FOUND"),
+#cmd("DSN= NOT FOUND")), #cmd("UFSD065E"), #cmd("UFSD067E"),
+#cmd("UFSD061E MOUNT: DISK TABLE FULL"), #cmd("UFSD120E"), #cmd("UFSD042E"),
+#cmd("UFSD043E"), #cmd("UFSD044E"), #cmd("UFSD049E"), #cmd("UFSD062E") and
+#cmd("UFSD124E"). UFSD recognises #cmd("MOUNT LIST") only with exactly one
+blank between the words; with two blanks the text is read as a mount and ends
+in #cmd("UFSD021E MOUNT: DSN= NOT FOUND"). A mount whose owner differs from the owner stored in the
 root directory of the disk is mounted with the warning #cmd("UFSD125W").
 @apx-messages explains each of them.
 
@@ -193,7 +196,8 @@ The file system is unmounted in these steps: #cmd("UFSD064I UNMOUNTING dsn FROM
 path"), the superblock of a file system that is not read only is written back
 (#cmd("UFSD131I") or #cmd("UFSD130W")), and the data set is freed. The root
 cannot be unmounted (#cmd("UFSD132E")); a path with nothing mounted on it gets
-#cmd("UFSD133E"). UFSD does not check whether a client has a file open on the
+#cmd("UFSD133E"), and #cmd("PATH=") with nothing after it gets
+#cmd("UFSD021E UNMOUNT: PATH IS EMPTY"). UFSD does not check whether a client has a file open on the
 file system. Unmount only when no client uses it.
 
 == TRACE <ref-cmd-trace>

@@ -256,9 +256,12 @@ system that is written back. Two other cases exist:
 - *#cmd("UFSD096E").* The routine did not find the control block of the task.
   Nothing was quiesced, and the storage is kept. No other message follows.
 - *#cmd("UFSD097E").* The routine could not enter supervisor state. The
-  storage is kept and the active flag stays set, so the next start refuses
-  and only #cmd("UFSDCLNP") can free it. The message comes before the
-  superblocks are written. The same message can also appear at a normal stop.
+  storage is kept and the active flag stays set. The next start decides by the
+  liveness check: it reclaims when the server's address space is gone, and
+  refuses only with #cmd("UFSD155W") or #cmd("UFSD156W"), where
+  #cmd("UFSDCLNP") works. The message comes before the superblocks are
+  written. The same message can also appear at a normal stop. This path was
+  read from the source and has not been run.
 
 The routine cuts off the subsystem and clears the active flag, but it frees no
 storage, because another address space may be running inside the router or

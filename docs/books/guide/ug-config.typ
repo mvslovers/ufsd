@@ -38,7 +38,7 @@ so the copy in #cmd("UFSD.SAMPLIB") already reads #cmd("UFSD.LINKLIB").
   [#cmd("D")], [The PARMLIB data set. The default is #cmd("SYS2.PARMLIB").],
 )
 
-The region is 4 MB, and the time limit is 1440 minutes, which is a day. On
+The region is 4 MB, and the value 1440 for the time limit means that there is no limit. On
 TK5 the data set #cmd("SYS2.PARMLIB") does not exist. Edit the default in your
 copy, or override it when you start (@ug-install-parmlib):
 

@@ -185,7 +185,7 @@ owner of the statement.
 
 == A Complete Member <ref-cfg-sample>
 
-This is the member in the sample library, #cmd("UFSD.SAMPLIB(UFSDPRM0)"):
+This is an abridged copy of the member in the sample library, #cmd("UFSD.SAMPLIB(UFSDPRM0)"). The statements are those of the member; some of its comments are shortened or left out:
 
 #screen(```
 /* SYS2.PARMLIB(UFSDPRM0) */
