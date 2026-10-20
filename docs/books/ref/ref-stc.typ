@@ -258,8 +258,9 @@ system that is written back. Two other cases exist:
 - *#cmd("UFSD097E").* The routine could not enter supervisor state. The
   storage is kept and the active flag stays set. The next start decides by the
   liveness check: it reclaims when the server's address space is gone, and
-  refuses only with #cmd("UFSD155W") or #cmd("UFSD156W"), where
-  #cmd("UFSDCLNP") works. The message comes before the superblocks are
+  refuses only with #cmd("UFSD155W") or #cmd("UFSD156W"). Only after
+  #cmd("UFSD156W") does #cmd("UFSDCLNP") work. After #cmd("UFSD155W") it
+  refuses too. The message comes before the superblocks are
   written. The same message can also appear at a normal stop. This path was
   read from the source and has not been run.
 
