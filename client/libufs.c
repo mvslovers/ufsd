@@ -35,6 +35,10 @@
 #include <ibm/mvs/iefssobh.h>
 #include <ibm/mvs/iefjssib.h>
 
+/* Error code for a request that never got an answer (R15 != 0 from
+** iefssreq); the same -1 the path and session calls return for it. */
+#define LIBUFS_RC_SSI  (-1)
+
 /* Forward declarations */
 static int libufs_wbuf_flush(UFSFILE *fp);
 
@@ -44,12 +48,19 @@ static int libufs_wbuf_flush(UFSFILE *fp);
 ** Build SSOB + SSIB, call iefssreq, return R15 (SSRTOK=0 means ok).
 ** On entry:  ufsssob->func, token, data_len, data[] are filled.
 ** On return: ufsssob->rc, errno_val, data_len, data[] are filled.
+**
+** The router also reports through SSOBRETN: its own refusals (bad
+** request, anchor gone, no free request block) leave the UFSSSOB
+** untouched, and on an answer it stores the server's rc there.  So
+** SSOBRETN != 0 with rc still 0 is a refusal -- turn it into rc, with
+** no response data, so every caller sees it where it already looks.
 ** ============================================================ */
 static int
 libufs_issue(UFSSSOB *ufsssob)
 {
     SSOB  ssob;
     SSIB  ssib;
+    int   r15;
 
     memset(&ssib, 0, sizeof(ssib));
     memcpy(ssib.SSIBID,   "SSIB", 4);
@@ -64,7 +75,20 @@ libufs_issue(UFSSSOB *ufsssob)
     ssob.SSOBRETN = 0;
     ssob.SSOBINDV = ufsssob;
 
-    return iefssreq(&ssob);
+    r15 = iefssreq(&ssob);
+    if (r15 == SSRTOK && ssob.SSOBRETN != 0 && ufsssob->rc == UFSD_RC_OK) {
+        ufsssob->rc       = ssob.SSOBRETN;
+        ufsssob->data_len = 0;
+    }
+    return r15;
+}
+
+/* Flag a handle as failed.  ferror() reports the code, so it is never 0. */
+static void
+fp_fail(UFSFILE *fp, int rc)
+{
+    fp->flags |= LIBUFS_F_ERR;
+    fp->error  = (rc != UFSD_RC_OK) ? rc : LIBUFS_RC_SSI;
 }
 
 /* ============================================================
@@ -860,9 +884,18 @@ ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
             ufsssob.buf_len = want;
         }
 
-        if (libufs_issue(&ufsssob) != SSRTOK || ufsssob.rc != UFSD_RC_OK) {
-            fp->flags |= LIBUFS_F_ERR;
-            fp->error   = ufsssob.rc;
+        if (libufs_issue(&ufsssob) != SSRTOK) {
+            fp_fail(fp, LIBUFS_RC_SSI);
+            break;
+        }
+        if (ufsssob.rc != UFSD_RC_OK) {
+            fp_fail(fp, ufsssob.rc);
+            break;
+        }
+        if (ufsssob.data_len < (unsigned)sizeof(unsigned)) {
+            /* No byte count came back; the response area still holds
+            ** the request (the fd), not an answer. */
+            fp_fail(fp, UFSD_RC_INVALID);
             break;
         }
 
@@ -940,12 +973,15 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
         if (libufs_issue(&ufsssob) != SSRTOK) {
             /* The request never reached the server, so nothing in the
             ** response block means anything. */
-            fp->flags |= LIBUFS_F_ERR;
-            fp->error   = ufsssob.rc;
+            fp_fail(fp, LIBUFS_RC_SSI);
             break;
         }
 
-        written = *(unsigned *)ufsssob.data;
+        /* A rejected request comes back with rc and no length, and the
+        ** response area still holds the request (the fd): read a count
+        ** only if one was sent. */
+        written = (ufsssob.data_len >= (unsigned)sizeof(unsigned))
+                  ? *(unsigned *)ufsssob.data : 0U;
 
         if (ufsssob.rc != UFSD_RC_OK) {
             /* A failed write may still have moved part of the data --
@@ -954,9 +990,12 @@ ufs_fwrite(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
             ** Dropping it would under-report what is on the disk and
             ** leave the caller's idea of the file position behind the
             ** server's, which owns it (#72). */
-            fp->flags |= LIBUFS_F_ERR;
-            fp->error   = ufsssob.rc;
+            fp_fail(fp, ufsssob.rc);
             done += written;
+            break;
+        }
+        if (ufsssob.data_len < (unsigned)sizeof(unsigned)) {
+            fp_fail(fp, UFSD_RC_INVALID);
             break;
         }
 

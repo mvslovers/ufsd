@@ -984,6 +984,12 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     int             sb_dirty;
     int             wrc;
 
+    /* Every return below answers with a byte count.  The early ones are
+    ** rejections, so it is 0 -- without this the response is empty and
+    ** the client's copy of the request (the fd) sits where the count is. */
+    *(unsigned *)resp_data = 0;
+    *resp_data_len         = 4U;
+
     if (req->data_len < 8U) return UFSD_RC_INVALID;
     fd    = (int)*(unsigned *)req->data;
     count = *(unsigned *)(req->data + 4);

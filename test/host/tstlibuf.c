@@ -20,10 +20,8 @@
 ** The script and the request log are file statics: this is a test, not an
 ** AC(1) module.  libufs.c itself gains none.
 **
-** libufs does not look at SSOBRETN.  Cases whose outcome depends on it (a
-** refused FREAD, FWRITE, FOPEN, MKDIR...) are therefore not asserted here;
-** the refusals that are asserted are ones whose answer is the same either
-** way (the caller gets NULL / an error).
+** libufs turns SSOBRETN != 0 with an unwritten response into the router's
+** code as the request's rc (test_error_propagation).
 **
 ** Add a case: script the answers with the s_*() helpers, call the libufs
 ** entry point, then check the result, EXPECT_CALLS() and g_seen[].
