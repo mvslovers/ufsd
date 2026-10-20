@@ -70,6 +70,7 @@ main(int argc, char **argv)
     UINT32    items;
     int       rc;
     int       mp_fail = 0;   /* #52: listing vs stat mismatches */
+    int       wr_fail = 0;   /* #79: a rejected write counted as written */
 
     (void)argc;
 
@@ -380,6 +381,34 @@ main(int argc, char **argv)
         wtof("LUFTST09E VERIFY FAILED: data mismatch");
 
     /* ============================================================
+    ** Step 7a: FWRITE on a handle opened for reading (#79)
+    **
+    ** The server rejects it (INVALID) before it counts a byte.  The
+    ** caller must see 0 items and an error, not the descriptor number
+    ** the request left in the response area.  The second handle gets
+    ** a descriptor above 0, so a descriptor mistaken for a count shows.
+    ** ============================================================ */
+    {
+        UFSFILE *rfp = ufs_fopen(ufs, TESTFILE, "r");
+
+        if (!rfp) {
+            wtof("LUFTSTWRE FOPEN read for FWRITE check failed");
+            wr_fail++;
+        } else {
+            items = ufs_fwrite((void *)testdata, 1, TESTLEN, rfp);
+            if (items == 0 && ufs_ferror(rfp) == UFSD_RC_INVALID) {
+                wtof("LUFTSTWRI FWRITE on read handle (fd=%d): 0 items, INVALID -- OK",
+                     rfp->fd);
+            } else {
+                wtof("LUFTSTWRE FWRITE on read handle (fd=%d): items=%u ferror=%d (expected 0, %d)",
+                     rfp->fd, items, ufs_ferror(rfp), UFSD_RC_INVALID);
+                wr_fail++;
+            }
+            ufs_fclose(&rfp);
+        }
+    }
+
+    /* ============================================================
     ** Step 8: FCLOSE read
     ** ============================================================ */
     ufs_fclose(&fp);
@@ -440,10 +469,10 @@ close_sess:
     ufsfree(&ufs);
     wtof("LUFTST15I Session closed");
 
-    /* The mount view check (step 1e) is the one step whose verdict
-    ** reaches the runner: it compares two answers from the server
-    ** rather than reporting one, so a mismatch is a server defect and
-    ** nothing about the test environment can excuse it.  The older
-    ** steps keep reporting through WTO only. */
-    return mp_fail ? 8 : 0;
+    /* The mount view check (step 1e) and the rejected write (step 7a)
+    ** are the steps whose verdict reaches the runner: they compare
+    ** answers from the server rather than reporting one, so a mismatch
+    ** is a defect and nothing about the test environment can excuse it.
+    ** The older steps keep reporting through WTO only. */
+    return (mp_fail || wr_fail) ? 8 : 0;
 }

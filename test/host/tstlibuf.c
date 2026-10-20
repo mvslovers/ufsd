@@ -20,10 +20,8 @@
 ** The script and the request log are file statics: this is a test, not an
 ** AC(1) module.  libufs.c itself gains none.
 **
-** libufs does not look at SSOBRETN.  Cases whose outcome depends on it (a
-** refused FREAD, FWRITE, FOPEN, MKDIR...) are therefore not asserted here;
-** the refusals that are asserted are ones whose answer is the same either
-** way (the caller gets NULL / an error).
+** libufs turns SSOBRETN != 0 with an unwritten response into the router's
+** code as the request's rc (test_error_propagation).
 **
 ** Add a case: script the answers with the s_*() helpers, call the libufs
 ** entry point, then check the result, EXPECT_CALLS() and g_seen[].
@@ -944,6 +942,153 @@ test_success(void)
     close_session(&ufs);
 }
 
+/* ============================================================
+** A failed request is never reported as a success (#77, #78, #79)
+** ============================================================ */
+
+static void
+test_error_propagation(void)
+{
+    UFS      *ufs;
+    UFSFILE  *fp;
+    UFSDLIST  st;
+    char      buf[512];
+
+    printf("\n--- error propagation ---\n");
+
+    ufs = new_session();
+    if (!ufs) return;
+
+    /* ferror() is non-zero on every handle libufs has flagged as failed. */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        begin();
+        s_transport(SSRTNOSS);
+        CHECK_EQ(ufs_fread(buf, 1, 10, fp), 0, "transport/fread: nothing read");
+        CHECK(ufs_ferror(fp) != 0, "transport/fread: ferror is non-zero");
+        ufs_clearerr(fp);
+        CHECK_EQ(ufs_ferror(fp), 0, "transport/fread: clearerr clears it");
+        close_file(&fp);
+    }
+
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_transport(SSRTNOSS);
+        CHECK_EQ(ufs_fwrite("abc", 1, 3, fp), 0, "transport/fwrite: nothing written");
+        CHECK(ufs_ferror(fp) != 0, "transport/fwrite: ferror is non-zero");
+        close_file(&fp);
+    }
+
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_transport(SSRTNOSS);
+        CHECK_EQ(ufs_fputs("abc", fp), 3, "transport/fsync: buffered");
+        ufs_fsync(fp);
+        CHECK(ufs_ferror(fp) != 0, "transport/fsync: ferror is non-zero");
+        close_file(&fp);
+    }
+
+    /* The router refused: R15 is 0, SSOBRETN is not, the response was never
+    ** written.  The caller must see the router's code, not a success. */
+    begin();
+    s_refused(UFSD_RC_CORRUPT);
+    CHECK_EQ(ufs_mkdir(ufs, "/a"), UFSD_RC_CORRUPT, "refused/mkdir: router's code");
+    CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_CORRUPT, "refused/mkdir: last_rc");
+
+    begin();
+    s_refused(UFSD_RC_NOREQ);
+    CHECK_EQ(ufs_rmdir(ufs, "/a"), UFSD_RC_NOREQ, "refused/rmdir: router's code");
+
+    begin();
+    s_refused(UFSD_RC_NOREQ);
+    CHECK_EQ(ufs_remove(ufs, "/a"), UFSD_RC_NOREQ, "refused/remove: router's code");
+
+    begin();
+    s_refused(UFSD_RC_CORRUPT);
+    CHECK_EQ(ufs_chgdir(ufs, "/work"), UFSD_RC_CORRUPT, "refused/chgdir: router's code");
+    CHECK(strcmp(ufs->cwd.path, "/") == 0, "refused/chgdir: cwd not moved");
+
+    begin();
+    s_refused(UFSD_RC_CORRUPT);
+    CHECK_EQ(ufs_setuser(ufs, "IBMUSER", "SYS1"), UFSD_RC_CORRUPT,
+             "refused/setuser: router's code");
+
+    begin();
+    s_refused(UFSD_RC_CORRUPT);
+    CHECK(ufs_fopen(ufs, "/f", "r") == NULL, "refused/fopen: NULL");
+    CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_CORRUPT, "refused/fopen: last_rc");
+
+    begin();
+    s_refused(UFSD_RC_NOREQ);
+    CHECK_EQ(ufs_stat(ufs, "/f", &st), UFSD_RC_NOREQ, "refused/stat: router's code");
+    CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_NOREQ, "refused/stat: last_rc");
+
+    fp = open_file(ufs, "r");
+    if (fp) {
+        begin();
+        s_refused(UFSD_RC_CORRUPT);
+        CHECK_EQ(ufs_fread(buf, 1, 10, fp), 0, "refused/fread: nothing read");
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_CORRUPT, "refused/fread: ferror is the router's code");
+        CHECK(!ufs_feof(fp), "refused/fread: no EOF");
+        close_file(&fp);
+    }
+
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_refused(UFSD_RC_CORRUPT);
+        CHECK_EQ(ufs_fwrite("abcdefghij", 1, 10, fp), 0, "refused/fwrite inline: nothing written");
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_CORRUPT, "refused/fwrite inline: ferror is the router's code");
+        ufs_clearerr(fp);
+
+        begin();
+        s_refused(UFSD_RC_NOREQ);
+        memset(buf, 'z', sizeof(buf));
+        CHECK_EQ(ufs_fwrite(buf, 1, 300, fp), 0, "refused/fwrite 4K: nothing written");
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_NOREQ, "refused/fwrite 4K: ferror is the router's code");
+        close_file(&fp);
+    }
+
+    /* The server rejected the write before counting anything: the response
+    ** carries an rc and no length, and the response area still holds what
+    ** the client put there -- the fd, not a byte count. */
+    fp = open_file(ufs, "w");
+    if (fp) {
+        begin();
+        s_rc(UFSD_RC_BADFD);
+        CHECK_EQ(ufs_fwrite("abcdefghij", 1, 10, fp), 0, "rejected/fwrite inline: no bytes counted");
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_BADFD, "rejected/fwrite inline: ferror is the server's rc");
+        ufs_clearerr(fp);
+
+        begin();
+        s_rc(UFSD_RC_INVALID);
+        memset(buf, 'z', sizeof(buf));
+        CHECK_EQ(ufs_fwrite(buf, 1, 300, fp), 0, "rejected/fwrite 4K: no bytes counted");
+        CHECK_EQ(ufs_ferror(fp), UFSD_RC_INVALID, "rejected/fwrite 4K: ferror is the server's rc");
+        ufs_clearerr(fp);
+
+        /* rc 0 but no byte count: the response is not trusted either. */
+        begin();
+        (void)s_resp(0U);
+        CHECK_EQ(ufs_fwrite("abcdefghij", 1, 10, fp), 0, "no count/fwrite: nothing counted");
+        CHECK(ufs_ferror(fp) != 0, "no count/fwrite: flagged as an error");
+        close_file(&fp);
+    }
+
+    fp = open_file(ufs, "r");
+    if (fp) {
+        begin();
+        (void)s_resp(0U);
+        CHECK_EQ(ufs_fread(buf, 1, 10, fp), 0, "no count/fread: nothing read");
+        CHECK(ufs_ferror(fp) != 0, "no count/fread: flagged as an error");
+        close_file(&fp);
+    }
+
+    close_session(&ufs);
+}
+
 int
 main(void)
 {
@@ -956,6 +1101,7 @@ main(void)
     test_server_error();
     test_short_response();
     test_success();
+    test_error_propagation();
 
     CHECK_EQ(g_badssob, 0, "every SSOB/SSIB/UFSSSOB libufs built was well formed");
 
