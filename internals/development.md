@@ -69,8 +69,8 @@ ufsd/
   client/            Client library and test programs
   samplib/           Sample JCL procedures and Parmlib member
   jcl/               Batch JCL
-  docs/              User documentation (installation, configuration, API, disk spec)
-  internals/         Maintainer documentation (design concept, cross-AS reference)
+  docs/              User documentation (installation, configuration, disk setup, recovery, uninstall)
+  internals/         Maintainer documentation (design concept, cross-AS reference, this guide, disk format spec, releasing)
   test/              Tests (every test/**/*.c is one, see Testing)
   tools/             Build-side checks (check-module-data.py)
   mbt.toml           Build configuration: version, toolchain, modules, tests, SMP package
@@ -183,7 +183,7 @@ No Cross-Memory Services (PC/PT) are available on S/370. The IPC uses IEFSSREQ (
 
 ### On-Disk Format
 
-The UFS370 on-disk format is documented in [docs/ufsdisk-spec.md](ufsdisk-spec.md). Key characteristics: block sizes 512–8192 (default 4096), 128-byte inodes with dual-format timestamps, 64-byte directory entries (59-char filenames), V7 free block chain with inode scan refill and bitmap fallback. Single indirect blocks support files up to 4.06 MB.
+The UFS370 on-disk format is documented in [internals/ufsdisk-spec.md](ufsdisk-spec.md). Key characteristics: block sizes 512–8192 (default 4096), 128-byte inodes with dual-format timestamps, 64-byte directory entries (59-char filenames), V7 free block chain with inode scan refill and bitmap fallback. Single indirect blocks support files up to 4.06 MB.
 
 ## libufs API Reference
 

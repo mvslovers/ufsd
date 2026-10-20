@@ -660,7 +660,7 @@ To build a client (HTTPD, FTPD, or your own program) against UFSD, unpack the
 separate `ufsd-<version>-lib.tar.gz` release asset — it provides `include/` and
 `lib/libufs.a` for the cc370 host build. The `libufs` C API and the assembler
 linkage convention are documented in
-[development.md](https://github.com/mvslovers/ufsd/blob/main/docs/development.md).
+[development.md](https://github.com/mvslovers/ufsd/blob/main/internals/development.md).
 
 ---
 
