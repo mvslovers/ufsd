@@ -88,18 +88,6 @@ ufsd_ssi_load(UFSD_ANCHOR *anchor)
 
     if (!anchor || !anchor->ssvt) return -1;
 
-    /* __loadhi() opens and closes STEPLIB through libc370.  With
-    ** libc370 >= 2.15.0 the stream table is created by the first
-    ** fopen(), under the PSW key then in force: inside the key-0 window
-    ** below that is key-0 storage, and the key-8 fopen() of UFSDPRM
-    ** after it abends S0C4.  Create the table in key 8 first (#107,
-    ** libc370#693). */
-    {
-        FILE *wf = fopen("DD:STEPLIB", "rb");
-
-        if (wf) fclose(wf);
-    }
-
     if (__super(PSWKEY0, &savekey)) {
         wtof("UFSD026E CANNOT ENTER SUPERVISOR FOR SSI LOAD");
         return -1;
