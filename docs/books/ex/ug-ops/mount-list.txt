@@ -1,0 +1,4 @@
+UFSD068I 3 FILESYSTEM(S) MOUNTED:
+UFSD069I   /             DSN=UFSD.ROOT                                     RO
+UFSD069I   /tmp          DSN=UFSD.SCRATCH                                  RW
+UFSD069I   /u/herc01     DSN=HERC01.UFSHOME                                RW OWNER=HERC01

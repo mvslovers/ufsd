@@ -72,3 +72,7 @@ CLAUDE.md
 *.su
 *.idb
 *.pdb
+
+# The manuals build here (docs/books); only the sources are committed.
+docs/books/*.pdf
+docs/books/site/

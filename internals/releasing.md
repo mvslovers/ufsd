@@ -54,3 +54,39 @@ test needs a throwaway id **and** throwaway module names, because SMP keys
 element ownership on `MOD(name)`, not on the target library. See
 `~/repos/mvs/.workspace/context/smp.md` for the full rule and the measurements
 behind it.
+
+## The manuals (ML05-0001, ML05-0002)
+
+The User's Guide and the Reference are in `docs/books/` (Typst, the
+`bookmaster` submodule). Release 1.5.0 shipped without them; they were made
+afterwards and attached to the existing release.
+
+**Before the release PR:**
+
+1. The edition notice of both books (`ml05-0001.typ`, `ml05-0002.typ`, "This
+   edition applies to ...") names the release whose behaviour the text
+   describes.
+2. Messages, commands, configuration parameters and limits are written from
+   the source (`apx-messages`, `ref-cmd`, `ref-cfg`, `ref-lim`). A PR that
+   changed one of them has updated the book in the same PR or named the stale
+   section in its body.
+3. Screens under `docs/books/ex/` are real output of a run in a throwaway
+   container (`--dist tk5`, the release installed with SMP), never typed by
+   hand. A changed message needs a new capture.
+4. `make -C docs/books` and `sh docs/books/web/build.sh site` build without
+   an error. The `books` workflow does the first on every PR.
+
+**At the release:** `release.yml` has a `books` job (`needs: release`). It
+builds the PDFs from the tag with `SOURCE_DATE_EPOCH=0`, so a rebuild gives
+the same bytes, and attaches `ml05-0001-<edition>.pdf`,
+`ml05-0002-<edition>.pdf` and their lines in `SHA256SUMS`. Check the lines
+with `sha256sum -c` on the downloaded assets, as for the other assets.
+
+**A release that exists already** (1.5.0 was the first): build the PDFs from
+the tag in a clean checkout with `SOURCE_DATE_EPOCH=0 make -C docs/books`,
+then `gh release upload vX.Y.Z --clobber <the two PDFs> SHA256SUMS`. A release
+page is final, so this needs the maintainer's approval first.
+
+**Read the Docs** builds the web form from the default branch
+(`.readthedocs.yaml`, the same sources). The project is registered by the
+maintainer; a change of the build commands is a change of that file.
