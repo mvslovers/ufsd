@@ -25,10 +25,25 @@ kind = "application"
 # (mvslovers/libc370#524). 2.6.2 to 2.10.2 change nothing ufsd calls
 # (fseek/ftell, rand, VSAM, __listds, the COBOL entry); the IBM macros
 # come from maclib370 since 2.8.0.
+# 2.23.0: 2.10.3 to 2.23.0 change no prototype ufsd calls; the build and
+# the 191 host assertions are identical against both. What does differ:
+# iefssreq() refuses an unauthorized caller with -1/EPERM instead of S047
+# and no longer drops a supervisor-state caller to problem state
+# (mvslovers/libc370#402; libufs is its only caller here); the standard
+# streams, SYSENV and TZ are set up on first use (#564); stdin was already
+# the (*__gtin()) macro in 2.10.3. UFSFMT in a throwaway container gives the
+# same SYSPRINT and CC 0 with SYSIN data, no SYSIN DD and SYSIN DD DUMMY, and
+# the same SYSTERM and CC 8 on its error paths; only an unused SYSTERM is no
+# longer spooled as an empty data set. getmain/freemain/__estae/
+# __crtget no longer link printf and stdio (#283, #564), which shrinks
+# UFSDSSIR (CSA) from 0xB840 to 0x6B10 bytes and UFSDCLNP from 0x13C10 to
+# 0xA978. No member linked into UFSD, UFSDCLNP or UFSDSSIR gains writable
+# data (constraint 7); checked by hand, as for #64, since the module-data
+# checkers do not read libc members.
 # cc370: libc370 2.8.0 and later need cc370 >= 1.6.0 (every header
-# #errors below it); 1.6.1 is current.
+# #errors below it); 1.6.1 satisfies 2.23.0.
 cc370 = "1.6.1"
-libc370 = "2.10.3"
+libc370 = "2.23.0"
 mbt = "3.0"
 
 # ── Load modules ─────────────────────────────────────────
