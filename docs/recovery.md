@@ -200,7 +200,7 @@ All UFSD messages follow the `UFSDnnnX` pattern, where `nnn` is the message numb
 | UFSD046I | I | Session table freed |
 | UFSD048I | I | Global file table freed |
 | UFSD096I | I | CSA freed |
-| UFSD097E | E | Cannot enter supervisor state at shutdown — CSA retained, run UFSDCLNP (ACTIVE flag stays set, so startup will refuse the orphan) |
+| UFSD097E | E | Cannot enter supervisor state at shutdown — CSA retained, reclaimed at next start (ACTIVE flag stays set, but the address space ends, so the next start's liveness check finds no ASCB and reclaims) |
 | UFSD097W | W | Abend shutdown — CSA retained, reclaimed at next start (final message of the abend path) |
 | UFSD098E | E | Abend intercepted — emergency shutdown |
 | UFSD098W | W | Client(s) still in flight at shutdown — CSA retained, reclaimed at next start |

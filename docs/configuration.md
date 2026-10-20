@@ -153,7 +153,7 @@ Dynamic mounts are not persisted — they are lost on UFSD restart. To make them
 | `SESSIONS PRUNE` | Release sessions for terminated address spaces (stale ASID detection via ASVT walk) |
 | `SHUTDOWN` | Orderly shutdown (same as `/P UFSD`) |
 
-A normal `SHUTDOWN` or `/P UFSD` frees CSA cleanly. After an abnormal (abend) shutdown, CSA may be retained — run `UFSDCLNP` before restarting. See `docs/recovery.md`.
+A normal `SHUTDOWN` or `/P UFSD` frees CSA cleanly. After an abnormal (abend) shutdown, CSA may be retained; the next `/S UFSD` reclaims it. `UFSDCLNP` is needed only when that start refuses with `UFSD156W`. See `docs/recovery.md`.
 
 ### Examples
 

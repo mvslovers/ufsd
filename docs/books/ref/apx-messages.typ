@@ -185,7 +185,7 @@ The answers to the MODIFY command are described with the commands in @ref-cmd.
     [#cmd("UFSD095I SSCT DEREGISTERED")], [A stop removed the subsystem entry.],
     [#cmd("UFSD096E RECOVERY: STC BLOCK NOT FOUND -- NOTHING QUIESCED, CSA RETAINED")], [After an abend, the recovery routine did not find the control block of the server. Nothing was shut down and the storage is kept. The next start frees it.],
     [#cmd("UFSD096I CSA FREED")], [A stop freed the common storage.],
-    [#cmd("UFSD097E CANNOT ENTER SUPERVISOR STATE -- CSA RETAINED, RUN UFSDCLNP BEFORE RESTART")], [A stop could not enter supervisor state. The storage is kept and the anchor stays flagged active. The next start reclaims it if the address space of the server is gone, and refuses only with UFSD155W or UFSD156W; UFSDCLNP then frees it.],
+    [#cmd("UFSD097E CANNOT ENTER SUPERVISOR STATE -- CSA RETAINED, RECLAIMED AT NEXT START")], [A stop could not enter supervisor state. The storage is kept and the anchor stays flagged active. The next start reclaims it if the address space of the server is gone, and refuses only with UFSD155W or UFSD156W; UFSDCLNP then frees it.],
     [#cmd("UFSD097W ABEND SHUTDOWN -- CSA RETAINED, RECLAIMED AT NEXT START")], [The last message after an abend. The storage is kept on purpose and the next start frees it.],
     [#cmd("UFSD098E UFSD ABEND INTERCEPTED -- EMERGENCY SHUTDOWN")], [The first message after an abend. UFSD writes back what it can and stops.],
     [#cmd("UFSD098I UFSD SHUTTING DOWN")], [A stop begins (P UFSD or SHUTDOWN). It is not issued after an abend.],
