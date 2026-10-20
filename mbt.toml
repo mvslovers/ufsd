@@ -40,10 +40,20 @@ kind = "application"
 # 0xA978. No member linked into UFSD, UFSDCLNP or UFSDSSIR gains writable
 # data (constraint 7); checked by hand, as for #64, since the module-data
 # checkers do not read libc members.
+# 2.24.0: 2.23.0 to 2.24.0 change no prototype ufsd calls; the build and the
+# host assertions are identical against both. oscheck() now returns
+# OSIO_EOD (4) at end of data and OSIO_IOERR (8) on an I/O error, through the
+# library's default EODAD/SYNAD, where it returned the abend code (S001/S337)
+# before. ufsd treats every non-zero oscheck() as a failure (ufsfmt.c, ufsd#blk.c)
+# and the B37/D37/E37 extent-end test in UFSFMT only looks at a real space
+# abend, which try() still returns unchanged; UFSFMT run against 2.24.0
+# formats 1280 of 1280 requested blocks, ends the extent on D37 and sets CC 0.
+# Since libc370 2.15.0 UFSD needs the key-8 warm-up fopen in ufsd_ssi_load()
+# (#107, libc370#693); without it the server abends S0C4 at start.
 # cc370: libc370 2.8.0 and later need cc370 >= 1.6.0 (every header
-# #errors below it); 1.6.1 satisfies 2.23.0.
+# #errors below it); 1.6.1 satisfies 2.24.0.
 cc370 = "1.6.1"
-libc370 = "2.23.0"
+libc370 = "2.24.0"
 mbt = "3.0"
 
 # ── Load modules ─────────────────────────────────────────
