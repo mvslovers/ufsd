@@ -317,5 +317,6 @@ program reads no input and takes no parameter. Start the procedure with
 
 If the anchor does not name a live address space, #cmd("UFSDCLNP") reclaims it,
 including the case that the anchor carries no address space at all
-(#cmd("UFSD156W")). Where #cmd("S UFSD") refuses, #cmd("UFSDCLNP") works. The
+(#cmd("UFSD156W")). Where #cmd("S UFSD") refuses with #cmd("UFSD156W"), #cmd("UFSDCLNP")
+works. After #cmd("UFSD155W") it refuses as well. The
 table of decisions is in the _UFSD User's Guide_.
