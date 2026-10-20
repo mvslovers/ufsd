@@ -61,6 +61,12 @@ mbt deploy          # -> UFSD.DEV.LINKLIB (touches MVS)
 ```
 `python3 tools/check-module-data.py` checks constraint 7 against `mbt.toml`.
 
+**libufs host tests:** `client/libufs.c` builds on the host unchanged; the test
+supplies its own `iefssreq()` (the only MVS call) and scripts the answers. To
+add a case, extend `test/host/tstlibuf.c` (helpers `s_transport`, `s_refused`,
+`s_rc`, `s_resp`, ...); the libc370/IBM headers it needs are type-only stand-ins
+in `test/host/include/`.
+
 ## Module Map
 
 | Module | File | Purpose |
