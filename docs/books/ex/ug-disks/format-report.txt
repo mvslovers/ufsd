@@ -1,0 +1,16 @@
+UFSFMT10I UFSFMT 1.5.0 -- UFS370 disk format utility
+UFSFMT26I Initialized 264 blocks (1.03 MB)
+UFSFMT51I Formatted 2 index blocks, 64 inode slots
+UFSFMT52I Formatted 260 data blocks
+UFSFMT71I Root directory created, owner=HERC01, group=ADMIN, mode=0755
+ 
+UFSFMT80I Format summary
+UFSFMT81I   Dataset . . . . . HERC01.DOC91.UFSHOME
+UFSFMT82I   Block size  . . . 4096
+UFSFMT83I   Total blocks  . . 264           (1.03 MB)
+UFSFMT84I   Inode blocks  . . 2             (64 slots, 62 free)
+UFSFMT85I   Data blocks . . . 260           (259 free)
+UFSFMT86I   Root owner  . . . HERC01/ADMIN
+ 
+UFSFMT90I Add to your UFSD parmlib member:
+UFSFMT91I   MOUNT    DSN(HERC01.DOC91.UFSHOME) PATH(/your/mount/point) MODE(RW) OWNER(HERC01)

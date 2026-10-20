@@ -1,0 +1,7 @@
+UFSD126W MOUNT POINT /TMP NOT FOUND ON PARENT DISK
+UFSD060I MOUNTED UFSD.SCRATCH ON /TMP (RW)
+UFSD068I 4 FILESYSTEM(S) MOUNTED:
+UFSD069I   /             DSN=UFSD.ROOT                                     RO
+UFSD069I   /tmp          DSN=UFSD.SCRATCH                                  RW
+UFSD069I   /u/herc01     DSN=HERC01.UFSHOME                                RW OWNER=HERC01
+UFSD069I   /TMP          DSN=UFSD.SCRATCH                                  RW
