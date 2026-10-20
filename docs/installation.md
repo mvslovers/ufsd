@@ -27,7 +27,7 @@ One placeholder is used throughout:
 
 | | |
 |---|---|
-| `<version>` | the release, e.g. `1.4.0` — it appears in every shipped file name |
+| `<version>` | the release, e.g. `1.5.0` — it appears in every shipped file name |
 
 It is already filled in inside the shipped jobs; you only need it to recognise
 which file is which.
@@ -204,7 +204,18 @@ with what you uploaded in step 3:
   RECEIVE INDSN('CHANGE.ME.SAMPLIB') -       <- IBMUSER.UFSD.SAMP.XMIT
 ```
 
-Those are the only lines you have to change. Submit it.
+On TK5 those are the only lines you have to change. **On MVS/CE, TSO RECEIVE
+also needs a volume to allocate on**: add a `VOLUME()` operand to both of these
+`RECEIVE` commands (steps `RECV1` and `RECV2`) — `PUB000` on a stock MVS/CE,
+or another volume of yours:
+
+```
+  RECEIVE INDSN('IBMUSER.UFSD.LOAD.XMIT') -
+    DATASET('UFSD.UFSDLOAD') -
+    VOLUME('PUB000')
+```
+
+Submit it.
 
 The job runs eight steps, each conditional on the one before, so it stops at
 the first failure rather than building on it:
@@ -222,8 +233,8 @@ the first failure rather than building on it:
 
 The SYSMOD travels inline in the job — there is no third file to upload.
 
-**What a good run looks like.** Every step `COND CODE 0000`, and in the SMP
-output:
+**What a good run looks like.** On a fresh install, every step `COND CODE 0000`,
+and in the SMP output:
 
 ```
 HMA3930    SYSMOD <fmid> SUCCESSFULLY RECEIVED
@@ -231,6 +242,9 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
            - RETURN CODE=00                          (and one per module)
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00
 ```
+
+An upgrade ends the `APPLY` with RC 04 (`HMA2461`) instead, and that is also
+correct — see [section 10](#10-upgrading-from-an-earlier-release).
 
 **Then list the members, and treat that as the result.** SMP reports the
 library by **ddname**, and a ddname says nothing about which dataset was behind
@@ -255,8 +269,8 @@ If the listing is empty while the job log said success, the `APPLY` printed
 `NOT SEL` instead of `HMA2380`: some other SYSMOD owns those module names in
 the SMP inventory. Each release deletes **only the one immediately before
 it**, so the owner is cleared as part of the install only when you come from
-that release. The usual cause is skipping a release: a system still on 1.2.x
-(`TUFS120`) installing anything later than 1.3.0 -- see section 10, which
+that release. The usual cause is skipping a release: a system still on 1.3.0
+(`TUFS130`) or 1.2.x (`TUFS120`) installing 1.5.0 -- see section 10, which
 starts with the check that tells the cases apart. Otherwise the names were
 claimed by something this release does not know about: a test install under a
 throwaway id, or ufsd 1.1.x, which was never released but was applied on at
@@ -313,10 +327,14 @@ formats one.
 ```
 ROOT     DSN(UFSD.ROOT)
 
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
+MOUNT    DSN(HTTPD.WEBROOT.UFS)  PATH(/www)          MODE(RO)
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
 MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 ```
+
+`HTTPD.WEBROOT.UFS` is the web content disk that HTTPD's own installation guide
+creates, mounted read-only on HTTPD's default `DOCROOT`, `/www`. If you do not
+run HTTPD, delete that line.
 
 - `ROOT` is required and is mounted on `/`.
 - `MOUNT` mode is `RO` or `RW`; `OWNER(userid)` restricts writes to one user.
@@ -441,12 +459,17 @@ only the one immediately before it:
 /*
 ```
 
-- **`TUFS130`:** an upgrade from 1.3.0. Run `/P UFSD`, the install job, then `/S UFSD`.
-- **`TUFS120`:** an upgrade from 1.2.x. See [Coming from 1.2.x](#coming-from-12x).
-- **not found:** a fresh install. Run the allocation job, then the install job.
+- **`TUFS140`:** an upgrade from 1.4.0. Run `/P UFSD`, the install job, then `/S UFSD`.
+- **`TUFS130`:** 1.3.0 — this release skips 1.4.0 and so does not delete it.
+  See [Coming from 1.3.0](#coming-from-130).
+- **`TUFS120`:** 1.2.x. See [Coming from 1.2.x](#coming-from-12x).
+- **not found:** a fresh install, or a system that never had UFSD under SMP —
+  see [Coming from a non-SMP install](#coming-from-a-non-smp-install) for the
+  latter. Run the allocation job, then the install job.
 
-From the release after this one, the owner of a direct upgrade is the release
-before it (`TUFS140` for 1.5.0), and any older owner takes the 1.2.x route.
+Each release has an FMID of its own and deletes only its predecessor's:
+`TUFS140` is 1.4.0, and `TUFS150` (this release) deletes `TUFS140`. An older
+owner of `MOD(UFSD)` is left in place, and then SMP installs nothing.
 
 An upgrade from the immediately preceding release is **step 3 and step 5, and
 nothing else**. The dataset names do
@@ -458,8 +481,8 @@ alloc job would fail on `DISP=(NEW,CATLG)` — harmlessly, but it has nothing to
 do.
 
 **There is no `UCLIN` step any more.** Each release carries its own FMID and
-deletes the one before it — 1.4.0 is `TUFS140` and its `++VER` reads
-`DELETE(TUFS130)`. SMP deletes the predecessor's load modules from the target
+deletes the one before it — 1.5.0 is `TUFS150` and its `++VER` reads
+`DELETE(TUFS140)`. SMP deletes the predecessor's load modules from the target
 library and copies the new ones in, and the module entries in its inventory
 become this release's. The `UCLIN` job in
 [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
@@ -475,8 +498,8 @@ backup entry in `SYS1.SMPSCDS` and never will, so the step reports success and
 *then* a 4:
 
 ```
-HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS140
-HMA2461    SYSMOD TUFS130 NOT FOUND ON SMPSCDS LIBRARY
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS150
+HMA2461    SYSMOD TUFS140 NOT FOUND ON SMPSCDS LIBRARY
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
 ```
 
@@ -507,7 +530,7 @@ is a **move**: the old datasets are not written to, and you scratch them
 yourself once the new server is up.
 
 **Only 1.3.0 deletes `TUFS120`.** Every release deletes the one immediately
-before it and nothing older, so this release (`TUFS140`, `DELETE(TUFS130)`)
+before it and nothing older, so this release (`TUFS150`, `DELETE(TUFS140)`)
 leaves `TUFS120` owning `MOD(UFSD)`. SMP then prints `NOT SEL` for every
 module, copies nothing and ends `RC 00`: the trap described under section 5 of this guide.
 Release the inventory by hand first, in step 2.
@@ -561,8 +584,56 @@ window you chose and then close — not as a state you can leave the system in.
 
 Each step was measured on its own (the `UCLIN`, a fresh install, and 1.3.0's
 move across the rename). The sequence as a whole has not been run from 1.2.x to
-1.4.0. The alternative is to install 1.3.0 first and then this release: two
-ordinary upgrades.
+this release. The alternative is to walk the releases in order — 1.3.0, then
+1.4.0, then this one — each an ordinary upgrade after the first.
+
+### Coming from 1.3.0
+
+1.3.0 (`TUFS130`) already installs into `UFSD.*`, so there is no rename to
+cross: nothing to allocate and no `STEPLIB` to re-point. What it shares with
+1.2.x is the inventory wall — this release deletes `TUFS140` only, so
+`TUFS130` still owns `MOD(UFSD)` and a plain install prints `NOT SEL` and ends
+`RC 00` with nothing copied.
+
+Either install 1.4.0 first and then this release (two ordinary upgrades), or
+release the inventory by hand:
+
+1. `/P UFSD`.
+2. **Step 2 of [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#2-cut-the-fmid-out-of-the-smp-inventory)
+   only**, as in the 1.2.x route above; do not run its step 4.
+3. **Steps 3 and 5**, then `/S UFSD` and read `UFSD000I` (step 8): it must name
+   the version and commit you just installed.
+
+The hand route has not been run from 1.3.0 to this release; the `UCLIN` it
+relies on has been measured on its own.
+
+### Coming from a non-SMP install
+
+Before 1.2.0, UFSD was installed with a plain TSO `RECEIVE` into a load
+library of the site's choosing (`UFSD.V1R0M0.LINKLIB` in the 1.1.0 guide), with
+no SMP involved. SMP has no record of such an install, so the check at the top of
+this section finds nothing, and there is nothing to release. The route that
+worked is a fresh SMP install beside the old one, then a switch-over:
+
+1. Do a fresh install: **steps 3 to 5** of this guide, the allocation job
+   included. The old load library stays as it is.
+2. Re-point what names the library: `STEPLIB` in your `UFSD` and `UFSDCLNP`
+   procedures, any client JCL, and the APF entry if you took the APF route
+   (one IPL, as in step 5 of [Coming from 1.2.x](#coming-from-12x)).
+3. `/P UFSD`, then `/S UFSD`, and read `UFSD000I` (step 8): it must name the
+   version and commit you just installed. If it still names the old build, the
+   `STEPLIB` was not re-pointed.
+4. Only then scratch the old load library.
+
+Your `ROOT` and `MOUNT` datasets and your PARMLIB member are not touched by any
+of this.
+
+The install job writes `UFSD.LINKLIB`, `UFSD.AUFSDLOD`, `UFSD.UFSDLOAD` and
+`UFSD.SAMPLIB`. If your old install already uses one of those names, stop
+first: the allocation job fails on an existing `UFSD.LINKLIB` or
+`UFSD.AUFSDLOD`, and the install job's `DELOLD` step **scratches**
+`UFSD.UFSDLOAD` and `UFSD.SAMPLIB`. Copy what you want out of them, or move the
+old library to another name. That case has not been run.
 
 ---
 

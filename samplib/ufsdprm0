@@ -4,8 +4,8 @@
 /* Root filesystem - the dataset must already exist (see docs/disk-setup.md) */
 ROOT     DSN(UFSD.ROOT)
 
-/* Read-only web content */
-MOUNT    DSN(HTTPD.WEBROOT)      PATH(/www)          MODE(RW)
+/* Read-only web content: the disk the HTTPD installation guide creates */
+MOUNT    DSN(HTTPD.WEBROOT.UFS)  PATH(/www)          MODE(RO)
 
 /* User home directory, writable only by IBMUSER */
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
