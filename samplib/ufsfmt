@@ -1,10 +1,15 @@
 //UFSFMT   JOB (ACCT),'FORMAT UFS DISK',CLASS=A,MSGCLASS=H,
-//             MSGLEVEL=(1,1),NOTIFY=&SYSUID
+//             MSGLEVEL=(1,1)
 //*
 //* UFSFMT - Allocate and format a UFS370 filesystem on MVS
 //*
 //* Change IBMUSER.UFSHOME, the SPACE quantity, OWNER and GROUP to
 //* suit, then submit.
+//*
+//* There is no NOTIFY= on the job card: TSO SUBMIT expands &SYSUID,
+//* but not every other way of submitting does (FTP to JES passes it
+//* through as literal text).  Add NOTIFY=userid to be told when the
+//* job ends.
 //*
 //* ------------------------------------------------------------------
 //* Step 1 -- allocate the disk dataset.
