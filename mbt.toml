@@ -50,10 +50,21 @@ kind = "application"
 # formats 1280 of 1280 requested blocks, ends the extent on D37 and sets CC 0.
 # Since libc370 2.15.0 UFSD needs the key-8 warm-up fopen in ufsd_ssi_load()
 # (#107, libc370#693); without it the server abends S0C4 at start.
+# 2.24.1: libc370#693 is fixed in the library: the open-file list, the
+# standard streams and SYSENV are created in the task's key, also inside a
+# key-0 window. UFSD source from before the key-8 warm-up (#107): S0C4 at
+# start linked against 2.24.0, READY against 2.24.1 (throwaway container).
+# The warm-up fopen stays in ufsd_ssi_load() for now (one fopen/fclose of
+# STEPLIB; dropping it is a separate change). 2.24.0 to 2.24.1 change no
+# prototype ufsd calls; the build and the 518 host assertions are identical
+# against both, and so are the 446 MVS assertions in a container. The other
+# 2.24.1 change (select()/socket() errno, #161) is in code no ufsd module
+# links; the changed @@FPOPN, @@STDLZ and @@ENVLZ add no file-scope data
+# (constraint 7).
 # cc370: libc370 2.8.0 and later need cc370 >= 1.6.0 (every header
-# #errors below it); 1.6.1 satisfies 2.24.0.
+# #errors below it); 1.6.1 satisfies 2.24.1.
 cc370 = "1.6.1"
-libc370 = "2.24.0"
+libc370 = "2.24.1"
 mbt = "3.0"
 
 # ── Load modules ─────────────────────────────────────────
