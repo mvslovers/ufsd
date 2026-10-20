@@ -282,8 +282,10 @@ ufsdssir(void)
             *(unsigned *)(req->data + 4) = n;
             req->data_len = 8U;  /* fd(4) + count(4), data in buf */
         }
-        /* If pool exhausted, req->buf stays NULL and do_fwrite
-        ** falls back to inline data in req->data[8..]. */
+        /* Pool exhausted: req->buf stays NULL and req->data holds only
+        ** fd + count, so do_fwrite answers UFSD_RC_INVALID.  There is no
+        ** inline data to fall back to on a write -- libufs resends the
+        ** chunk inline (ufs_fwrite). */
     }
 
     /* Save ECB pointer in a local (stack) variable before leaving key 0,
