@@ -121,6 +121,44 @@ Runs in the **client address space**. Contains **zero business logic**.
    so a shutdown drain observes this client gone only once it is done with CSA
 6. Switch to problem state
 
+### 4.1 FREAD reply contract
+
+A FREAD asks for `count` bytes. Above the inline size (`count > 252`) the
+request carries a client buffer (`buf_ptr`, `buf_len`) and the server may
+answer through a CSA pool buffer. `ufsd_dispatch` takes that buffer **before**
+`do_fread` runs, in its own short key-0 window, and leaves it in `req->buf`.
+`do_fread` only looks at `req->buf != NULL`:
+
+- buffer present: read into a heap staging buffer, `ufsd_dispatch` copies it
+  into `req->buf`;
+- no buffer (pool empty), or the staging `malloc` fails: `count` is clamped to
+  252 before anything is read and the bytes go inline. The file position moves
+  by what the reply carries, nothing is ever rewound.
+
+A reserved buffer that does not end up carrying the data (rc not OK, 0 bytes
+read, inline reply, no staging buffer) goes back to the pool in the same
+key-0 window that writes the reply, and `req->buf` is NULL when the client is
+posted. The router therefore sees `req->buf != NULL` only when it holds data.
+
+The reply, read by `ufs_fread`:
+
+| Reply | Meaning |
+|-------|---------|
+| `data[0..3]` | bytes delivered, always |
+| `data_len == 4` | no inline data. With `req->buf != NULL` the bytes are in the buffer and the router copied them to `buf_ptr`; otherwise nothing was read (EOF, count 0) |
+| `data_len > 4` | inline reply: `data_len - 4` bytes from `data+4`, **regardless of `buf_ptr`** |
+
+`buf_ptr` says nothing about the kind of reply; the router touches it only
+when `req->buf != NULL`. For a 4K request answered inline the effective chunk
+is 252: a reply of 252 bytes means "continue", a shorter one is EOF. A 4K
+reply that is shorter than the request is EOF as before.
+
+Version skew: a client older than this contract takes `buf_ptr == dst` for
+"data already stored" and drops an inline reply (it reports the bytes as read
+and sets EOF); a server older than it answers an exhausted pool with a count
+and no data, which no client can tell from a 4K reply. Client and server
+should be updated together.
+
 ## 5. CSA Memory Model
 
 | Pool | Count | Unit Size | Total | Allocation |

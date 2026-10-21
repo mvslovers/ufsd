@@ -1307,6 +1307,112 @@ test_path_limit(void)
 }
 
 /* ============================================================
+** FREAD when the server cannot deliver 4K data (#135)
+**
+** A 4K request (want > 252) is answered inline when the server has no CSA
+** pool buffer to spare or its staging malloc fails: count clamped to 252,
+** data in data[4..], data_len = 4 + count, buf_ptr left alone by the router.
+** data_len > 4 is what tells ufs_fread, not buf_ptr.  The position on the
+** server has advanced by exactly the bytes in the reply, so 252 is a full
+** chunk and only a shorter reply is EOF.
+** ============================================================ */
+
+static void
+test_read_pool_empty(void)
+{
+    UFS     *ufs;
+    UFSFILE *fp;
+    char     buf[800];
+    char     src[800];
+
+    printf("\n--- FREAD without 4K data (#135) ---\n");
+
+    ufs = new_session();
+    if (!ufs) return;
+
+    /* inline answer to a 300 byte request, the rest asked for next */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        memset(src, 'a', 252);
+        memset(src + 252, 'b', 48);
+        begin();
+        s_read_inline(src, 252U);
+        s_read_inline(src + 252, 48U);
+        memset(buf, 0x5A, sizeof(buf));
+        CHECK_EQ(ufs_fread(buf, 1, 300, fp), 300, "inline answer: all 300 bytes");
+        CHECK(memcmp(buf, src, 300) == 0, "inline answer: the bytes of the reply");
+        CHECK(!ufs_feof(fp), "inline answer: not EOF");
+        CHECK_EQ(ufs_ferror(fp), 0, "inline answer: no error");
+        CHECK_EQ(g_ncall, 2, "inline answer: the rest is asked for");
+        CHECK_EQ(get_u32(g_seen[0].data + 4), 300, "inline answer: first ask is 300");
+        CHECK_EQ(get_u32(g_seen[1].data + 4), 48, "inline answer: then what is left");
+        CHECK(g_seen[0].buf_ptr == (void *)buf, "inline answer: first ask offered the buffer");
+        CHECK(g_seen[1].buf_ptr == NULL, "inline answer: the rest is an inline ask");
+        close_file(&fp);
+    }
+
+    /* several full inline chunks in a row, then a short one */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        memset(src, 'c', sizeof(src));
+        begin();
+        s_read_inline(src, 252U);
+        s_read_inline(src + 252, 252U);
+        s_read_inline(src + 504, 196U);
+        memset(buf, 0x5A, sizeof(buf));
+        CHECK_EQ(ufs_fread(buf, 1, 700, fp), 700, "inline chunks: all 700 bytes");
+        CHECK(memcmp(buf, src, 700) == 0, "inline chunks: the bytes of the replies");
+        CHECK(!ufs_feof(fp), "inline chunks: not EOF");
+        CHECK_EQ(g_ncall, 3, "inline chunks: three requests");
+        close_file(&fp);
+    }
+
+    /* an inline answer shorter than 252 to a 4K request is EOF */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        memset(src, 'd', 100);
+        begin();
+        s_read_inline(src, 100U);
+        memset(buf, 0x5A, sizeof(buf));
+        CHECK_EQ(ufs_fread(buf, 1, 300, fp), 100, "short inline answer: 100 bytes");
+        CHECK(memcmp(buf, src, 100) == 0, "short inline answer: the bytes");
+        CHECK(buf[100] == 0x5A, "short inline answer: nothing past the reply");
+        CHECK(ufs_feof(fp), "short inline answer: EOF");
+        CHECK_EQ(g_ncall, 1, "short inline answer: no further request");
+        close_file(&fp);
+    }
+
+    /* 4K answer: data through buf_ptr, data_len 4; short is EOF */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        memset(src, 'e', 100);
+        begin();
+        s_read_buf(src, 100U);
+        memset(buf, 0x5A, sizeof(buf));
+        CHECK_EQ(ufs_fread(buf, 1, 300, fp), 100, "4K answer, short: 100 bytes");
+        CHECK(memcmp(buf, src, 100) == 0, "4K answer, short: stored by the router");
+        CHECK(ufs_feof(fp), "4K answer, short: EOF");
+        close_file(&fp);
+    }
+
+    /* a count with no data to an inline ask cannot be an answer */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        STEP *st;
+
+        begin();
+        st = s_resp(4U);
+        put_u32(st->data, 10U);
+        memset(buf, 0x5A, sizeof(buf));
+        CHECK_EQ(ufs_fread(buf, 1, 10, fp), 0, "count without data: nothing delivered");
+        CHECK(ufs_ferror(fp) != 0, "count without data: error, not data");
+        close_file(&fp);
+    }
+
+    close_session(&ufs);
+}
+
+/* ============================================================
 ** Path length for ufs_stat, ufs_diropen and ufs_fopen: the
 ** boundary is 255 (251 for fopen); a longer path is refused
 ** before any request is built and leaves last_rc as it was
@@ -1407,6 +1513,7 @@ main(void)
     test_error_propagation();
     test_write_pool_empty();
     test_path_limit();
+    test_read_pool_empty();
     test_path_limit_others();
 
     CHECK_EQ(g_badssob, 0, "every SSOB/SSIB/UFSSSOB libufs built was well formed");

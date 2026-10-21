@@ -140,6 +140,8 @@ void __64_add_u32(__64 *a, unsigned v, __64 *r) { (void)a; (void)v; (void)r; }
 static UFSD_DISK    g_disk;
 static UFSD_STC     g_stc;
 static UFSD_GFILE   g_gfile;
+static UFSBUF  g_pool_buf;              /* what ufsd_dispatch reserved       */
+static int     g_reserved;              /* 1: a 4K request carries req->buf  */
 static UFSD_ANCHOR  g_anchor;
 static UFSD_SESSION g_sess;
 
@@ -171,6 +173,7 @@ setup(void)
     g_nmalloc     = 0;
     g_failmalloc  = 0;
     g_badfree     = 0;
+    g_reserved    = 1;
 }
 
 typedef struct result {
@@ -198,6 +201,7 @@ do_read(unsigned count, RESULT *r)
     memset(r, 0, sizeof *r);
     req.func     = UFSREQ_FREAD;
     req.data_len = 8U;
+    if (g_reserved && count > UFSREQ_MAX_INLINE - 4U) req.buf = &g_pool_buf;
     memcpy(req.data, &fd, 4);
     memcpy(req.data + 4, &count, 4);
 
@@ -340,6 +344,28 @@ check_staging_malloc_fails(void)
     CHECK_EQ(r.live_at_return, 0U, "the block buffer is freed");
 }
 
+static void
+check_no_reserved_buffer(void)
+{
+    RESULT r;
+    unsigned n;
+
+    printf("-- 4K read, CSA pool buffer not reserved: inline from the start\n");
+    setup();
+    g_reserved = 0;
+    do_read(4096U, &r);
+
+    memcpy(&n, r.resp, 4);
+    CHECK_EQ(r.rc, UFSD_RC_OK, "rc OK");
+    CHECK_EQ(g_nmalloc, 1U, "no staging buffer, only the block buffer");
+    CHECK_EQ(n, UFSREQ_MAX_INLINE - 4U, "clamped to the inline maximum");
+    CHECK_EQ(r.len, 4U + n, "the data travels inline");
+    CHECK(r.resp[4] == 'a' && r.resp[4U + n - 1U] == 'a', "the first bytes of the file");
+    CHECK_EQ(g_gfile.position, n, "the position advanced by what was delivered");
+    CHECK_EQ(r.live_at_return, 0U, "nothing is live");
+    CHECK_EQ(g_badfree, 0U, "nothing is freed twice");
+}
+
 int
 main(void)
 {
@@ -351,6 +377,7 @@ main(void)
     check_success_hands_off();
     check_inline_read();
     check_staging_malloc_fails();
+    check_no_reserved_buffer();
 
     return mbt_test_summary("TSTUFSFR");
 }
