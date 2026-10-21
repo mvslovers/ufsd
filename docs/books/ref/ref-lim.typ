@@ -122,10 +122,12 @@ the free space from the second number.
 lost for good. A removed inode is not cleared on the disk, and once more than
 64 inodes have been freed since the start, the cache cannot hold the others.
 #cmd("F UFSD,REBUILD") looks for inodes whose mode is 0, so it does not find
-them, and #cmd("STATS") still shows the old count of free inodes. On a file
-system with 126 free inodes, creating 125 files in one directory and removing
-them again left no free inode: every later create got the return code 48. Only
-a new format with #cmd("FORCE") (UFSD stopped) gave the inodes back.]
+them, and neither it nor a restart of UFSD gives them back. On a file system
+with 126 free inodes, after creating 125 files in one directory and removing
+them again, #cmd("STATS") showed 64 of 126 inodes free, and the next run
+created only 63 files. After #cmd("F UFSD,REBUILD") the count was 0 of 126, and
+every later create got the return code 48. Only a new format with #cmd("FORCE")
+(UFSD stopped) gave the inodes back.]
 
 == The Layout of a Disk <ref-lim-format>
 

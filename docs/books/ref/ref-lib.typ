@@ -157,7 +157,7 @@ handle.
 
 *Return value:* the handle, or NULL. There is no return code. The program
 has to set #cmd("errno = 0") before the call; the rule below holds only then.
-If the task is not authorised, #cmd("errno") is 1 (LIBC/370 2.23.0 and later;
+If the task is not authorised, #cmd("errno") is 1 (LIBC/370 2.19.0 and later;
 earlier releases ended the step with the abend S047). If #cmd("errno") is still
 0, UFSD is not running, or it has no free session (the limit is 64, @ref-lim-limits), or
 the library could not allocate the handle; in the last case it closes the

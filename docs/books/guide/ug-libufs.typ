@@ -210,7 +210,8 @@ with the names, never with the numbers.
 
 #cmd("ufs_last_rc(ufs)") returns the code of the last call that sets it. The
 calls of the first two rows of the table above set it on success as well as on
-failure, except #cmd("ufs_setuser") when it returns -1 and #cmd("ufs_stat")
+failure, except #cmd("ufs_setuser") when it returns -1 or when #cmd("ufs") or
+#cmd("userid") is NULL (it returns 20 and sends nothing), and #cmd("ufs_stat")
 when the library refuses the call before it sends a request (a NULL argument,
 an empty path, a path of 256 characters or more). #cmd("ufs_chgdir"),
 #cmd("ufs_mkdir"), #cmd("ufs_rmdir") and #cmd("ufs_remove") store 20 (INVALID)
@@ -261,7 +262,7 @@ The second, with the authority set and UFSD stopped with #cmd("P UFSD"):
 The two cases look different only through #cmd("errno"), and #cmd("errno") of 0
 does not tell a stopped UFSD from a full session table. Look at the console
 (@ug-ops-stats) to decide. The #cmd("errno") of 1 for an unauthorised caller is what
-LIBC/370 2.23.0 and later give; earlier releases ended the step with a system
+LIBC/370 2.19.0 and later give; earlier releases ended the step with a system
 abend S047 instead. The build in this chapter used 2.25.1.
 
 == Authority and Permissions <ug-libufs-auth>
@@ -450,11 +451,13 @@ ones a program meets, with what was measured on the test system:
 ]
 
 #note[*A defect* (ufsd\#130): inodes of removed files and directories are not
-all returned to the file system. Once more than 64 have been removed since
-the start, the others are lost for good, and #cmd("F UFSD,REBUILD") does not
-find them. On the test system a program that created 125 files in an empty
-directory and then removed all of them left the file system with no free
-inode: every later create failed with 48. A program that creates and removes
+all returned to the file system. The superblock caches 64 free inodes. Once
+more than 64 have been removed since the start, the others are lost for good,
+and neither #cmd("F UFSD,REBUILD") nor a restart of UFSD gives them back. On the
+test system, after a program had created 125 files in an empty directory and
+removed all of them, #cmd("STATS") showed 64 of 126 inodes free, and the next
+run of the program created only 63 files. After #cmd("F UFSD,REBUILD") the
+count was 0 of 126, and every later create failed with 48. A program that creates and removes
 many objects in one file system should not rely on the free space coming
 back.]
 
