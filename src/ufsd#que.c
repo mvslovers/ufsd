@@ -98,12 +98,14 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
     unsigned        resp_data_len;
     UFSD_SESSION   *sess;
     char           *stg_free;   /* staging buffer to free after key-0 exit */
+    int             keep_buf;   /* FREAD: reserved buffer carries the data */
 
     if (!anchor || !req) return;
     out_token     = 0;
     resp_data_len = 0;
     sess          = NULL;
     stg_free      = NULL;
+    keep_buf      = 1;
     /* An inline FREAD that hits EOF also answers with resp_data_len == 4 and
     ** never writes resp_data[4..7]; zero means "no staging buffer" below. */
     memset(resp_data, 0, sizeof resp_data);
@@ -139,6 +141,20 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
 
     ufsd_trace(anchor, UFSD_T_REQUEST, req->session_token,
                (unsigned short)req->func);
+
+    /* --- FREAD above the inline size: reserve the CSA buffer up front ---
+    ** do_fread decides on req->buf whether it may stage 4K or must answer
+    ** inline (clamped to 252 bytes).  Reserving after the read would leave
+    ** nothing to answer with once the pool is empty, and the file position
+    ** would already have moved.  Only this task reserves for FREAD, so at
+    ** most one buffer is held for the duration of a read. */
+    if (req->func == UFSREQ_FREAD && req->data_len >= 8U
+        && *(unsigned *)(req->data + 4) > UFSREQ_MAX_INLINE - 4U) {
+        if (!__super(PSWKEY0, &savekey)) {
+            req->buf = ufsd_buf_alloc(anchor);
+            __prob(savekey, NULL);
+        }
+    }
 
     /* --- Dispatch by function code --- */
     switch (req->func) {
@@ -216,8 +232,9 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
             *(unsigned *)req->data = out_token;
         } else if (req->func == UFSREQ_FREAD && rc == UFSD_RC_OK
                    && resp_data_len == 4U) {
-            /* 4K FREAD path: staging buffer pointer in resp_data[4..7].
-            ** Allocate CSA pool buffer, copy from heap staging, free it. */
+            /* 4K FREAD path: staging buffer pointer in resp_data[4..7],
+            ** or none (EOF).  Copy from heap staging into the buffer
+            ** reserved before the dispatch. */
             unsigned bread;
             char    *stg;
 
@@ -225,17 +242,28 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
             stg   = *(char **)(resp_data + 4);
             req->data_len = resp_data_len;
             memcpy(req->data, resp_data, 4U);  /* bytes_read count */
-            if (stg && bread > 0) {
-                req->buf = ufsd_buf_alloc(anchor);
-                if (req->buf)
-                    memcpy(req->buf->data, stg, bread);
-            }
+            if (stg && bread > 0 && req->buf)
+                memcpy(req->buf->data, stg, bread);
+            else
+                keep_buf = 0;
             /* do_fread hands the staging buffer over even for 0 bytes. */
             stg_free = stg;  /* defer free() until after __prob */
         } else if (resp_data_len > 0) {
-            /* AP-1e: copy file op response from STC stack to CSA block */
+            /* Inline FREAD reply or other file op response: copy from the
+            ** STC stack to the CSA block (AP-1e). */
             req->data_len = resp_data_len;
             memcpy(req->data, resp_data, resp_data_len);
+            keep_buf = 0;
+        } else {
+            keep_buf = 0;
+        }
+
+        /* Reserved FREAD buffer that carries no data (error, EOF, inline
+        ** answer, no staging): back to the pool, and the router must not
+        ** see it. */
+        if (req->func == UFSREQ_FREAD && req->buf != NULL && !keep_buf) {
+            ufsd_buf_free(anchor, req->buf);
+            req->buf = NULL;
         }
 
         /* FWRITE 4K path: free the CSA buffer after dispatch consumed it */

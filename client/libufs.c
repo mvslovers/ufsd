@@ -879,8 +879,8 @@ ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
             /*
             ** 4K path: provide client buffer as destination.
             ** The SSI router copies from the CSA UFSBUF directly here.
-            ** If the server falls back to inline (pool exhausted) it
-            ** returns data in ufsssob.data[4..] -- handled below.
+            ** If the server is short of storage it answers inline instead
+            ** (data_len > 4) and leaves buf_ptr alone -- handled below.
             */
             ufsssob.buf_ptr = dst + done;
             ufsssob.buf_len = want;
@@ -906,17 +906,26 @@ ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
             fp->flags |= LIBUFS_F_EOF;
             break;
         }
-        if (got > want) got = want; /* clamp: should never happen */
-
-        if (ufsssob.buf_ptr != NULL && ufsssob.buf_ptr == (void *)(dst + done)) {
+        if (ufsssob.data_len > (unsigned)sizeof(unsigned)) {
             /*
-            ** 4K path taken: SSI router already wrote data to dst+done.
-            ** No memcpy needed here.
+            ** Inline reply: data_len - 4 bytes in data[4..], whatever
+            ** buf_ptr says.  A 4K request answered this way was clamped
+            ** by the server to 252 bytes, so 252 is the whole chunk and
+            ** only a shorter reply is EOF.
             */
-        } else {
-            /* Inline path (want <= 252, or pool exhausted fallback):
-            ** data is in ufsssob.data[4..got+3]. */
+            if (want > LIBUFS_READ_INLINE) want = LIBUFS_READ_INLINE;
+            if (got > ufsssob.data_len - (unsigned)sizeof(unsigned))
+                got = ufsssob.data_len - (unsigned)sizeof(unsigned);
+            if (got > want) got = want;
             memcpy(dst + done, ufsssob.data + 4, got);
+        } else {
+            /* data_len == 4: the router stored 'got' bytes through buf_ptr,
+            ** which only a 4K request offered. */
+            if (want <= LIBUFS_READ_INLINE) {
+                fp_fail(fp, UFSD_RC_INVALID);
+                break;
+            }
+            if (got > want) got = want; /* clamp: should never happen */
         }
         done += got;
 

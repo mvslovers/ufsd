@@ -885,18 +885,22 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     if (!disk) return UFSD_RC_IO;
 
     /*
-    ** Buffer selection: when count > inline max, allocate a heap staging
-    ** buffer and read into it.  ufsd_dispatch will copy to a CSA pool
-    ** buffer in its key-0 window.  If malloc fails, fall back to the
-    ** inline path (clamped to 252 bytes).
+    ** Buffer selection: when count > inline max, ufsd_dispatch has already
+    ** reserved a CSA pool buffer (req->buf).  Read into a heap staging
+    ** buffer; ufsd_dispatch copies it into the reserved buffer in its
+    ** key-0 window.  Without a reserved buffer (pool empty) or if malloc
+    ** fails, answer inline, clamped to 252 bytes, before anything is read:
+    ** the position then only advances by what the reply carries.
     **
     ** do_fread never touches CSA directly -- all CSA writes happen in
-    ** ufsd_dispatch's existing key-0 block.
+    ** ufsd_dispatch's existing key-0 block.  Whoever returns from here,
+    ** req->buf stays ufsd_dispatch's to hand on or give back.
     */
     staging = NULL;
     if (count > UFSREQ_MAX_INLINE - 4U) {
         if (count > 4096U) count = 4096U;
-        staging = (char *)malloc(count);
+        if (req->buf != NULL)
+            staging = (char *)malloc(count);
         if (staging) {
             dst = staging;
         } else {
