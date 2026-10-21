@@ -1306,6 +1306,70 @@ test_path_limit(void)
     close_session(&ufs);
 }
 
+/* ============================================================
+** FREAD when the server cannot deliver 4K data (#135)
+**
+** A 4K request (want > 252) is answered one of two ways when the server
+** is short of storage:
+**
+**   inline fallback  do_fread's staging malloc failed: count clamped to
+**                    252, data in data[4..], data_len = 4 + count.  The
+**                    router leaves buf_ptr alone.
+**   pool empty       ufsd_dispatch's ufsd_buf_alloc failed after the read:
+**                    data_len = 4, count = bytes read, nothing stored
+**                    through buf_ptr -- and the server position has moved.
+** ============================================================ */
+
+static void
+test_read_pool_empty(void)
+{
+    UFS     *ufs;
+    UFSFILE *fp;
+    char     buf[400];
+    char     src[400];
+    char     want[400];
+
+    printf("\n--- FREAD without 4K data (#135) ---\n");
+
+    ufs = new_session();
+    if (!ufs) return;
+
+    /* inline fallback: 252 bytes in the reply to a 300 byte request */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        memset(src, 'a', 252);
+        memset(src + 252, 'b', 48);
+        memcpy(want, src, 300);
+        begin();
+        s_read_inline(src, 252U);
+        s_read_inline(src + 252, 48U);
+        memset(buf, 0x5A, sizeof(buf));
+        CHECK_EQ(ufs_fread(buf, 1, 300, fp), 300, "inline fallback: all 300 bytes");
+        CHECK(memcmp(buf, want, 300) == 0, "inline fallback: the bytes of the reply");
+        CHECK(!ufs_feof(fp), "inline fallback: not EOF");
+        CHECK_EQ(ufs_ferror(fp), 0, "inline fallback: no error");
+        CHECK_EQ(g_ncall, 2, "inline fallback: the rest is asked for");
+        close_file(&fp);
+    }
+
+    /* pool empty: a count and no data */
+    fp = open_file(ufs, "r");
+    if (fp) {
+        STEP *st;
+
+        begin();
+        st = s_resp(4U);
+        put_u32(st->data, 300U);
+        memset(buf, 0x5A, sizeof(buf));
+        memset(want, 0x5A, sizeof(want));
+        CHECK(ufs_fread(buf, 1, 300, fp) == 0 || memcmp(buf, want, 300) != 0,
+              "pool empty: unwritten buffer is not delivered as data");
+        close_file(&fp);
+    }
+
+    close_session(&ufs);
+}
+
 int
 main(void)
 {
@@ -1321,6 +1385,7 @@ main(void)
     test_error_propagation();
     test_write_pool_empty();
     test_path_limit();
+    test_read_pool_empty();
 
     CHECK_EQ(g_badssob, 0, "every SSOB/SSIB/UFSSSOB libufs built was well formed");
 
