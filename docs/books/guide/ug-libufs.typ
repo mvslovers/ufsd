@@ -125,7 +125,7 @@ The program is a batch step. The #cmd("STEPLIB") names the library that
 #cmd("mbt deploy") filled. It need not be an APF-authorised library; the
 program asks for authority itself.
 
-#screen(raw(read("../ex/ug-libufs/run.jcl")))
+#screen(raw(read("../ex/ug-libufs/run-job.txt")))
 
 The step ended with the condition code 0, and the output of the program, in
 the #cmd("SYSPRINT") data set of the job, is:
