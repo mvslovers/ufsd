@@ -1,0 +1,7 @@
+chgdir rc=0, cwd=/tmp/ufsrel
+fopen rel.txt w: ok
+stat absolute rc=0 size=2
+mkdir sub rc=0
+chgdir .. rc=0, cwd=..
+stat ufsrel/sub rc=0
+cleanup rmdir rc=0

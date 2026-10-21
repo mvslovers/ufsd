@@ -1,0 +1,3 @@
+[cc370] src/ufsdemo.c
+[ld370] UFSDEMO (entry=@@CRT0)
+[mbt] Build complete

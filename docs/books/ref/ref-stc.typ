@@ -28,7 +28,7 @@ The install job puts four load modules into #cmd("UFSD.LINKLIB"):
 
 The first three modules are reentrant. #cmd("UFSFMT") is serially reusable
 only. The client library #cmd("libufs") is not a load module. It is linked into the
-programs that use UFSD and is not part of this book.
+programs that use UFSD and is described in @ref-lib.
 
 == The Subsystem <ref-stc-subsys>
 

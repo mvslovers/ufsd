@@ -47,7 +47,8 @@ volume, the _UFSD User's Guide_.
   [Chapter 2], [“The UFSDPRM Statements”.],
   [Chapter 3], [“The UFSFMT Utility”.],
   [Chapter 4], [“The Started Task and Its Utilities”.],
-  [Chapter 5], [“Limits and Disk Format”.],
+  [Chapter 5], [“The Client Library libufs”.],
+  [Chapter 6], [“Limits and Disk Format”.],
   [Appendix A], [“Messages”.],
 )
 
@@ -55,7 +56,7 @@ volume, the _UFSD User's Guide_.
 
 #deflist(width: 1.35in,
   [ML05-0001], [_UFSD User's Guide_: installing, configuring, running and
-    recovering UFSD.],
+    recovering UFSD, and writing programs that call it through libufs.],
 )
 
 #mainmatter()
@@ -66,6 +67,7 @@ volume, the _UFSD User's Guide_.
 #part("ref-cfg.html", include "ref/ref-cfg.typ")
 #part("ref-fmt.html", include "ref/ref-fmt.typ")
 #part("ref-stc.html", include "ref/ref-stc.typ")
+#part("ref-lib.html", include "ref/ref-lib.typ")
 #part("ref-lim.html", include "ref/ref-lim.typ")
 
 #show: appendices

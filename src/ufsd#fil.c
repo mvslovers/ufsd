@@ -337,6 +337,38 @@ blk_free_all(UFSD_DISK *disk, UFSD_DINODE *dino)
 }
 
 /* ============================================================
+** inode_release
+**
+** Give an inode back to the pool.  A free inode is one whose on-disk
+** mode is 0: that is what the free inode cache refill and the MODIFY
+** REBUILD scan look for, and the 64-entry cache in the superblock drops
+** numbers it has no room for.  So the inode is cleared on disk first.
+**
+** Order matters.  The number goes into the cache only after the clear
+** reached the disk: an inode never sits in the cache while the disk still
+** shows it in use, and a failure between the two steps leaves a cleared
+** inode the scans find, never a lost one.  When the clear fails the number
+** is not cached and the error is returned; the inode keeps its old
+** contents until REBUILD or a later release.
+**
+** The caller persists the superblock.  Returns UFSD_RC_OK or the write
+** error.
+** ============================================================ */
+static int
+inode_release(UFSD_DISK *disk, unsigned ino)
+{
+    UFSD_DINODE cleared;
+    int         rc;
+
+    memset(&cleared, 0, sizeof(cleared));
+    rc = ufsd_ino_write(disk, ino, &cleared);
+    if (rc != UFSD_RC_OK) return rc;
+
+    ufsd_sb_free_inode(disk, ino);
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
 ** ufsd_stamp
 **
 ** Set ctime/mtime/atime on a UFSD_DINODE to current wallclock.
@@ -484,7 +516,7 @@ do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
     rc = ufsd_dir_add(disk, parent_ino, dir_name, new_ino);
     if (rc != UFSD_RC_OK) {
         ufsd_sb_free_block(disk, new_blk);
-        ufsd_sb_free_inode(disk, new_ino);
+        (void)inode_release(disk, new_ino);  /* already failing: keep rc */
         return rc;
     }
 
@@ -548,7 +580,8 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
     rc = blk_free_all(disk, &dino);
     if (rc != UFSD_RC_OK) return rc;
 
-    ufsd_sb_free_inode(disk, dir_ino);
+    rc = inode_release(disk, dir_ino);
+    if (rc != UFSD_RC_OK) return rc;
 
     return ufsd_sb_write(disk);
 }
@@ -663,7 +696,8 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
         rc = blk_free_all(disk, &dino);
         if (rc != UFSD_RC_OK) return rc;
 
-        ufsd_sb_free_inode(disk, file_ino);
+        rc = inode_release(disk, file_ino);
+        if (rc != UFSD_RC_OK) return rc;
     } else {
         ufsd_ino_write(disk, file_ino, &dino);
     }
@@ -767,7 +801,7 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
             }
             rc = ufsd_dir_add(disk, parent_ino, file_name, new_ino);
             if (rc != UFSD_RC_OK) {
-                ufsd_sb_free_inode(disk, new_ino);
+                (void)inode_release(disk, new_ino);  /* already failing: keep rc */
                 return rc;
             }
             if (ufsd_sb_write(disk) != UFSD_RC_OK) return UFSD_RC_IO;

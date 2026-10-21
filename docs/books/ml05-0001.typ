@@ -37,13 +37,13 @@ This book shows how to install, configure and run UFSD (ufsd), the virtual
 filesystem server for MVS 3.8j: how to put it on a system, how to create the
 disks it serves, how to describe them in the configuration member, how an
 operator starts, queries and stops it, what to do after an abend, and how to
-remove it. Every operator command, configuration parameter, utility statement
+remove it. A chapter shows how to write a C or assembler program that uses
+UFSD through its client library. Every operator command, configuration parameter, utility statement
 and message in full is the subject of the companion volume, the _UFSD
 Reference_.
 
-The book describes UFSD 1.5.0, as released. It does not describe how to write
-programs that call UFSD through the client library `libufs`; the headers
-`libufs.h` and `ufsdrc.h` in the release package are the interface for that.
+The book describes UFSD 1.5.0, as released. The functions of the client
+library `libufs` are described in full in the _UFSD Reference_.
 
 == How This Book Is Organized
 
@@ -53,8 +53,9 @@ programs that call UFSD through the client library `libufs`; the headers
   [Chapter 3], [“Creating Disks”.],
   [Chapter 4], [“Configuring UFSD”.],
   [Chapter 5], [“Running UFSD”.],
-  [Chapter 6], [“Recovery After a Failure”.],
-  [Chapter 7], [“Removing UFSD”.],
+  [Chapter 6], [“Programming with libufs”.],
+  [Chapter 7], [“Recovery After a Failure”.],
+  [Chapter 8], [“Removing UFSD”.],
   [Appendix A], [“Glossary”.],
 )
 
@@ -62,8 +63,8 @@ programs that call UFSD through the client library `libufs`; the headers
 
 #deflist(width: 1.35in,
   [ML05-0002], [_UFSD Reference_: the operator commands, the UFSDPRM
-    statements, the UFSFMT statements, the started task and the messages of
-    UFSD.],
+    statements, the UFSFMT statements, the started task, the client library
+    libufs, the limits and the messages of UFSD.],
 )
 
 #mainmatter()
@@ -75,6 +76,7 @@ programs that call UFSD through the client library `libufs`; the headers
 #part("ug-disks.html", include "guide/ug-disks.typ")
 #part("ug-config.html", include "guide/ug-config.typ")
 #part("ug-ops.html", include "guide/ug-ops.typ")
+#part("ug-libufs.html", include "guide/ug-libufs.typ")
 #part("ug-recover.html", include "guide/ug-recover.typ")
 #part("ug-remove.html", include "guide/ug-remove.typ")
 

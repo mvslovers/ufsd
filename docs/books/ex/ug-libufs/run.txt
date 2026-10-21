@@ -1,0 +1,9 @@
+session open
+read    Hello from libufs
+read    second line
+entry   drwxr-xr-x             128 .
+entry   drwxr-xr-x             128 ..
+entry   -rw-r--r--              30 hello.txt
+stat    hello.txt: 30 bytes, owner ""
+expected failure: fopen r missing, rc=28
+session closed, rc=0

@@ -1,0 +1,2 @@
+apf_setup rc=0
+ufsnew NULL, errno=0
