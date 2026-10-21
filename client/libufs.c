@@ -96,6 +96,9 @@ fp_fail(UFSFILE *fp, int rc)
 **
 ** Send a function with a single path string parameter.
 ** Used for MKDIR, RMDIR, CHGDIR, REMOVE.
+** A path that does not fit the inline area with its NUL (256 or more
+** characters) is refused with UFSD_RC_INVALID before any request is
+** built: sending a cut-off path would act on a different one.
 ** Returns UFSD_RC_* (0 = ok, negative = SSI failure).
 ** ============================================================ */
 static int
@@ -107,8 +110,7 @@ path_req(unsigned func, unsigned token, const char *path)
     if (!path || path[0] == '\0') return UFSD_RC_INVALID;
 
     pathlen = strlen(path);
-    if (pathlen >= (unsigned)UFSREQ_MAX_INLINE)
-        pathlen = (unsigned)UFSREQ_MAX_INLINE - 1U;
+    if (pathlen >= (unsigned)UFSREQ_MAX_INLINE) return UFSD_RC_INVALID;
 
     memset(&ufsssob, 0, sizeof(ufsssob));
     memcpy(ufsssob.eye, UFSSSOB_EYE, 4);

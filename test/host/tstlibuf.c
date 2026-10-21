@@ -1245,6 +1245,67 @@ test_write_pool_empty(void)
     close_session(&ufs);
 }
 
+/* ============================================================
+** Path length: 255 characters fit the inline area with their NUL,
+** 256 or more are refused before any request is built
+** ============================================================ */
+
+typedef int (*PATHFN)(UFS *ufs, const char *path);
+
+static void
+check_path_limit(const char *name, PATHFN fn, unsigned func, UFS *ufs)
+{
+    char     path[UFSREQ_MAX_INLINE + 8];
+    char     msg[48];
+
+    /* 255 characters: sent whole, NUL-terminated */
+    memset(path, 'a', sizeof(path));
+    path[0] = '/';
+    path[255] = '\0';
+    begin();
+    s_rc(UFSD_RC_OK);
+    snprintf(msg, sizeof(msg), "%s 255", name);
+    CHECK_EQ(fn(ufs, path), UFSD_RC_OK, msg);
+    CHECK_EQ(g_ncall, 1, "255: one request issued");
+    CHECK_EQ(g_overrun, 0, "255: no request without a scripted answer");
+    CHECK_EQ(g_seen[0].func, func, "255: function");
+    CHECK_EQ(g_seen[0].data_len, 256U, "255: data_len counts the NUL");
+    CHECK(memcmp(g_seen[0].data, path, 256U) == 0,
+          "255: all 255 characters and the NUL arrive");
+    CHECK_EQ(g_seen[0].data[255], '\0', "255: last byte is NUL");
+
+    /* 256, 257 and a long one: INVALID, nothing sent, last_rc set */
+    for (unsigned n = 256U; n <= 262U; n += (n == 257U) ? 5U : 1U) {
+        memset(path, 'b', sizeof(path));
+        path[0] = '/';
+        path[n] = '\0';
+        begin();
+        ufs->last_rc = 0;
+        snprintf(msg, sizeof(msg), "%s %u", name, n);
+        CHECK_EQ(fn(ufs, path), UFSD_RC_INVALID, msg);
+        CHECK_EQ(g_ncall, 0, "no request issued");
+        CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_INVALID, "last_rc INVALID");
+    }
+}
+
+static void
+test_path_limit(void)
+{
+    UFS *ufs;
+
+    printf("\n--- path length limit (chgdir, mkdir, rmdir, remove) ---\n");
+
+    ufs = new_session();
+    if (!ufs) return;
+
+    check_path_limit("chgdir", ufs_chgdir, UFSREQ_CHGDIR, ufs);
+    check_path_limit("mkdir", ufs_mkdir, UFSREQ_MKDIR, ufs);
+    check_path_limit("rmdir", ufs_rmdir, UFSREQ_RMDIR, ufs);
+    check_path_limit("remove", ufs_remove, UFSREQ_REMOVE, ufs);
+
+    close_session(&ufs);
+}
+
 int
 main(void)
 {
@@ -1259,6 +1320,7 @@ main(void)
     test_success();
     test_error_propagation();
     test_write_pool_empty();
+    test_path_limit();
 
     CHECK_EQ(g_badssob, 0, "every SSOB/SSIB/UFSSSOB libufs built was well formed");
 
