@@ -270,8 +270,8 @@ If the list is empty although the job said success, the #cmd("APPLY") printed
 names in the SMP inventory. Each release deletes only the release just
 before it, so the owner goes away with the installation only if you come from
 that release. The usual cause is a skipped release (@ug-install-upgrade).
-The command #cmd("LIST CDS MOD(UFSD) .") names the owner. Step 2 of the
-removal job (@ug-remove-uclin) removes it.
+The command #cmd("LIST CDS MOD(UFSD) .") names the owner. The UCLIN job of the
+fallback in the removal chapter (@ug-remove-uclin) removes it.
 
 == Procedures and Configuration <ug-install-proc>
 
@@ -422,9 +422,9 @@ change, and the SYSMOD removes its predecessor itself.
 - *Skip the allocation job.* #cmd("UFSD.LINKLIB") and #cmd("UFSD.AUFSDLOD")
   exist already. The job would fail on #cmd("DISP=(NEW,CATLG)"), harmlessly,
   and has nothing to do.
-- *There is no UCLIN step.* The UCLIN job of @ug-remove removes UFSD. It does
-  not replace it, and in an upgrade it would scratch the data sets that you
-  install into.
+- *There is no removal step.* The ways of @ug-remove take UFSD away. They do
+  not replace it, and in an upgrade the dummy function would empty and the
+  scratch step would delete the data sets that you install into.
 - *Stop the server first:* #cmd("/P UFSD") before the install job and
   #cmd("/S UFSD") after it. A running task keeps its own copy of the load
   module in storage and goes on using it, so an upgrade without this stop
@@ -460,9 +460,10 @@ Either install 1.4.0 first and this release after it (two ordinary
 upgrades), or release the inventory by hand:
 
 + Stop UFSD with #cmd("/P UFSD").
-+ Run step 2 of the removal (@ug-remove-uclin) and nothing else. It is the
-  UCLIN job, which edits the CDS and the ACDS and touches no library. Do not
-  run step 4 there, which scratches the libraries.
++ Run the UCLIN job of the fallback in the removal chapter
+  (@ug-remove-uclin) and nothing else. It edits the CDS and the ACDS and
+  touches no library. Do not run the dummy function (@ug-remove-dummy), which
+  empties the libraries, and do not scratch them (@ug-remove-scratch).
 + Run the steps in @ug-install-upload and @ug-install-job. Start UFSD and read
   #cmd("UFSD000I"): it must name the version and the commit you just
   installed.
@@ -483,8 +484,9 @@ Only 1.3.0 deletes #cmd("TUFS120"). This release leaves it as the owner of
 inventory by hand first:
 
 + Stop UFSD with #cmd("/P UFSD").
-+ Run step 2 of the removal (@ug-remove-uclin) and nothing else. Do not
-  run step 4 there.
++ Run the UCLIN job of the fallback in the removal chapter
+  (@ug-remove-uclin) and nothing else. Do not run the dummy function
+  (@ug-remove-dummy) and do not scratch the libraries (@ug-remove-scratch).
 + Run the allocation job (@ug-install-alloc). It creates #cmd("UFSD.LINKLIB")
   and #cmd("UFSD.AUFSDLOD") next to the old ones. This is the one upgrade
   that needs it.
