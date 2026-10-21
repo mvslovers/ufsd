@@ -55,36 +55,51 @@ ufsd_blk_read(UFSD_DISK *disk, unsigned sector, void *buf)
     return UFSD_RC_OK;
 }
 
+/* Compares the raw bytes on the image: UFSD_DINODE has padding, so two
+** structs cannot be compared with memcmp. */
 static int
-watched_inode_is_zero(void)
+image_inode_is_zero(unsigned ino)
 {
-    unsigned char zero[UFSD_INODE_SIZE];
-    unsigned      blk = UFSD_ILIST_SECTOR
-                        + (g_watch_ino - 1U) / (BLKSIZE / UFSD_INODE_SIZE);
-    unsigned      off = ((g_watch_ino - 1U) % (BLKSIZE / UFSD_INODE_SIZE))
-                        * UFSD_INODE_SIZE;
+    unsigned ipb = BLKSIZE / UFSD_INODE_SIZE;
+    unsigned blk = UFSD_ILIST_SECTOR + (ino - 1U) / ipb;
+    unsigned off = ((ino - 1U) % ipb) * UFSD_INODE_SIZE;
+    unsigned i;
 
-    memset(zero, 0, sizeof zero);
-    return memcmp(g_img[blk] + off, zero, sizeof zero) == 0;
+    for (i = 0; i < UFSD_INODE_SIZE; i++)
+        if (g_img[blk][off + i] != 0U) return 0;
+    return 1;
+}
+
+static unsigned
+cache_holds(const UFSD_DISK *disk, unsigned ino)
+{
+    unsigned i;
+    unsigned n = 0;
+
+    for (i = 0; i < disk->sb.nfreeinode; i++)
+        if (disk->sb.freeinode[i] == ino) n++;
+    return n;
+}
+
+/* The two properties the write order must keep, observed at each write. */
+static void
+watch_write(const UFSD_DISK *disk, unsigned sector)
+{
+    unsigned ipb = BLKSIZE / UFSD_INODE_SIZE;
+
+    if (sector == 1U && !image_inode_is_zero(g_watch_ino))
+        g_sb_before_zero++;
+    if (sector == UFSD_ILIST_SECTOR + (g_watch_ino - 1U) / ipb)
+        g_cache_has_ino_at_zero += cache_holds(disk, g_watch_ino);
 }
 
 int
 ufsd_blk_write(UFSD_DISK *disk, unsigned sector, void *buf)
 {
-    unsigned i;
-
     if (sector == g_fail_wsector) return UFSD_RC_IO;
     if (sector >= NBLOCKS) return UFSD_RC_IO;
 
-    if (g_watch_ino != 0U) {
-        if (sector == 1U && !watched_inode_is_zero()) g_sb_before_zero++;
-        if (sector == UFSD_ILIST_SECTOR
-                       + (g_watch_ino - 1U) / (BLKSIZE / UFSD_INODE_SIZE)) {
-            for (i = 0; i < disk->sb.nfreeinode; i++)
-                if (disk->sb.freeinode[i] == g_watch_ino)
-                    g_cache_has_ino_at_zero++;
-        }
-    }
+    if (g_watch_ino != 0U) watch_write(disk, sector);
     memcpy(g_img[sector], buf, BLKSIZE);
     return UFSD_RC_OK;
 }
@@ -100,9 +115,7 @@ static struct { char name[UFSD_NAME_MAX + 1]; unsigned ino; } g_names[MAXNAMES];
 static int
 name_find(const char *name)
 {
-    int i;
-
-    for (i = 0; i < MAXNAMES; i++)
+    for (int i = 0; i < MAXNAMES; i++)
         if (g_names[i].ino != 0U && strcmp(g_names[i].name, name) == 0)
             return i;
     return -1;
@@ -125,11 +138,9 @@ ufsd_path_lookup(UFSD_DISK *d, unsigned s, const char *p,
 int
 ufsd_dir_add(UFSD_DISK *d, unsigned parent, const char *name, unsigned ino)
 {
-    int i;
-
     (void)d; (void)parent;
     if (g_dir_add_rc != UFSD_RC_OK) return (int)g_dir_add_rc;
-    for (i = 0; i < MAXNAMES; i++) {
+    for (int i = 0; i < MAXNAMES; i++) {
         if (g_names[i].ino == 0U) {
             strcpy(g_names[i].name, name);
             g_names[i].ino = ino;
@@ -285,9 +296,9 @@ static unsigned
 count_free_on_disk(void)
 {
     UFSD_DINODE d;
-    unsigned    ino, n = 0;
+    unsigned    n = 0;
 
-    for (ino = 2U; ino <= NINODES; ino++) {
+    for (unsigned ino = 2U; ino <= NINODES; ino++) {
         if (ufsd_ino_read(&g_disk, ino, &d) == UFSD_RC_OK && d.mode == 0)
             n++;
     }
@@ -295,9 +306,9 @@ count_free_on_disk(void)
 }
 
 static void
-fill_name(char *out, unsigned i)
+fill_name(char *out, size_t size, unsigned i)
 {
-    sprintf(out, "/n%u", i);
+    snprintf(out, size, "/n%u", i);
 }
 
 /* ============================================================
@@ -310,7 +321,11 @@ static void
 churn(int dirs)
 {
     char     path[16];
-    unsigned i, made, gone, again, total;
+    unsigned i;
+    unsigned made;
+    unsigned gone;
+    unsigned again;
+    unsigned total;
     int      rc;
 
     setup();
@@ -323,14 +338,14 @@ churn(int dirs)
 
     made = 0;
     for (i = 0; i < BATCH; i++) {
-        fill_name(path, i);
+        fill_name(path, sizeof path, i);
         if ((dirs ? make_dir(path) : make_file(path)) == UFSD_RC_OK) made++;
     }
     CHECK_EQ(made, BATCH, "all creates succeed");
 
     gone = 0;
     for (i = 0; i < BATCH; i++) {
-        fill_name(path, i);
+        fill_name(path, sizeof path, i);
         if (request(dirs ? UFSREQ_RMDIR : UFSREQ_REMOVE, path, 0, 0)
             == UFSD_RC_OK) gone++;
     }
@@ -351,7 +366,7 @@ churn(int dirs)
 
     again = 0;
     for (i = 0; i < FREE_INODES; i++) {
-        fill_name(path, i);
+        fill_name(path, sizeof path, i);
         if (make_file(path) == UFSD_RC_OK) again++;
     }
     CHECK_EQ(again, FREE_INODES, "the whole pool can be allocated again");
@@ -371,16 +386,6 @@ check_dirs_churn(void)
     churn(1);
 }
 
-static int
-inode_is_zero(unsigned ino)
-{
-    UFSD_DINODE d, z;
-
-    memset(&z, 0, sizeof z);
-    if (ufsd_ino_read(&g_disk, ino, &d) != UFSD_RC_OK) return 0;
-    return memcmp(&d, &z, sizeof z) == 0;
-}
-
 static void
 check_inode_cleared_and_ordered(int dirs)
 {
@@ -394,11 +399,11 @@ check_inode_cleared_and_ordered(int dirs)
     CHECK_EQ(rc, UFSD_RC_OK, "create succeeds");
     i = name_find("x");
     g_watch_ino = g_names[i].ino;
-    CHECK(!inode_is_zero(g_watch_ino), "the live inode is not zero");
+    CHECK(!image_inode_is_zero(g_watch_ino), "the live inode is not zero");
 
     rc = request(dirs ? UFSREQ_RMDIR : UFSREQ_REMOVE, "/x", 0, 0);
     CHECK_EQ(rc, UFSD_RC_OK, "remove succeeds");
-    CHECK(inode_is_zero(g_watch_ino), "the inode is all zero on the disk");
+    CHECK(image_inode_is_zero(g_watch_ino), "the inode is all zero on the disk");
     CHECK_EQ(g_cache_has_ino_at_zero, 0U,
              "the number was not in the cache while the inode was written");
     CHECK_EQ(g_sb_before_zero, 0U,
@@ -408,7 +413,10 @@ check_inode_cleared_and_ordered(int dirs)
 static void
 check_clear_write_fails(int dirs)
 {
-    unsigned ino, sector, nfree, total;
+    unsigned ino;
+    unsigned sector;
+    unsigned nfree;
+    unsigned total;
     int      rc;
 
     printf("-- %s: the clearing write fails\n", dirs ? "rmdir" : "remove");
