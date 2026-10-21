@@ -189,6 +189,13 @@ The UFS370 on-disk format is documented in [internals/ufsdisk-spec.md](ufsdisk-s
 
 Include `libufs.h` and link against the `libufs.a` archive (staged by `mbt deps`, autocalled by `ld370`).
 
+This section is a short orientation for maintainers. What the calls do, what
+they return and where they differ from `stdio` is in the _UFSD User's Guide_
+(ML05-0001), chapter 6, "Programming with libufs", and in the _UFSD Reference_
+(ML05-0002), chapter 5, "The Client Library libufs". Where this section and the
+books disagree, `include/libufs.h` and `client/libufs.c` decide, and the
+books were checked against them.
+
 ```c
 #include "libufs.h"
 ```
@@ -221,7 +228,7 @@ ufs_setuser(ufs, "IBMUSER", "SYS1");
 
 ### File I/O
 
-Open modes follow `fopen(3)` conventions: `"r"`, `"w"`, `"a"`, `"rb"`, `"wb"`. UFSD filesystems are EBCDIC; text and binary mode have the same effect on MVS.
+`ufs_fopen` looks at the first character of the mode only. `r` or `R` opens for reading (the file must exist); every other mode opens for writing and creates the file or empties it (`UFSD_OPEN_WRITE`, "create + truncate", `src/ufsd#fil.c`). `"a"` does not append, and `"r+"` / `"w+"` do not give a handle for both directions. UFSD filesystems are EBCDIC; text and binary mode have the same effect on MVS. The other differences from `stdio` are listed in the User's Guide, "Where libufs Differs from stdio".
 
 ```c
 UFSFILE *fp;
@@ -263,7 +270,8 @@ if (fp == NULL) {
 }
 
 nread = ufs_fread(image, 1, sizeof(image), fp);
-/* nread = bytes actually read; ufs_feof(fp) is set after the last block */
+/* nread = items read (bytes here, as size is 1); fewer than asked for
+   means end of file or an error: ufs_feof(fp), ufs_ferror(fp) */
 
 ufs_fclose(&fp);
 ```
@@ -274,8 +282,8 @@ ufs_fclose(&fp);
 UFSDDESC *ddesc;
 UFSDLIST *entry;
 
-/* List all entries under /u/ibmuser matching "*.html" */
-ddesc = ufs_diropen(ufs, "/u/ibmuser", "*.html");
+/* List all entries under /u/ibmuser. The pattern is ignored (see below). */
+ddesc = ufs_diropen(ufs, "/u/ibmuser", NULL);
 if (ddesc == NULL) {
     return 1;
 }
@@ -294,11 +302,7 @@ while ((entry = ufs_dirread(ddesc)) != NULL) {
 ufs_dirclose(&ddesc);
 ```
 
-Use `NULL` as the pattern to list all entries:
-
-```c
-ddesc = ufs_diropen(ufs, "/u/ibmuser", NULL);
-```
+The third argument of `ufs_diropen` (the pattern) is ignored whatever its value (`(void)pattern;` in `client/libufs.c`): every entry is returned, including `.` and `..`. A caller that wants only `*.html` filters on `entry->name` itself.
 
 ### Directory and File Operations
 
@@ -324,20 +328,18 @@ if (ufs_stat(ufs, "/u/ibmuser/index.html", &info) == 0) {
 
 ### Seek and Sync
 
-```c
-/* Seek within an open file */
-ufs_fseek(fp, 0, UFS_SEEK_SET);    /* rewind to beginning */
-ufs_fseek(fp, 100, UFS_SEEK_CUR);  /* skip 100 bytes forward */
-ufs_fseek(fp, -10, UFS_SEEK_END);  /* 10 bytes before end */
+`ufs_fseek` is not implemented: it always returns -1 and does nothing, and there is no `ufs_ftell`. To read a file again, close it and open it again. `ufs_sync` does nothing. `ufs_fsync(fp)` sends the text that `ufs_fputs` / `ufs_fputc` have collected in the handle; call it, and look at `ufs_ferror`, before `ufs_fclose`, which ignores a failure of the last send.
 
-/* Flush pending writes to the server */
-ufs_fsync(fp);      /* flush a single file handle */
-ufs_sync(ufs);      /* flush all open files in the session */
+```c
+ufs_fsync(fp);
+if (ufs_ferror(fp)) {
+    /* the collected text did not reach the file */
+}
 ```
 
 ### Error Handling
 
-File functions return `NULL` on failure. Integer functions return a non-zero value on error. Use `ufs_last_rc()` to retrieve the UFSD return code after a failed operation:
+`ufs_fopen` and `ufs_diropen` return `NULL` on failure, the directory and path functions a value other than 0, and `ufsnew` returns `NULL` with no code. `ufs_last_rc()` returns the UFSD return code after `ufs_fopen` and the directory and path functions (a call refused before it is sent leaves it unchanged). It is not set reliably after `ufs_diropen` and not at all by `ufsnew` and by the calls on a file handle; the User's Guide, "Handling Errors", lists case by case. Example after a directory call:
 
 ```c
 if (ufs_mkdir(ufs, "/u/ibmuser/docs") != 0) {
@@ -456,143 +458,17 @@ int main(void)
 
 ## Using libufs from Assembler
 
-libufs functions follow the standard IBM OS/VS C linkage convention:
+The calling convention is described once, in the _UFSD User's Guide_
+(ML05-0001), chapter 6, section "Using libufs from Assembler", with programs
+that were built and run (`docs/books/ex/ug-libufs/`: `asmput.asm`,
+`ufsasmb.asm`, `ufsasmd.asm`, and `ufsasmc.asm`, which shows the failure). The
+Reference lists the entry name of every function. This guide keeps no copy.
 
-- Register 1 points to a **parameter list** — a list of fullword addresses, one per argument.
-- Each address in the parameter list points to a fullword containing the actual argument value (pointer or integer).
-- The high bit of the last address in the list is set (variable-length plist indicator).
-- The return value (pointer or integer) is in Register 15.
-- Register 13 must point to an 18-word (72-byte) save area on entry.
-- Registers 14, 15, 0, and 1 are not preserved across the call.
+Two points decide whether a call works at all, and are easy to get wrong:
 
-### Example: Open a Session and Read a File
-
-```asm
-*----------------------------------------------------------------*
-* UFSDEMO -- read /u/ibmuser/index.html using libufs                   *
-*----------------------------------------------------------------*
-UFSDEMO  CSECT
-UFSDEMO  AMODE 24
-UFSDEMO  RMODE 24
-         USING UFSDEMO,R12
-         STM   R14,R12,12(R13)    save caller registers
-         LR    R12,R15            establish base
-         LA    R15,SAVEAREA
-         ST    R13,4(R15)         back-chain
-         ST    R15,8(R13)         forward-chain
-         LR    R13,R15
-*
-*-- ufsnew() --------------------------------------------------*
-*   UFS *ufsnew(void)  -- no parameters
-         SR    R1,R1              R1 = 0 (no plist)
-         L     R15,=V(UFSNEW)
-         BALR  R14,R15
-         LTR   R15,R15            NULL = UFSD not available
-         BZ    ERROUT
-         ST    R15,UFSHDL         save UFS* handle
-*
-*-- ufs_fopen(ufs, path, mode) --------------------------------*
-*   UFSFILE *ufs_fopen(UFS *ufs, const char *path, const char *mode)
-         L     R2,UFSHDL
-         ST    R2,P_UFS           plist slot: UFS* value
-         LA    R2,FILEPATH
-         ST    R2,P_PATH          plist slot: path ptr value
-         LA    R2,OPENMODE
-         ST    R2,P_MODE          plist slot: mode ptr value
-         LA    R1,PL_FOPEN        R1 -> parameter list
-         L     R15,=V(UFS#FOPN)
-         BALR  R14,R15
-         LTR   R15,R15            NULL = open failed
-         BZ    ERROUT
-         ST    R15,FILHDL         save UFSFILE* handle
-*
-*-- ufs_fread(buf, size, nitems, fp) --------------------------*
-*   UINT32 ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp)
-         LA    R2,READBUF
-         ST    R2,P_BUF           plist slot: buffer ptr value
-         LA    R2,=F'1'
-         ST    R2,P_SZ            plist slot: element size (1)
-         LA    R2,=F'256'
-         ST    R2,P_CNT           plist slot: element count
-         L     R2,FILHDL
-         ST    R2,P_FP            plist slot: UFSFILE* value
-         LA    R1,PL_FREAD
-         L     R15,=V(UFS#FRD)
-         BALR  R14,R15
-         ST    R15,NREAD          bytes read returned in R15
-*
-*-- ufs_fclose(&filhdl) ---------------------------------------*
-*   void ufs_fclose(UFSFILE **file)
-         LA    R2,FILHDL          address of UFSFILE* variable
-         ST    R2,P_FPP           plist slot: UFSFILE** value
-         LA    R1,PL_FCLOSE
-         L     R15,=V(UFS#FCLS)
-         BALR  R14,R15
-*
-*-- ufsfree(&ufshdl) ------------------------------------------*
-*   void ufsfree(UFS **ufs)
-         LA    R2,UFSHDL          address of UFS* variable
-         ST    R2,P_UFSPP         plist slot: UFS** value
-         LA    R1,PL_FFREE
-         L     R15,=V(UFSFREE)
-         BALR  R14,R15
-*
-DONE     SR    R15,R15
-         B     RETURN
-ERROUT   LA    R15,8
-RETURN   L     R13,4(R13)
-         L     R14,12(R13)
-         LM    R0,R12,20(R13)
-         BR    R14
-*
-*----------------------------------------------------------------*
-* Parameter list storage (one fullword per argument value)        *
-*----------------------------------------------------------------*
-P_UFS    DS    A              UFS* value for ufs_fopen
-P_PATH   DS    A              path ptr value
-P_MODE   DS    A              mode ptr value
-P_BUF    DS    A              buffer ptr value for ufs_fread
-P_SZ     DS    A              element size
-P_CNT    DS    A              element count
-P_FP     DS    A              UFSFILE* value for ufs_fread
-P_FPP    DS    A              UFSFILE** value for ufs_fclose
-P_UFSPP  DS    A              UFS** value for ufsfree
-*
-*-- Parameter lists (address of argument storage, VL marker) ----*
-PL_FOPEN DC    A(P_UFS)       -> UFS*
-         DC    A(P_PATH)      -> path ptr
-         DC    X'80',AL3(P_MODE)  -> mode ptr  [VL]
-*
-PL_FREAD DC    A(P_BUF)       -> buffer ptr
-         DC    A(P_SZ)        -> size
-         DC    A(P_CNT)       -> nitems
-         DC    X'80',AL3(P_FP)   -> UFSFILE*  [VL]
-*
-PL_FCLOSE DC   X'80',AL3(P_FPP) -> UFSFILE** [VL]
-*
-PL_FFREE  DC   X'80',AL3(P_UFSPP) -> UFS**   [VL]
-*
-*-- Working storage ---------------------------------------------*
-UFSHDL   DS    A              UFS session handle
-FILHDL   DS    A              UFSFILE handle
-NREAD    DS    F              bytes read
-FILEPATH DC    C'/u/ibmuser/index.html',X'00'
-OPENMODE DC    C'r',X'00'
-READBUF  DS    CL256
-SAVEAREA DS    18F
-         END   UFSDEMO
-```
-
-### Notes for Assembler Callers
-
-**External entry-point names use the 8-character MVS convention, not the C names.** `ufs_fopen` links as `UFS#FOPN`, `ufs_fread` as `UFS#FRD`, `ufs_fclose` as `UFS#FCLS`, and so on — consult the `asm("…")` labels in `libufs.h` for the exact entry name of each function. `ufsnew` and `ufsfree` keep their C names (`UFSNEW`, `UFSFREE`). The `#` is a valid national character in `as370` symbols.
-
-**`ufsnew` has no parameters.** Set R1 to zero or leave it undefined; the function does not dereference R1.
-
-**`ufsfree` and `ufs_fclose` take a pointer-to-pointer** (`UFS **` and `UFSFILE **`). Pass the address of your handle variable, not the handle value itself. After the call the handle is set to NULL.
-
-**`ufs_fread` and `ufs_fwrite` return the number of items** (not bytes) when `size > 1`; with `size = 1` the return value is the byte count. The return is in R15 as a fullword unsigned integer.
-
-**String arguments** (path, mode) must be NUL-terminated EBCDIC strings. Use `DC C'...',X'00'` in your assembler source.
-
-**The 4 KB buffer path** is used transparently when `ufs_fread` / `ufs_fwrite` transfers more than 248 bytes in a single call. No special action is required from the caller; the SSI router handles the copy through the CSA buffer pool.
+- The functions need the C environment (C stack and heap). A direct call from
+  plain OS linkage, with a save area and no C environment, ended in S0C1 in the measurement. Call
+  from a C main program, through a `CCALL` stub, or under the C startup.
+- The parameter list that R1 points to holds the argument *values* (pointers
+  or integers), not the addresses of fullwords that hold them, with the high
+  bit set in the last word.

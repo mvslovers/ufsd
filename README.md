@@ -98,7 +98,7 @@ UFSD is part of the [mvslovers](https://github.com/mvslovers) open-source ecosys
 
 The libufs client library provides a POSIX-like C API for session management, file I/O, directory operations, and metadata queries. Programs that used ufs370 can switch to libufs with no source changes — the function signatures and asm aliases are identical.
 
-Build instructions, architecture overview, the complete libufs API reference (including assembler calling conventions), and the wire protocol are documented in [internals/development.md](internals/development.md).
+The libufs functions and how to call them from C and assembler are in the _UFSD User's Guide_ (ML05-0001), chapter 6, "Programming with libufs", and in the _UFSD Reference_ (ML05-0002), chapter 5, "The Client Library libufs". Build instructions, architecture overview and the wire protocol are in [internals/development.md](internals/development.md).
 
 ## Credits
 
