@@ -1256,7 +1256,6 @@ static void
 check_path_limit(const char *name, PATHFN fn, unsigned func, UFS *ufs)
 {
     char     path[UFSREQ_MAX_INLINE + 8];
-    unsigned n;
     char     msg[48];
 
     /* 255 characters: sent whole, NUL-terminated */
@@ -1265,7 +1264,7 @@ check_path_limit(const char *name, PATHFN fn, unsigned func, UFS *ufs)
     path[255] = '\0';
     begin();
     s_rc(UFSD_RC_OK);
-    sprintf(msg, "%s 255", name);
+    snprintf(msg, sizeof(msg), "%s 255", name);
     CHECK_EQ(fn(ufs, path), UFSD_RC_OK, msg);
     CHECK_EQ(g_ncall, 1, "255: one request issued");
     CHECK_EQ(g_overrun, 0, "255: no request without a scripted answer");
@@ -1276,13 +1275,13 @@ check_path_limit(const char *name, PATHFN fn, unsigned func, UFS *ufs)
     CHECK_EQ(g_seen[0].data[255], '\0', "255: last byte is NUL");
 
     /* 256, 257 and a long one: INVALID, nothing sent, last_rc set */
-    for (n = 256U; n <= 262U; n += (n == 257U) ? 5U : 1U) {
+    for (unsigned n = 256U; n <= 262U; n += (n == 257U) ? 5U : 1U) {
         memset(path, 'b', sizeof(path));
         path[0] = '/';
         path[n] = '\0';
         begin();
         ufs->last_rc = 0;
-        sprintf(msg, "%s %u", name, n);
+        snprintf(msg, sizeof(msg), "%s %u", name, n);
         CHECK_EQ(fn(ufs, path), UFSD_RC_INVALID, msg);
         CHECK_EQ(g_ncall, 0, "no request issued");
         CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_INVALID, "last_rc INVALID");
