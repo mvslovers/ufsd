@@ -456,8 +456,8 @@ condition code 0 and printed:
 === An Assembler Program Without a C Main Program <ug-libufs-asmb>
 
 This works too. A program that is entirely assembler follows the usual OS
-linkage: its own save area in register 13 and register 1 pointing to a list of
-addresses. It cannot call C functions directly, because their linkage differs.
+linkage: its own save area in register 13 and register 1 pointing to a parameter list.
+It cannot call C functions directly, because their linkage differs.
 The macro #cmd("CCALL") of LIBC/370 makes a stub that calls a C function from
 OS linkage. The stub branches to a routine of the C runtime that builds the C
 environment at the first call; at the end the program calls #cmd("CCTERM")
@@ -469,8 +469,10 @@ CMKDIR   CCALL UFS#MD
 ```)
 
 The program calls the stub with #cmd("L 15,=V(CMKDIR)") and #cmd("BALR 14,15"),
-with register 1 pointing to a list of addresses of the parameters in which
-the last has its high bit set. The functions of the C runtime that the program
+with register 1 pointing to a list of words, one for each parameter. A word
+holds the #emph[value] of the parameter (a pointer, for a string or a handle),
+not the address of the value, as in the program below, and the last word has
+its high bit set. The functions of the C runtime that the program
 needs, such as #cmd("clib_apf_setup") (#cmd("@@APFSET")) and #cmd("puts"), are
 called the same way. The return value comes back in register 15.
 

@@ -1,6 +1,6 @@
 *        UFSASMB - a program in assembler, with no C main program.
-*        It follows the OS conventions (R13 = its own save area, R1 =
-*        a list of addresses) and calls libufs through CCALL stubs.
+*        It follows the OS conventions (R13 = its own save area, R1 = a
+*        parameter list) and calls libufs through CCALL stubs.
 UFSASMB  CSECT
          STM   14,12,12(13)
          LR    12,15
