@@ -77,9 +77,10 @@ afterwards and attached to the existing release.
    an error. The `books` workflow does the first on every PR.
 5. `docs/installation.md` (the package README) shows the start console of
    one release in section 8 and the FMID ids in sections 10 and 11, and
-   `docs/uninstall.md` the FMID table and the `UCLIN` job. Replace the
-   console with the capture in `docs/books/ex/ug-ops/start.txt` and add the
-   new id to the job.
+   `docs/uninstall.md` the FMID table, the `DELETE` list of the dummy function
+   `TUFSDEL` and the `UCLIN` jobs (also the book chapter `ug-remove.typ`).
+   Replace the console with the capture in `docs/books/ex/ug-ops/start.txt`
+   and add the new id to the jobs.
 
 **At the release:** `release.yml` has a `books` job (`needs: release`). It
 builds the PDFs from the tag with `SOURCE_DATE_EPOCH=0`, so a rebuild gives

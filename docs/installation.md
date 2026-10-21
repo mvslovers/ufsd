@@ -246,7 +246,7 @@ the first failure rather than building on it:
 | `RECV` | receives the SYSMOD into the SMP inventory |
 | `APPLYCHK` | dry run — `APPLY` only proceeds if this ends RC 0 |
 | `APPLY` | copies the load modules into `UFSD.LINKLIB` |
-| `ACCEPT` | makes this level the base that the `RESTORE` of a later PTF returns to; closes `RESTORE` and `REJECT` for this release itself |
+| `ACCEPT` | makes this level the base that the `RESTORE` of a later PTF returns to; closes `RESTORE` for this release itself, and on the system measured `REJECT` too (section 11) |
 | `CLEANUP` | scratches the staging library, which is now spent |
 
 The SYSMOD travels inline in the job — there is no third file to upload.
@@ -302,8 +302,8 @@ starts with the check that tells the cases apart. Otherwise the names were
 claimed by something this release does not know about: a test install under a
 throwaway id, or ufsd 1.1.x, which was never released but was applied on at
 least one system under `TUFS110`. `LIST CDS MOD(UFSD) .` names the owner;
-step 2 of
-[uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
+the `UCLIN` job in the fallback of
+[uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#the-fallback-uclin-alone)
 removes it.
 
 SMP **copies** these modules rather than re-binding them, which is why the
@@ -542,10 +542,10 @@ do.
 deletes the one before it — 1.5.0 is `TUFS150` and its `++VER` reads
 `DELETE(TUFS140)`. SMP deletes the predecessor's load modules from the target
 library and copies the new ones in, and the module entries in its inventory
-become this release's. The `UCLIN` job in
+become this release's. The removal in
 [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
-is for **removing** UFSD, not for replacing it — running it as part of an
-upgrade would scratch the datasets you are installing into.
+is for **removing** UFSD, not for replacing it — its dummy function would empty
+and its last step would scratch the datasets you are installing into.
 
 **Stop the server.** `/P UFSD` before the install job, `/S UFSD` after. A
 running STC holds its own copy of the load module in storage and would go on
@@ -599,10 +599,11 @@ module, copies nothing and ends `RC 00`: the trap described under section 5 of t
 Release the inventory by hand first, in step 2.
 
 1. `/P UFSD`.
-2. **Step 2 of [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#2-cut-the-fmid-out-of-the-smp-inventory)
+2. **The fallback in [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#the-fallback-uclin-alone)
    only** -- the `UCLIN` job, which edits the CDS and the ACDS and touches no
-   library. Read its `LIST` as step 3 there says. **Do not run its step 4**,
-   which scratches libraries.
+   library. Read its `LIST` as step 4 there says. **Do not run its step 2**
+   (the dummy function empties the libraries) **or its step 5**, which scratches
+   them.
 3. **Step 4 of this guide** — the alloc job creates `UFSD.LINKLIB` and
    `UFSD.AUFSDLOD` beside the old ones. This is the one upgrade that runs it.
 4. **Steps 3 and 5**, unchanged. After step 2, this is a fresh install as far
@@ -659,8 +660,8 @@ Either install 1.4.0 first and then this release (two ordinary upgrades), or
 release the inventory by hand:
 
 1. `/P UFSD`.
-2. **Step 2 of [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#2-cut-the-fmid-out-of-the-smp-inventory)
-   only**, as in the 1.2.x route above; do not run its step 4.
+2. **The fallback in [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#the-fallback-uclin-alone)
+   only**, as in the 1.2.x route above; do not run its step 2 or its step 5.
 3. **Steps 3 and 5**, then `/S UFSD` and read `UFSD000I` (step 8): it must name
    the version and commit you just installed.
 
@@ -703,10 +704,17 @@ Because the installation is SMP-managed, there is a defined way back — but it
 is **not** the `RESTORE` followed by `REJECT` that SMP documentation leads you
 to expect. The install job accepts the FMID in the same run as the APPLY, and
 an accepted function SYSMOD refuses both: `RESTORE` because it was accepted,
-`REJECT` because accepting removed the control statements it works from. The
-route that does work is a `UCLIN` job.
+and `REJECT` because the SYSMOD is no longer in the `SMPPTS` data set. On the
+system where this was measured, the cause is `PURGE=YES` in the system entry of
+the `SMPPTS`; a system with `PURGE=NO` has not been measured.
 
-The full procedure, with the job to submit and the messages to check, is in
+The way back is a **dummy function**, `TUFSDEL`, that deletes every release of
+UFSD up to 1.5.0 and takes the load modules out of both libraries. It carries
+no elements and is not a release FMID; the same procedure frees it again. Then
+a `UCLIN` job removes the entries from the two SMP zones, and you read the
+`LIST` and scratch the libraries. A way with `UCLIN` alone is the fallback.
+
+The full procedure, with the jobs to submit and the messages to check, is in
 [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md).
 
 What SMP does **not** remove, because it never owned them: the copies you made

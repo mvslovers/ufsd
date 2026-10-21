@@ -2,17 +2,15 @@
 SMPCDS   SYSMOD ENTRIES
   NAME
 TUFS150   TYPE            = FUNCTION
-          STATUS          = REC  APP  ACC
-          FMID            = TUFS150
-          JCLIN           = YES
-          DATE/TIME REC   = 26.293  21:09:08
-                    APP   = 26.293  21:09:25
-                    ACC   = 26.293  21:09:36
-          DELETE VER(001) = TUFS140
-          MOD             = UFSD      UFSDCLNP  UFSDSSIR  UFSFMT
+          DELBY           = TUFSDEL
 
- LIST CDS  SYSMOD(TUFS140) .
+ LIST CDS  SYSMOD(TUFSDEL) .
 SMPCDS   SYSMOD ENTRIES
   NAME
-TUFS140   TYPE            = FUNCTION
-          DELBY           = TUFS150
+TUFSDEL   TYPE            = FUNCTION
+          STATUS          = REC  APP  ACC
+          FMID            = TUFSDEL
+          DATE/TIME REC   = 26.294  10:36:45
+                    APP   = 26.294  10:36:57
+                    ACC   = 26.294  10:37:07
+          DELETE VER(001) = TUFS110   TUFS120   TUFS130   TUFS140   TUFS150
