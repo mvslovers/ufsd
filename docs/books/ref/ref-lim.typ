@@ -118,16 +118,18 @@ inode numbers. The two numbers after #cmd("FREEBLK=") in #cmd("UFSD018I") are
 the number of entries in the cache and the total number of free blocks. Read
 the free space from the second number.
 
-#note[*A defect* (ufsd\#130): inodes of removed files and directories can be
-lost for good. A removed inode is not cleared on the disk, and once more than
-64 inodes have been freed since the start, the cache cannot hold the others.
-#cmd("F UFSD,REBUILD") looks for inodes whose mode is 0, so it does not find
-them, and neither it nor a restart of UFSD gives them back. On a file system
-with 126 free inodes, after creating 125 files in one directory and removing
-them again, #cmd("STATS") showed 64 of 126 inodes free, and the next run
-created only 63 files. After #cmd("F UFSD,REBUILD") the count was 0 of 126, and
-every later create got the return code 48. Only a new format with #cmd("FORCE")
-(UFSD stopped) gave the inodes back.]
+#note[*Removed inodes* (ufsd\#130): UFSD 1.6.0 clears the inode of a removed
+file or directory on the disk, so the cache refill and #cmd("F UFSD,REBUILD")
+find it again. UFSD 1.5.0 and earlier did not clear it, and once more than 64
+inodes had been freed since the start, the cache could not hold the others and
+they were lost for good. On a file system with 126 free inodes, after creating
+125 files in one directory and removing them again, #cmd("STATS") showed 64 of
+126 inodes free, and the next run created only 63 files. After
+#cmd("F UFSD,REBUILD") the count was 0 of 126, and every later create got the
+return code 48. UFSD 1.6.0 does not repair a disk that has lost inodes under an
+earlier release: such an inode still has its mode on the disk and has no
+directory entry, so #cmd("F UFSD,REBUILD") does not find it. Only a new format
+with #cmd("FORCE") (UFSD stopped) gives these inodes back.]
 
 == The Layout of a Disk <ref-lim-format>
 
