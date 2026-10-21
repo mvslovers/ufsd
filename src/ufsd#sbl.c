@@ -315,7 +315,10 @@ ufsd_sb_alloc_inode(UFSD_DISK *disk, unsigned *out_ino)
 ** ufsd_sb_free_inode
 **
 ** Push an inode number back into the free inode cache.
-** If the cache is full, the inode is effectively leaked.
+** If the cache is full the number is dropped.  That is only safe when
+** the inode was cleared on disk first (mode == 0), because the refill
+** and the REBUILD scan find free inodes by that mark alone; the callers
+** in ufsd#fil.c go through inode_release().
 ** The caller must call ufsd_sb_write() to persist.
 **
 ** total_freeinode is always incremented (even on cache overflow)
@@ -330,7 +333,7 @@ ufsd_sb_free_inode(UFSD_DISK *disk, unsigned ino)
     if (disk->sb.nfreeinode < UFSD_SB_MAX_FREEINODE) {
         disk->sb.freeinode[disk->sb.nfreeinode++] = ino;
     }
-    /* Cache overflow: inode leaked for this session. */
+    /* Cache overflow: the next inode scan picks the number up again. */
 }
 
 /* ============================================================

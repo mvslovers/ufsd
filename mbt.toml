@@ -150,6 +150,16 @@ rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs the stand-in headers and its own stubs
 sources = ["test/host/tstufsfr.c"]
 
+# TSTUFSIN — a removed or rolled-back inode is cleared on disk and found again
+# by the cache refill and MODIFY REBUILD (#130). Includes src/ufsd#fil.c whole
+# to reach the static do_remove/do_rmdir/do_mkdir/do_fopen and links the real
+# src/ufsd#sbl.c and src/ufsd#ino.c over a RAM block device. Host-only
+# (mvs = false): needs the stand-in headers and its own stubs.
+[test.TSTUFSIN]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs the stand-in headers and its own stubs
+sources = ["test/host/tstufsin.c", "src/ufsd#sbl.c", "src/ufsd#ino.c"]
+
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
 [test.TSTUFSRC]
