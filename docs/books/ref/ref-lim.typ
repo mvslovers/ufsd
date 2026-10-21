@@ -37,10 +37,17 @@ that UFSD gives to its clients. Where a limit is checked, the message is named.
     [Length of #cmd("PATH()")], [127], [Longer values are cut.],
     [Length of #cmd("OWNER()")], [8], [Longer values are cut.],
     [Length of a file name], [59], [A longer name is not found, and a client gets the return code 28 (NOFILE), also when it wants to create the file.],
-    [Length of a path in a request], [255], [The client library cuts a longer path to
-      255 characters for most functions. The functions that open a file
-      take 251 characters, and some others refuse a path of 256 characters or
-      more. Keep paths well below 250 characters.],
+    [Length of a path in a request], [255], [The client library sends a path of up
+      to 255 characters whole and refuses a longer one before it sends any
+      request. #cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir"),
+      #cmd("ufs_remove") and #cmd("ufs_stat") return 20 (INVALID) for a path of 256
+      characters or more\; the first four also set #cmd("last_rc"). #cmd("ufs_diropen")
+      returns NULL. #cmd("ufs_fopen") takes 251 characters and returns NULL for a
+      longer path. UFSD 1.5.0 cut a path of 256 characters or more to 255
+      in #cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir") and
+      #cmd("ufs_remove") and sent it with its 256th character in place of the
+      terminating null\; UFSD 1.6.0 refuses it. Keep paths well below 250
+      characters.],
     [Entries in a directory], [_b_/64 × 16], [A directory has direct blocks
       only: 16 blocks of _b_/64 entries, the entries "." and ".." included.
       At 4096 this is 1024 entries. More gets the return code 44 (no space),
