@@ -145,8 +145,10 @@ UFSD decides on a write in two places, and in this order:
   #cmd("UFSD_RC_ROFS").
 + *The owner of the mount.* If the #cmd("MOUNT") statement has an #cmd("OWNER"),
   only a session of that user ID may write. The comparison is exact. A
-  session of any other user ID gets #cmd("UFSD_RC_EACCES"). The session
-  carries the user ID of the client program. A mount without #cmd("OWNER")
+  session of any other user ID, and a session that has none, gets
+  #cmd("UFSD_RC_EACCES"). A session starts with no user ID, and it does not
+  take the one of the job. The client program names a user ID with
+  #cmd("ufs_setuser"), and UFSD does not check the name (@ug-libufs-auth). A mount without #cmd("OWNER")
   accepts a write from any session, if it is read/write.
 
 That is all. Reading is not checked: every session can read every file of

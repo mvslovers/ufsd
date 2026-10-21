@@ -1,0 +1,19 @@
+after w + a: 7 bytes ("first\n" + "second\n" = 13)
+mkdir existing dir                 last_rc=32
+diropen missing dir: NULL
+after failed diropen               last_rc=32
+after failed fopen                 last_rc=28
+while(!feof) read 1 of 3 lines
+while(fgets)  read 3 of 3 lines
+fgets, then fread of 4 bytes: got 0
+fwrite on "r" handle: 0, ferror=20
+fread on "w" handle: 0, ferror=20
+fseek: -1
+diropen pattern "*.txt": 6 entries
+fputs AAA, fwrite BBB, fputs CCC: file holds "BBBAAACCC"
+fopen r on a directory             last_rc=40
+remove on a directory              last_rc=40
+rmdir on a non-empty directory     last_rc=60
+chgdir to a file                   last_rc=36
+stat on a missing path             last_rc=28
+cleanup rmdir rc=0

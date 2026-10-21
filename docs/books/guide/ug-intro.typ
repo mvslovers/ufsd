@@ -9,7 +9,8 @@ UFSD to open a file, read it, write it, list a directory or create one, and
 names the file by a path such as #cmd("/www/index.html"). UFSD is the one
 place that reads and writes the disks. The programs that use it today are the
 HTTP server HTTPD (httpd) and the FTP server FTPD (ftpd), and any program
-that is linked with the client library #cmd("libufs") can do the same.
+that is linked with the client library #cmd("libufs") can do the same
+(@ug-libufs).
 
 == File Systems and Mounts <ug-intro-fs>
 

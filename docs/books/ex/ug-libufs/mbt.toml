@@ -1,0 +1,34 @@
+schema = 3
+
+[project]
+name = "ufsdemo"
+version = "0.1.0"
+
+[toolchain]
+mbt = "3.0"
+libc370 = "2.24.1"
+
+[dependencies]
+"mvslovers/ufsd" = "^1.5"
+
+[module.UFSDEMO]
+sources = ["src/ufsdemo.c"]
+rent = false
+reus = false
+
+[module.UFSASMA]
+sources = ["src/ufsasma.c", "asm/asmput.asm"]
+rent = false
+reus = false
+
+[module.UFSASMB]
+sources = ["asm/ufsasmb.asm"]
+startup = false
+entry = "UFSASMB"
+rent = false
+reus = false
+
+[module.UFSASMD]
+sources = ["asm/ufsasmd.asm"]
+rent = false
+reus = false

@@ -1,0 +1,2 @@
+asmput rc=0
+read    written by assembler
