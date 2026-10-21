@@ -141,6 +141,15 @@ rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs the stand-in headers and its own iefssreq
 sources = ["test/host/tstlibuf.c", "client/libufs.c"]
 
+# TSTUFSFR — do_fread's ownership of the staging buffer on every way out (#134).
+# Includes src/ufsd#fil.c whole to reach the static do_fread, and counts
+# malloc/free. Host-only (mvs = false): needs the stand-in headers and stubs
+# for the layers below the file layer.
+[test.TSTUFSFR]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs the stand-in headers and its own stubs
+sources = ["test/host/tstufsfr.c"]
+
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
 [test.TSTUFSRC]
