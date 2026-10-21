@@ -45,7 +45,10 @@ The **dataset names carry no version**. `UFSD.LINKLIB` is `UFSD.LINKLIB` in
 every release, so the `STEPLIB` in your procedure, any client JCL naming it,
 and an APF entry for it are written once and never again (issue #71). The
 trade is that there is no side-by-side install: an upgrade replaces what is
-there, and the way back is SMP `RESTORE` from the distribution library.
+there. There is no way back to the previous release: the install job accepts
+the new level, and SMP refuses a `RESTORE` of an accepted function (see
+[section 11](#11-removing-ufsd)). To take UFSD out of the system, follow
+section 11.
 
 ---
 
@@ -71,7 +74,7 @@ Where everything ends up:
 ```
 UFSD.LINKLIB     the load modules -- point STEPLIB here
 UFSD.SAMPLIB     the patterns you copy from in step 6
-UFSD.AUFSDLOD    SMP's distribution library, the base a RESTORE returns to
+UFSD.AUFSDLOD    SMP's distribution library (not a way back to the previous release)
 ```
 
 ---
@@ -243,7 +246,7 @@ the first failure rather than building on it:
 | `RECV` | receives the SYSMOD into the SMP inventory |
 | `APPLYCHK` | dry run — `APPLY` only proceeds if this ends RC 0 |
 | `APPLY` | copies the load modules into `UFSD.LINKLIB` |
-| `ACCEPT` | makes this level the base a later `RESTORE` returns to |
+| `ACCEPT` | makes this level the base that the `RESTORE` of a later PTF returns to; closes `RESTORE` and `REJECT` for this release itself |
 | `CLEANUP` | scratches the staging library, which is now spent |
 
 The SYSMOD travels inline in the job — there is no third file to upload.
@@ -355,6 +358,10 @@ MOUNT    DSN(HTTPD.WEBROOT.UFS)  PATH(/www)          MODE(RO)
 MOUNT    DSN(IBMUSER.UFSHOME)    PATH(/u/ibmuser)    MODE(RW) OWNER(IBMUSER)
 MOUNT    DSN(UFSD.SCRATCH)       PATH(/tmp)          MODE(RW)
 ```
+
+This copy is abridged. The member in `UFSD.SAMPLIB` also has two more `MOUNT`
+statements, for the home directories of `MVSCE01` and `MVSCE02`, a commented-out
+`MOUNT` for `UFSD.ARCHIVE`, and comments.
 
 `HTTPD.WEBROOT.UFS` is the web content disk that HTTPD's own installation guide
 creates, mounted read-only on HTTPD's default `DOCROOT`, `/www`. If you do not
@@ -564,6 +571,11 @@ upgrade happened are, per module:
 HMA2240    SUCCESSFULLY DELETED LMOD UFSD ON LINKLIB LIBRARY
 HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 ```
+
+In an upgrade, the element reports that follow can show `NOT SEL` next to
+`TUFS140 DELETED`. That is normal; what shows that the upgrade happened is the
+pair `HMA2240` and `HMA2380` for each module. A `NOT SEL` *in place of*
+`HMA2380` is the failure described next.
 
 If SMP meets an element it does not own it prints `NOT SEL` instead, copies
 nothing, and still ends RC 00 with `HMA2270 ... SUCCESSFULLY COMPLETED` — an

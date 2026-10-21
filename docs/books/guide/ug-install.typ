@@ -19,8 +19,9 @@ The names of the data sets carry no version. #cmd("UFSD.LINKLIB") is the
 same name in every release. The #cmd("STEPLIB") of the procedure, client JCL
 that names the library and an APF entry are written once. The price is that
 two releases cannot be installed side by side: an upgrade replaces what is
-there, and the way back is an SMP #cmd("RESTORE") from the distribution
-library.
+there. There is no way back to the previous release. The install job accepts
+the new level, and SMP refuses a #cmd("RESTORE") of an accepted function
+(@ug-remove-why). To take UFSD out of the system, follow @ug-remove.
 
 == What Is in the Package <ug-install-files>
 
@@ -49,8 +50,9 @@ The load modules are #cmd("UFSD"), #cmd("UFSDSSIR"), #cmd("UFSDCLNP") and
 #deflist(width: 1.6in,
   [#cmd("UFSD.LINKLIB")], [The load modules. The #cmd("STEPLIB") points here.],
   [#cmd("UFSD.SAMPLIB")], [The patterns that you copy in @ug-install-proc.],
-  [#cmd("UFSD.AUFSDLOD")], [The distribution library of SMP, the base that a
-    #cmd("RESTORE") returns to.],
+  [#cmd("UFSD.AUFSDLOD")], [The distribution library of SMP. A later
+    PTF can be restored to the level in it. It is not a way back to the
+    previous release (@ug-remove-why).],
 )
 
 The fourth file of the release, #cmd("ufsd-1.5.0-lib.tar.gz"), is not part of
@@ -202,8 +204,10 @@ ended well, so the job stops at the first failure.
     [#cmd("APPLYCHK")], [A dry run. The #cmd("APPLY") runs only if this one
       ends with RC 0.],
     [#cmd("APPLY")], [Copies the load modules into #cmd("UFSD.LINKLIB").],
-    [#cmd("ACCEPT")], [Makes this level the base that a #cmd("RESTORE")
-      returns to.],
+    [#cmd("ACCEPT")], [Makes this level the base that the
+      #cmd("RESTORE") of a later PTF returns to. It also closes
+      #cmd("RESTORE") and #cmd("REJECT") for this release itself
+      (@ug-remove-why).],
     [#cmd("CLEANUP")], [Scratches the staging library, which is spent now.],
   )
 ]
@@ -220,6 +224,12 @@ The step then prints more reports; the screen shows the first. The status
 #cmd("TUFS140 DELETED") also appears on a new installation, because the SYSMOD
 names TUFS140 in its #cmd("DELETE") operand. The
 #cmd("ACCEPT") step has the same messages for the library #cmd("AUFSDLOD").
+
+In an upgrade, the element reports that follow can show #cmd("NOT SEL") next
+to #cmd("TUFS140 DELETED"). That is normal. What shows that the upgrade
+happened is the pair #cmd("HMA2240") and #cmd("HMA2380") for each module (see
+@ug-install-from14). A #cmd("NOT SEL") in place of #cmd("HMA2380") is the
+failure described in @ug-install-verify.
 
 SMP copies the modules and does not link them again, so the link attributes
 (among them AC(1)) are exactly those of the build.
@@ -314,7 +324,11 @@ exists there. That was not checked on a running MVS/CE for this release.
 The member that comes with UFSD is a pattern, not a working configuration.
 It names data sets of the development system. Every data set named in a
 #cmd("ROOT") or #cmd("MOUNT") statement must exist and be formatted before
-UFSD starts. UFSD does not allocate or format one. The pattern reads:
+UFSD starts. UFSD does not allocate or format one. The pattern reads as
+follows. This copy is abridged: the member in #cmd("UFSD.SAMPLIB") has two
+more #cmd("MOUNT") statements for the home directories #cmd("MVSCE01") and
+#cmd("MVSCE02"), a commented-out #cmd("MOUNT") for #cmd("UFSD.ARCHIVE"), and
+comments.
 
 #screen(```
 ROOT     DSN(UFSD.ROOT)

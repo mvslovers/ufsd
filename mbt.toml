@@ -207,9 +207,11 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 # Two consequences to keep in the install guide:
 #   - the alloc job runs once EVER, not once per release. A second run fails
 #     on DISP=(NEW,CATLG) and changes nothing; an upgrade skips it.
-#   - there is no side-by-side install and no back-out by dataset. The way
-#     back is SMP RESTORE from the DLIB, which is what accept_fmid below
-#     exists for.
+#   - there is no side-by-side install and no back-out by dataset. There is no
+#     way back to the previous release either: the FMID is accepted in the
+#     install run, and an accepted function can be neither RESTOREd nor
+#     REJECTed (docs/uninstall.md). accept_fmid below exists so that a later
+#     PTF can be RESTOREd to the DLIB.
 [distribution]
 readme = "docs/installation.md"
 
