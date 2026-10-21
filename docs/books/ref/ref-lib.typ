@@ -214,11 +214,14 @@ Returns the code that a function stored in the session handle last, or -1 if
 #cmd("ufs_mkdir"), #cmd("ufs_rmdir"), #cmd("ufs_remove"), #cmd("ufs_stat"),
 #cmd("ufs_fopen"), #cmd("ufs_setuser") and, for one failure,
 #cmd("ufs_diropen"). They store 0 on success. No other function stores it. A
-function that fails before it sends the request does not store anything: a NULL
-#cmd("ufs") (the other arguments, too, for #cmd("ufs_stat"),
+function that fails before it sends the request stores nothing in these cases:
+a NULL #cmd("ufs") (the other arguments, too, for #cmd("ufs_stat"),
 #cmd("ufs_fopen") and #cmd("ufs_setuser")), an empty path or a path of 256
 characters or more for #cmd("ufs_stat"), a path of 252 characters or more for
 #cmd("ufs_fopen"). #cmd("ufs_setuser") stores nothing for -1 either.
+#cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir") and
+#cmd("ufs_remove") do store #cmd("UFSD_RC_INVALID") when the library refuses
+an empty path or a path of 256 characters or more.
 
 == Directory Functions <ref-lib-dir>
 
@@ -233,8 +236,10 @@ empty (@ref-lim-limits).
   #table(columns: (2.3in, 0.9in, 1fr),
     [Function], [Guaranteed], [A longer path],
     [#cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir"),
-      #cmd("ufs_remove")], [255], [Not guaranteed. Keep the path within the
-      limit.],
+      #cmd("ufs_remove")], [255], [Return #cmd("UFSD_RC_INVALID") before a
+      request is sent; the code is stored for #cmd("ufs_last_rc"). UFSD 1.5.0
+      cut a path of 256 characters or more to 255 and sent it with its 256th
+      character in place of the terminating null\; UFSD 1.6.0 refuses it.],
     [#cmd("ufs_diropen")], [255], [Returns NULL; #cmd("ufs_last_rc") is not set.],
     [#cmd("ufs_stat")], [255], [Returns #cmd("UFSD_RC_INVALID"); the code is not
       stored for #cmd("ufs_last_rc").],
@@ -255,7 +260,7 @@ Changes the working directory of the session. On success the library copies
 #cmd("..").
 
 *Return value:* 0, or a return code, or -1 (NULL #cmd("ufs") or no delivery).
-#cmd("UFSD_RC_INVALID") for an empty or NULL path, #cmd("UFSD_RC_NOFILE") if the path does
+#cmd("UFSD_RC_INVALID") for an empty or NULL path or one of 256 characters or more, #cmd("UFSD_RC_NOFILE") if the path does
 not exist, #cmd("UFSD_RC_NOTDIR") if it is not a directory,
 #cmd("UFSD_RC_IO") if the file system cannot be read.
 
@@ -273,7 +278,7 @@ mode #cmd("rwxr-xr-x").
 #cmd("UFSD_RC_NOFILE") (also if an intermediate directory is missing),
 #cmd("UFSD_RC_ROFS"), #cmd("UFSD_RC_EACCES"), #cmd("UFSD_RC_NOINODES"),
 #cmd("UFSD_RC_NOSPACE"), #cmd("UFSD_RC_IO") and #cmd("UFSD_RC_INVALID") for an
-empty or NULL path.
+empty or NULL path or one of 256 characters or more.
 
 === ufs_rmdir <ref-lib-rmdir>
 
@@ -286,7 +291,7 @@ Removes an empty directory.
 
 *Return value:* 0, or a return code, or -1. Codes: #cmd("UFSD_RC_NOFILE"),
 #cmd("UFSD_RC_NOTDIR"), #cmd("UFSD_RC_NOTEMPTY"), #cmd("UFSD_RC_INVALID") (the
-root, or an empty path), #cmd("UFSD_RC_ROFS"), #cmd("UFSD_RC_EACCES"),
+root, an empty path, or a path of 256 characters or more), #cmd("UFSD_RC_ROFS"), #cmd("UFSD_RC_EACCES"),
 #cmd("UFSD_RC_IO").
 
 === ufs_remove <ref-lib-remove>
@@ -300,7 +305,8 @@ Removes a file. A directory is removed by #cmd("ufs_rmdir").
 
 *Return value:* 0, or a return code, or -1. Codes: #cmd("UFSD_RC_NOFILE"),
 #cmd("UFSD_RC_ISDIR"), #cmd("UFSD_RC_ROFS"), #cmd("UFSD_RC_EACCES"),
-#cmd("UFSD_RC_IO"), #cmd("UFSD_RC_INVALID") for an empty path or the root.
+#cmd("UFSD_RC_IO"), #cmd("UFSD_RC_INVALID") for an empty path, a path of 256
+characters or more, or the root.
 
 === ufs_diropen <ref-lib-diropen>
 

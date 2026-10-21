@@ -212,7 +212,9 @@ with the names, never with the numbers.
 calls of the first two rows of the table above set it on success as well as on
 failure, except #cmd("ufs_setuser") when it returns -1 and #cmd("ufs_stat")
 when the library refuses the call before it sends a request (a NULL argument,
-an empty path, a path of 256 characters or more). The calls on
+an empty path, a path of 256 characters or more). #cmd("ufs_chgdir"),
+#cmd("ufs_mkdir"), #cmd("ufs_rmdir") and #cmd("ufs_remove") store 20 (INVALID)
+for an empty path or a path of 256 characters or more. The calls on
 a file handle never set it; they use #cmd("ufs_ferror"), and a call that is
 refused before it is sent (for example a path that is too long for
 #cmd("ufs_fopen")) leaves it as it was. Read it right after the call.
@@ -395,11 +397,16 @@ ones that were measured in the output of @ug-libufs-errors (the program
       that you gave to #cmd("ufs_chgdir"), as you gave it, and not a clean
       path.],
     [Long paths], [Keep a path to 255 characters, to 251 for
-      #cmd("ufs_fopen"). #cmd("ufs_fopen") returns NULL for a longer path,
-      #cmd("ufs_stat") returns 20 (INVALID) and #cmd("ufs_diropen") returns NULL
-      for 256 or more, and none of them sets #cmd("ufs_last_rc"). What
-      #cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir") and
-      #cmd("ufs_remove") do with a longer path is not guaranteed.],
+      #cmd("ufs_fopen"). The library refuses a longer path before it sends
+      a request. #cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir"),
+      #cmd("ufs_remove") and #cmd("ufs_stat") return 20 (INVALID) for a path
+      of 256 characters or more\; the first four also set #cmd("ufs_last_rc"),
+      #cmd("ufs_stat") does not. #cmd("ufs_diropen") returns NULL, and
+      #cmd("ufs_fopen") returns NULL for a path of 252 characters or more\;
+      neither sets #cmd("ufs_last_rc"). UFSD 1.5.0 cut a path of 256
+      characters or more to 255 in #cmd("ufs_chgdir"), #cmd("ufs_mkdir"),
+      #cmd("ufs_rmdir") and #cmd("ufs_remove") and sent it with its 256th
+      character in place of the terminating null\; UFSD 1.6.0 refuses it.],
   )
 ]
 
