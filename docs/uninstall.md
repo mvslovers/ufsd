@@ -527,5 +527,7 @@ not need the PTS.
 The `ACCEPT` fills the distribution library, which is the base a later
 `RESTORE` of a **PTF** returns to. Without it, a `RESTORE` would delete the
 module rather than revert it, because there would be no previous level to go
-back to. The price is what this document is about: the FMID itself becomes
-permanent by documented means.
+back to. The price is what this document is about: once the FMID has been
+accepted, `RESTORE` refuses it and `REJECT` fails (on the system where this was
+measured). The dummy function `TUFSDEL` and the `UCLIN` of step 3, as described
+above, are what take it out again.
