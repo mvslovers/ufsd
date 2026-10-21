@@ -200,8 +200,9 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 # not on the library the element lives in. A new FMID does not replace an
 # element it does not own no matter which dataset that element sits in -- it
 # reports NOT SEL and copies nothing, at RC 0, with every condition code
-# reading success. The UCLIN in docs/uninstall.md is required either way. What
-# it did cost was a V1R2M0-for-all-of-1.2.x ambiguity that scratched the wrong
+# reading success. Taking UFSD off a system needs the dummy function TUFSDEL and
+# the UCLIN of docs/uninstall.md either way. What the version qualifier did
+# cost was a V1R2M0-for-all-of-1.2.x ambiguity that scratched the wrong
 # libraries once already (ftpd, 2026-09-05).
 #
 # Two consequences to keep in the install guide:
@@ -209,8 +210,10 @@ headers = ["include/libufs.h", "include/ufsdrc.h"]
 #     on DISP=(NEW,CATLG) and changes nothing; an upgrade skips it.
 #   - there is no side-by-side install and no back-out by dataset. There is no
 #     way back to the previous release either: the FMID is accepted in the
-#     install run, and an accepted function can be neither RESTOREd nor
-#     REJECTed (docs/uninstall.md). accept_fmid below exists so that a later
+#     install run, and an accepted function cannot be RESTOREd. REJECT fails
+#     as well, because PURGE=YES in the SMPPTS system entry has already deleted
+#     it from the PTS (HMA2462). Only the dummy function TUFSDEL plus UCLIN
+#     removes it (docs/uninstall.md). accept_fmid below exists so that a later
 #     PTF can be RESTOREd to the DLIB.
 [distribution]
 readme = "docs/installation.md"
@@ -235,8 +238,10 @@ readme = "docs/installation.md"
 # nothing, and still ends RC 00 with an empty target library. With it, SMP
 # deletes the predecessor's LMODs (HMA2240) and copies the new ones in
 # (HMA2380), and MOD(x) comes back carrying the new FMID. Measured on mvsdev
-# 2026-09-14. The UCLIN in docs/uninstall.md is for *removing* UFSD now, not
-# for upgrading it.
+# 2026-09-14. The dummy function TUFSDEL and the UCLIN in docs/uninstall.md are
+# for *removing* UFSD now; an upgrade from the previous release needs neither.
+# Only a system that skipped a release runs the UCLIN fallback first, with the
+# libraries left in place (docs/installation.md, section 10).
 #
 # The T keeps clear of IBM's FMID namespace, which on MVS 3.8j is E??nnnn
 # (EBB1102 is MVS itself). Never TMVS... or another name MVS/CE and TK5
