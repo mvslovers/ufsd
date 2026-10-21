@@ -17,7 +17,8 @@ UFSASMB  CSECT
          LTR   15,15
          BNZ   NOAUTH
 *
-*        ufs = ufsnew()
+*        ufs = ufsnew(): no parameters, so R1 must be 0
+         SR    1,1
          L     15,=V(CUFSNEW)
          BALR  14,15
          LTR   5,15               R5 = the session

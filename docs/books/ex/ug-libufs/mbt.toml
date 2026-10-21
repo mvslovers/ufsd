@@ -27,3 +27,8 @@ startup = false
 entry = "UFSASMB"
 rent = false
 reus = false
+
+[module.UFSASMD]
+sources = ["asm/ufsasmd.asm"]
+rent = false
+reus = false

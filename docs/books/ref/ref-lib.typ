@@ -9,13 +9,24 @@ function by function: the prototype, the parameters, the value returned and the
 return codes that the function can give. How to build and run a program with it
 is the subject of the _UFSD User's Guide_. The statements about behaviour in
 this chapter were checked against the source of the library, and those marked
-as measured were run on TK5 against UFSD 1.5.0.
+as measured were run on TK5 with the library of release 1.5.0 against the
+server of the TK5 image, which is UFSD 1.4.0. The functions that were measured
+are the same in both releases; the release 1.5.0 of the server was not run.
 
 == Conventions <ref-lib-conv>
 
 The declarations are in #cmd("libufs.h"), which includes #cmd("ufsdrc.h"). The
 return codes of UFSD are named #cmd("UFSD_RC_*"); the numbers are in
 @ref-lim-rc. A code that is not 0 is a failure.
+
+Any function that sends a request can also get four codes from the router and
+the session, whatever its entry lists: #cmd("UFSD_RC_NOREQ") (no free request
+block), #cmd("UFSD_RC_CORRUPT") (the control blocks of UFSD are missing or not
+active), #cmd("UFSD_RC_BADSESS") (UFSD does not know the session) and
+#cmd("UFSD_RC_INVALID") (the request block has no valid eye catcher). The
+entries below name the codes that belong to the function and do not repeat
+these four. They arrive the same way as the codes of the entry: as the return
+value, in #cmd("ufs_last_rc") or in #cmd("ufs_ferror").
 
 The library returns a failure in one of the following ways. The entry of each
 function says which one it uses.
@@ -25,7 +36,8 @@ function says which one it uses.
     or -1 if the request did not reach UFSD. The value is also stored for
     #cmd("ufs_last_rc").],
   [NULL], [The function returns a null pointer. #cmd("ufs_fopen") stores the
-    code for #cmd("ufs_last_rc"); #cmd("ufs_diropen") and #cmd("ufsnew") do not.],
+    code for #cmd("ufs_last_rc"); #cmd("ufsnew") does not. #cmd("ufs_diropen")
+    does so only for one failure (see its entry).],
   [Handle error], [The function on an open file returns fewer items than asked
     for, NULL or #cmd("UFS_EOF"), and stores the code in the handle.
     #cmd("ufs_ferror") reads it. -1 is stored if the request did not reach
@@ -117,9 +129,10 @@ and #cmd("ufsfree") have none; CC/370 (cc370) makes the names #cmd("UFSNEW") and
       size of its entries.],
     [#cmd("name")], [char[60]], [The name, ended by a null character. It is cut
       at 59 characters.],
-    [#cmd("attr")], [char[11]], [Eleven characters: #cmd("d") for a directory
-      or #cmd("-"), then #cmd("rwx") for the owner, the group and the others,
-      with #cmd("-") for a missing bit, and a null character.],
+    [#cmd("attr")], [char[11]], [Ten characters and a null character. The first
+      is #cmd("d") for a directory or #cmd("-") for anything else (no other
+      type character occurs), then #cmd("rwx") for the owner, the group and the
+      others, with #cmd("-") for a missing bit.],
     [#cmd("owner")], [char[9]], [The owner, which is empty for a file that was
       created without one.],
     [#cmd("group")], [char[9]], [The group.],
@@ -142,10 +155,11 @@ Opens a session with UFSD and returns its handle. The session starts at the
 root directory, with no user ID, and with the permission value 0755 in the
 handle.
 
-*Return value:* the handle, or NULL. There is no return code. If the task is
-not authorised, #cmd("errno") is 1 (LIBC/370 2.23.0 and later; earlier releases
-ended the step with the abend S047). If #cmd("errno") is 0, UFSD is not
-running, or it has no free session (the limit is 64, @ref-lim-limits), or
+*Return value:* the handle, or NULL. There is no return code. The program
+has to set #cmd("errno = 0") before the call; the rule below holds only then.
+If the task is not authorised, #cmd("errno") is 1 (LIBC/370 2.23.0 and later;
+earlier releases ended the step with the abend S047). If #cmd("errno") is still
+0, UFSD is not running, or it has no free session (the limit is 64, @ref-lim-limits), or
 the library could not allocate the handle; in the last case it closes the
 session again.
 
@@ -173,11 +187,20 @@ Gives the session the user ID against which UFSD checks the #cmd("OWNER") of a
 mount (@ref-cfg-access). Only the first 8 characters of each name are used. A
 NULL or empty #cmd("group") keeps the group.
 
-*Return value:* 0, or a return code, or -1 if the request did not reach UFSD.
-#cmd("UFSD_RC_INVALID") if #cmd("ufs") or #cmd("userid") is NULL. The result is
-stored for #cmd("ufs_last_rc"). *The name is not checked*: any name is
-accepted, and a program that names the owner of a mount passes the check of
-the mount.
+The user ID and the group also become the owner and the group of the files and
+directories that the session creates afterwards. Without a call, they have an
+empty owner. The comparison with the #cmd("OWNER") of the mount is *case
+sensitive*: #cmd("ufs_setuser(ufs, \"mike\", NULL)") against
+#cmd("OWNER(MIKE)") gets #cmd("UFSD_RC_EACCES") when the session wants to write. UFSD checks
+the right to write again at every #cmd("ufs_fwrite"), not only when the file is
+opened: a file that is open for writing fails with #cmd("UFSD_RC_EACCES") after
+#cmd("ufs_setuser") has named another user.
+
+*Return value:* 0, or a return code. #cmd("UFSD_RC_INVALID") if #cmd("ufs") or
+#cmd("userid") is NULL, and -1 if the request did not reach UFSD; both are
+returned without being stored. Any other result is stored for
+#cmd("ufs_last_rc"). *The name is not checked*: any name is accepted, and a
+program that names the owner of a mount passes the check of the mount.
 
 === ufs_last_rc <ref-lib-lastrc>
 
@@ -189,17 +212,35 @@ int ufs_last_rc(UFS *ufs);
 Returns the code that a function stored in the session handle last, or -1 if
 #cmd("ufs") is NULL. The functions that store it are #cmd("ufs_chgdir"),
 #cmd("ufs_mkdir"), #cmd("ufs_rmdir"), #cmd("ufs_remove"), #cmd("ufs_stat"),
-#cmd("ufs_fopen") and #cmd("ufs_setuser"). They store 0 on success. No other
-function stores it. A function that fails before it sends the request (a path
-of 256 characters or more for #cmd("ufs_stat"), of 252 or more for
-#cmd("ufs_fopen")) does not store it either, and #cmd("ufs_diropen") never does.
+#cmd("ufs_fopen"), #cmd("ufs_setuser") and, for one failure,
+#cmd("ufs_diropen"). They store 0 on success. No other function stores it. A
+function that fails before it sends the request does not store anything: a NULL
+#cmd("ufs") (the other arguments, too, for #cmd("ufs_stat"),
+#cmd("ufs_fopen") and #cmd("ufs_setuser")), an empty path or a path of 256
+characters or more for #cmd("ufs_stat"), a path of 252 characters or more for
+#cmd("ufs_fopen"). #cmd("ufs_setuser") stores nothing for -1 either.
 
 == Directory Functions <ref-lib-dir>
 
 A path is absolute if it begins with a slash. Otherwise UFSD takes it from the
-working directory of the session. Functions that send the path in the request
-(#cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir"), #cmd("ufs_remove"))
-cut it to 255 characters without a message.
+working directory of the session. A name in a path has at most 59 characters.
+A directory holds 1024 entries at the block size of 4096, the entries
+#cmd(".") and #cmd("..") included; the next #cmd("ufs_fopen") that creates a
+file or #cmd("ufs_mkdir") gets #cmd("UFSD_RC_NOSPACE"), also when the disk is
+empty (@ref-lim-limits).
+
+#tab(caption: [The length of a path])[
+  #table(columns: (2.3in, 0.9in, 1fr),
+    [Function], [Guaranteed], [A longer path],
+    [#cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir"),
+      #cmd("ufs_remove")], [255], [Not guaranteed. Keep the path within the
+      limit.],
+    [#cmd("ufs_diropen")], [255], [Returns NULL; #cmd("ufs_last_rc") is not set.],
+    [#cmd("ufs_stat")], [255], [Returns #cmd("UFSD_RC_INVALID"); the code is not
+      stored for #cmd("ufs_last_rc").],
+    [#cmd("ufs_fopen")], [251], [Returns NULL; #cmd("ufs_last_rc") is not set.],
+  )
+]
 
 === ufs_chgdir <ref-lib-chgdir>
 
@@ -215,7 +256,8 @@ Changes the working directory of the session. On success the library copies
 
 *Return value:* 0, or a return code, or -1 (NULL #cmd("ufs") or no delivery).
 #cmd("UFSD_RC_INVALID") for an empty or NULL path, #cmd("UFSD_RC_NOFILE") if the path does
-not exist, #cmd("UFSD_RC_NOTDIR") if it is not a directory.
+not exist, #cmd("UFSD_RC_NOTDIR") if it is not a directory,
+#cmd("UFSD_RC_IO") if the file system cannot be read.
 
 === ufs_mkdir <ref-lib-mkdir>
 
@@ -244,7 +286,8 @@ Removes an empty directory.
 
 *Return value:* 0, or a return code, or -1. Codes: #cmd("UFSD_RC_NOFILE"),
 #cmd("UFSD_RC_NOTDIR"), #cmd("UFSD_RC_NOTEMPTY"), #cmd("UFSD_RC_INVALID") (the
-root, or an empty path), #cmd("UFSD_RC_ROFS"), #cmd("UFSD_RC_EACCES").
+root, or an empty path), #cmd("UFSD_RC_ROFS"), #cmd("UFSD_RC_EACCES"),
+#cmd("UFSD_RC_IO").
 
 === ufs_remove <ref-lib-remove>
 
@@ -257,7 +300,7 @@ Removes a file. A directory is removed by #cmd("ufs_rmdir").
 
 *Return value:* 0, or a return code, or -1. Codes: #cmd("UFSD_RC_NOFILE"),
 #cmd("UFSD_RC_ISDIR"), #cmd("UFSD_RC_ROFS"), #cmd("UFSD_RC_EACCES"),
-#cmd("UFSD_RC_INVALID") for an empty path.
+#cmd("UFSD_RC_IO"), #cmd("UFSD_RC_INVALID") for an empty path or the root.
 
 === ufs_diropen <ref-lib-diropen>
 
@@ -272,10 +315,20 @@ by name with #cmd("strcmp"), the entries #cmd("."), #cmd("..") first. A change
 made later is not seen by the handle. Each entry takes about 112 bytes of the
 heap. #cmd("pattern") is accepted and *ignored*: all entries are returned.
 
+The table of entries starts with room for 32 entries and doubles when it is
+full. While it grows, the old and the new table exist together, which is one
+and a half times the size of the new table (about 112 bytes for each entry
+of it). An open directory takes one of the 64
+files of the session (@ref-lim-limits).
+
 *Return value:* the handle, or NULL if the path is 256 characters or longer, the
-directory cannot be read or the program has no memory for the entries. *#cmd("ufs_last_rc") is not
-set.* UFSD gives #cmd("UFSD_RC_NOFILE") or #cmd("UFSD_RC_NOTDIR"); to find
-the cause, call #cmd("ufs_stat").
+directory cannot be read or the program has no memory for the handle or the
+entries. *#cmd("ufs_last_rc") is set only in one case*: if UFSD has accepted
+the open and then the allocation or a read fails, the code is
+#cmd("UFSD_RC_IO"). If UFSD refuses the open (#cmd("UFSD_RC_NOFILE"),
+#cmd("UFSD_RC_NOTDIR"), #cmd("UFSD_RC_NOREQ") when the 64 files of the session
+or the 256 files of the system are open), or if the client fails before the
+request, the value stays as it was. To find the cause, call #cmd("ufs_stat").
 
 === ufs_dirread <ref-lib-dirread>
 
@@ -307,9 +360,10 @@ int ufs_stat(UFS *ufs, const char *path, UFSDLIST *out);
 Fills #cmd("out") with the entry of a path, as #cmd("ufs_dirread") gives it.
 
 *Return value:* 0, or a return code, or -1. #cmd("UFSD_RC_NOFILE") if the path
-does not exist. #cmd("UFSD_RC_INVALID") if an argument is NULL, the path is
-empty, or the path is 256 characters or longer; the last two do not store the
-code for #cmd("ufs_last_rc").
+does not exist, #cmd("UFSD_RC_IO") if the file system cannot be read.
+#cmd("UFSD_RC_INVALID") if an argument is NULL, the path is empty, or the path
+is 256 characters or longer. None of these three cases stores the code for
+#cmd("ufs_last_rc"), because the library refuses them before it sends a request.
 
 == File Functions <ref-lib-file>
 
@@ -331,9 +385,11 @@ the same. A file that is created has the mode #cmd("rw-r--r--"); the value of
 *Return value:* the handle, or NULL with the code in #cmd("ufs_last_rc"):
 #cmd("UFSD_RC_ISDIR"), #cmd("UFSD_RC_NOFILE") (also if the name is longer than
 59 characters, or a directory of the path is missing), #cmd("UFSD_RC_ROFS"),
-#cmd("UFSD_RC_EACCES"), #cmd("UFSD_RC_NOINODES"), #cmd("UFSD_RC_NOREQ") (the
-session has 64 files open), #cmd("UFSD_RC_INVALID"), and #cmd("UFSD_RC_IO") if
-the program has no memory for the handle. A path of 252 characters or more,
+#cmd("UFSD_RC_EACCES"), #cmd("UFSD_RC_NOINODES"), #cmd("UFSD_RC_NOSPACE") (no free block, or the
+directory holds 1024 entries already), #cmd("UFSD_RC_NOREQ") (the session
+has 64 files open, open directories included, or all sessions together have
+256), #cmd("UFSD_RC_INVALID"), and #cmd("UFSD_RC_IO") if the file system cannot
+be read or the program has no memory for the handle. A path of 252 characters or more,
 or a NULL argument, returns NULL and leaves #cmd("ufs_last_rc") as it was.
 
 === ufs_fclose <ref-lib-fclose>
@@ -346,7 +402,9 @@ void ufs_fclose(UFSFILE **file);
 Sends the text that #cmd("ufs_fputs") and #cmd("ufs_fputc") have collected,
 closes the file, frees the handle and sets the pointer to NULL. A failure of
 the send or of the close is *not reported*. To learn about it, call
-#cmd("ufs_fsync") and #cmd("ufs_ferror") before.
+#cmd("ufs_fsync") and #cmd("ufs_ferror") before. A NULL pointer, a pointer to
+NULL, or a handle without the eye catcher of a file handle is ignored without a
+message, and the pointer keeps its value.
 
 === ufs_fsync <ref-lib-fsync>
 
@@ -367,14 +425,19 @@ UINT32 ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp);
 ```)
 
 Reads up to #cmd("size × nitems") bytes. The library asks UFSD in pieces of up
-to 4096 bytes (of 252 bytes if the common storage has no free buffer).
+to 4096 bytes. What happens when the common storage has no free buffer for such
+a piece is not specified for reading; do not rely on it.
 
 *Return value:* the number of whole items, which is smaller than #cmd("nitems")
 at the end of the file and on an error, and 0 for a NULL argument, a size of 0,
-or a handle with the end-of-file or error flag set. At the end of the file the
+or a handle with the end-of-file or error flag set. An incomplete last item is
+consumed from the file but not counted: a file of 10 bytes, read with a size of 4
+and 3 items asked for, gives 2 items, and the last 2 bytes are gone. At the end of the file the
 flag #cmd("ufs_feof") is set; on an error the code is stored for
 #cmd("ufs_ferror"): #cmd("UFSD_RC_BADFD"), #cmd("UFSD_RC_INVALID") (also if
-the file was opened for writing).
+the file was opened for writing) and #cmd("UFSD_RC_IO"). Reading a file that was
+opened for writing sets the error flag, and it stays set until
+#cmd("ufs_clearerr") (@ref-lib-feof).
 
 *Do not mix with #cmd("ufs_fgets") or #cmd("ufs_fgetc") on one handle:* they
 read ahead 4096 bytes into the handle, which #cmd("ufs_fread") does not look at.
@@ -395,8 +458,13 @@ file.
 *Return value:* the number of whole items written. A short count means an
 error, stored for #cmd("ufs_ferror"): #cmd("UFSD_RC_NOSPACE") (the disk is full,
 or the file is at its largest size, @ref-lim-file), #cmd("UFSD_RC_BADFD"),
-#cmd("UFSD_RC_INVALID") (also if the file was opened for reading). 0 for a NULL
-argument, a size of 0, or a handle with the error flag set.
+#cmd("UFSD_RC_INVALID") (also if the file was opened for reading),
+#cmd("UFSD_RC_IO"), #cmd("UFSD_RC_ROFS") and #cmd("UFSD_RC_EACCES"). The last two
+come from the check of the right to write, which UFSD makes at every call, so
+they also stop a write in the middle of a file that was opened with success
+(@ref-lib-setuser). The items that were written before the failure are
+counted. 0 for a NULL argument, a size of 0, or a handle with the error flag
+set.
 
 === ufs_fgets <ref-lib-fgets>
 
@@ -440,6 +508,11 @@ the string without its null character and adds no line end.
 #cmd("ufs_fputc") returns the byte. Both return #cmd("UFS_EOF") for a NULL
 argument, a handle with the error flag set, or if sending a full buffer failed.
 A handle that was opened for reading fails at the first send; the text is lost.
+*A partial write is reported as success.* If UFSD stores only a part of the
+buffer, for example because the disk is full, the library empties the buffer
+all the same and the rest is lost. The calls then return the length or the byte
+as if all had been written. #cmd("ufs_ferror") shows the failure if UFSD
+answered with a code; call it after #cmd("ufs_fsync").
 
 === ufs_feof, ufs_ferror and ufs_clearerr <ref-lib-feof>
 
@@ -459,8 +532,11 @@ buffer. Use the return value of #cmd("ufs_fgets") or #cmd("ufs_fgetc") as the
 test of the end. #cmd("ufs_ferror") returns the code of the last error of the
 handle (never 0 then), or 0. Both return 1 for a NULL handle.
 #cmd("ufs_clearerr") resets both flags. After the end of the file or an
-error, #cmd("ufs_fread") and #cmd("ufs_fwrite") return 0 until the flags are
-cleared.
+error, #cmd("ufs_fread") returns 0 until the flags are cleared, and after an
+error #cmd("ufs_fwrite") does so. A handle that is used in the other
+direction (a read on a file opened for writing, or a write on a file opened for
+reading) gets the error #cmd("UFSD_RC_INVALID") from UFSD. The error flag
+stays set until the program calls #cmd("ufs_clearerr").
 
 === ufs_fseek and ufs_sync <ref-lib-fseek>
 
@@ -518,10 +594,12 @@ from the way the program uses it:
     [Memory for each directory entry], [About 112 bytes of the heap while the
       directory is open.],
     [Name in a directory entry], [59 characters.],
-    [Path], [255 characters for the functions that send a path; 251 for
-      #cmd("ufs_fopen"); #cmd("ufs_stat") and #cmd("ufs_diropen") refuse 256 or
-      more.],
-    [Bytes for each request], [4096 (the 4K path), 252 for reading and 248
-      for writing inline.],
+    [Path], [255 characters; 251 for #cmd("ufs_fopen"). The table in
+      @ref-lib-dir says what a longer path does.],
+    [Files of a session], [64, the open directories of #cmd("ufs_diropen")
+      included. All sessions together have 256 (@ref-lim-limits).],
+    [Entries in a directory], [1024 at the block size of 4096 (@ref-lim-limits).],
+    [Bytes for each request], [4096 (the 4K path). Writing sends a piece of
+      248 bytes inline if the common storage has no free buffer.],
   )
 ]

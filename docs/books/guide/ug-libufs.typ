@@ -16,10 +16,12 @@ does not touch a disk. It sends each request to the started task UFSD, as
 described in @ug-intro-how, and UFSD does the work.
 
 The programs in this chapter are real. They were built on a host with CC/370
-(cc370), LIBC/370 (libc370) 2.25.1 and MBT (mbt) 3, and they ran as batch
-jobs against UFSD 1.5.0 on TK5 in a test system. The output shown is what
-they printed. Nothing else was tried: where the text says that something was
-not run, it was not run.
+(cc370), LIBC/370 (libc370) 2.25.1 and MBT (mbt) 3, with the library of the
+release 1.5.0, and they ran as batch jobs on TK5 in a test system. The server
+there was the one of the TK5 image, whose banner is #cmd("UFSD001I UFSD 1.4.0
+READY"). So the book covers the functions that were measured, not the release
+1.5.0 of the server. The output shown is what the programs printed. Nothing else
+was tried: where the text says that something was not run, it was not run.
 
 == What You Need <ug-libufs-need>
 
@@ -84,8 +86,9 @@ include path and give the linkage editor the archive. Only the MBT route was
 run for this book.
 
 Take the library of the same release as the UFSD that runs. The request
-format between #cmd("libufs") and UFSD is not a documented interface, and a
-library of one release against a server of another was not tried.
+format between #cmd("libufs") and UFSD is not a documented interface. The
+programs of this chapter ran with the library of the release 1.5.0 against a
+server of the release 1.4.0; no other combination was tried.
 
 == A First Program <ug-libufs-first>
 
@@ -110,8 +113,8 @@ mbt deploy --target env --reallocate
 
 #screen(raw(read("../ex/ug-libufs/deploy.txt")))
 
-The project file also lists the two assembler modules of @ug-libufs-asm,
-which is why the deploy sends three modules; the build output above shows the
+The project file also lists the three assembler modules of @ug-libufs-asm,
+which is why the deploy sends four modules; the build output above shows the
 first program only. #cmd("env") is the name of the target in the #cmd("targets.toml") of the build
 host; use your own. The library #cmd("UFSDEMO.DEV.LINKLIB") is a data set of
 the test system. #cmd("--reallocate") deleted it and allocated it again;
@@ -195,7 +198,7 @@ each in its own way:
     [#cmd("ufs_fread"), #cmd("ufs_fwrite"), #cmd("ufs_fputs"),
       #cmd("ufs_fgets")], [Fewer items than asked for, or NULL, or the end-of-file
       value. #cmd("ufs_ferror") on the handle gives the cause.],
-    [#cmd("ufs_diropen")], [NULL. Do not read #cmd("ufs_last_rc") (see below).],
+    [#cmd("ufs_diropen")], [NULL. Do not rely on #cmd("ufs_last_rc") (see below).],
     [#cmd("ufsnew")], [NULL, and no return code.],
   )
 ]
@@ -207,10 +210,15 @@ with the names, never with the numbers.
 
 #cmd("ufs_last_rc(ufs)") returns the code of the last call that sets it. The
 calls of the first two rows of the table above set it on success as well as on
-failure, and so does #cmd("ufs_stat") when the request was sent. The calls on
+failure, except #cmd("ufs_setuser") when it returns -1 and #cmd("ufs_stat")
+when the library refuses the call before it sends a request (a NULL argument,
+an empty path, a path of 256 characters or more). The calls on
 a file handle never set it; they use #cmd("ufs_ferror"), and a call that is
 refused before it is sent (for example a path that is too long for
-#cmd("ufs_fopen")) leaves it as it was. Read it right after the call. #cmd("ufs_diropen") does not set it. After a failed #cmd("ufs_diropen") of a
+#cmd("ufs_fopen")) leaves it as it was. Read it right after the call.
+#cmd("ufs_diropen") sets it in one case only: UFSD accepted the open, and then
+the memory for the entries or a read failed, which gives 52 (IO). If UFSD
+refuses the open, the value stays as it was. After a failed #cmd("ufs_diropen") of a
 directory that does not exist, #cmd("ufs_last_rc") still held 32 from an
 earlier #cmd("ufs_mkdir"), and a program that reports that code names the
 wrong error. To tell a missing directory from other failures, call
@@ -225,12 +233,14 @@ lines are explained in @ug-libufs-stdio.
 
 === When ufsnew Returns NULL <ug-libufs-newnull>
 
-#cmd("ufsnew") returns no return code. #cmd("errno") shows the two common causes:
+#cmd("ufsnew") returns no return code. #cmd("errno") shows the two common causes, if the program set
+#cmd("errno = 0") before the call (the programs of this chapter do). Without
+that, an old value of #cmd("errno") can stand there:
 
 #tab(caption: [The causes of a NULL from ufsnew])[
   #table(columns: (1.1in, 1fr),
     [errno], [Cause],
-    [1 (EPERM)], [The task is not authorised. The program did not call
+    [1], [The task is not authorised. The program did not call
       #cmd("clib_apf_setup"), or the call failed. The job ended with the
       condition code 12.],
     [0], [UFSD is not running (or is stopped), or all 64 sessions are in use.],
@@ -248,8 +258,8 @@ The second, with the authority set and UFSD stopped with #cmd("P UFSD"):
 
 The two cases look different only through #cmd("errno"), and #cmd("errno") of 0
 does not tell a stopped UFSD from a full session table. Look at the console
-(@ug-ops-stats) to decide. The EPERM from an unauthorised caller is what
-LIBC/370 2.23.0 and later do; earlier releases ended the step with a system
+(@ug-ops-stats) to decide. The #cmd("errno") of 1 for an unauthorised caller is what
+LIBC/370 2.23.0 and later give; earlier releases ended the step with a system
 abend S047 instead. The build in this chapter used 2.25.1.
 
 == Authority and Permissions <ug-libufs-auth>
@@ -291,7 +301,11 @@ refused.
 *Who UFSD thinks the program is.* A new session has no user ID. Contrary to
 what one might expect, it does not take the user ID of the job. The program
 names one with #cmd("ufs_setuser(ufs, \"HERC01\", NULL)"), and from then on the
-write check compares that name with the #cmd("OWNER") of the mount. The third
+write check compares that name with the #cmd("OWNER") of the mount. The
+comparison is case sensitive: #cmd("\"mike\"") against #cmd("OWNER(MIKE)") gets
+72 (EACCES). UFSD makes the check at every #cmd("ufs_fwrite") and not only when
+the file is opened, so a file that is open for writing fails with 72 after
+#cmd("ufs_setuser") has named another user. The third
 and fourth line of the output above show the effect: after the call the same
 #cmd("ufs_mkdir") returns 0.
 
@@ -303,7 +317,10 @@ not name that user out, and it does not keep out a program that does. This is
 a protection against mistakes, not against an attacker, and UFSD's other
 checks do not make up for it (@ug-intro-limits).
 
-Files and directories in #cmd("/tmp") are created with an empty owner.
+#cmd("ufs_setuser") also decides who owns what the session creates later: the
+user ID and the group that it names become the owner and the group of new files
+and directories. A session that never called it creates them with an empty
+owner, as the first program does in #cmd("/tmp").
 Created objects get fixed permission bits (#cmd("rw-r--r--") for a file,
 #cmd("rwxr-xr-x") for a directory). #cmd("ufs_set_create_perm") changes a value
 in the handle that is never sent to UFSD.
@@ -329,7 +346,12 @@ ones that were measured in the output of @ug-libufs-errors (the program
       file again, or keep your own copy.],
     [Wrong direction], [#cmd("ufs_fwrite") on a read handle and
       #cmd("ufs_fread") on a write handle return 0, and #cmd("ufs_ferror")
-      gives 20 (INVALID).],
+      gives 20 (INVALID). The error flag of the handle stays set, and every
+      later read and write fails, until the program calls
+      #cmd("ufs_clearerr").],
+    [Incomplete item], [#cmd("ufs_fread") takes an incomplete last item from
+      the file and does not count it: of 10 bytes, with a size of 4, it returns
+      2 items and the last 2 bytes are gone.],
     [#cmd("ufs_fseek")], [Always returns -1 and does nothing. There is no
       #cmd("ftell"). A file is read from the beginning to the end. To read it
       again, close it and open it again.],
@@ -349,24 +371,35 @@ ones that were measured in the output of @ug-libufs-errors (the program
       first. "AAA" by #cmd("ufs_fputs"), "BBB" by #cmd("ufs_fwrite") and "CCC"
       by #cmd("ufs_fputs") gave a file with "BBBAAACCC". Do not mix the two on
       one handle.],
-    [Errors at close], [#cmd("ufs_fclose") ignores a failure of the last send.
-      Call #cmd("ufs_fsync") and look at #cmd("ufs_ferror") before it, as the
-      first program does.],
+    [Errors at close], [#cmd("ufs_fclose") ignores a failure of the last send,
+      and a NULL pointer or a handle that is not a file handle without a
+      message. Call #cmd("ufs_fsync") and look at #cmd("ufs_ferror") before it, as
+      the first program does.],
+    [Partial writes], [If UFSD takes only a part of the text that
+      #cmd("ufs_fputs") or #cmd("ufs_fputc") has collected, for example because
+      the disk is full, the rest of the text is lost, and the call
+      still returns the length or the byte as for success. Look at
+      #cmd("ufs_ferror") after #cmd("ufs_fsync").],
     [#cmd("ufs_sync")], [Does nothing.],
     [#cmd("ufs_diropen")], [The pattern (the third argument) is ignored. A
       directory with three #cmd(".txt") files and one #cmd(".dat") file listed
       six entries for the pattern #cmd("*.txt"). The entries #cmd(".") and
       #cmd("..") are always listed. The list is read when the directory is
       opened, sorted by name (in the EBCDIC order, small letters before
-      capitals before digits) and a later change is not seen.],
+      capitals before digits) and a later change is not seen. The handle
+      counts as an open file of the session until #cmd("ufs_dirclose"), and
+      while the list grows the program needs up to one and a half times the
+      memory of the table.],
     [Relative paths], [Work. After #cmd("ufs_chgdir") a path without a leading
       slash starts in that directory. #cmd("ufs_get_cwd") returns the text
       that you gave to #cmd("ufs_chgdir"), as you gave it, and not a clean
       path.],
-    [Long paths], [A path longer than 255 characters is cut by
-      #cmd("ufs_mkdir"), #cmd("ufs_rmdir"), #cmd("ufs_remove") and
-      #cmd("ufs_chgdir") without a message. #cmd("ufs_fopen") takes 251, and
-      #cmd("ufs_stat") and #cmd("ufs_diropen") refuse a path of 256 or more.],
+    [Long paths], [Keep a path to 255 characters, to 251 for
+      #cmd("ufs_fopen"). #cmd("ufs_fopen") returns NULL for a longer path,
+      #cmd("ufs_stat") returns 20 (INVALID) and #cmd("ufs_diropen") returns NULL
+      for 256 or more, and none of them sets #cmd("ufs_last_rc"). What
+      #cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir") and
+      #cmd("ufs_remove") do with a longer path is not guaranteed.],
   )
 ]
 
@@ -385,7 +418,13 @@ ones a program meets, with what was measured on the test system:
       when it should create the file.],
     [Sessions: 64], [The 65th #cmd("ufsnew") returns NULL.],
     [Open files in a session: 64], [The 65th #cmd("ufs_fopen") returns NULL with
-      the code 4 (NOREQ).],
+      the code 4 (NOREQ). Directories that #cmd("ufs_diropen") has open count
+      as files. The 256 files that all sessions together may have open give
+      the same code.],
+    [Entries in a directory: 1024], [At the block size of 4096, the entries
+      #cmd(".") and #cmd("..") included. The next #cmd("ufs_fopen") that
+      creates a file or #cmd("ufs_mkdir") gets 44 (NOSPACE), also when the disk
+      is empty (the chapter "Limits and Disk Format" of the _UFSD Reference_).],
     [Memory of the program], [A handle of an open file takes about 8 KB of the
       heap of the program: the buffers for reading and for writing. In a batch
       step with the default region of the test system only 37 files could be
@@ -417,8 +456,8 @@ back.]
 #idx("libufs", "assembler")
 #idx("assembler", "calling libufs")
 libufs is a C library, and the functions follow the linkage of CC/370. An
-assembler program calls them in one of two ways. Both were built and run as
-batch jobs, and a third way is shown because it fails.
+assembler program calls them in one of three ways. All three were built and run
+as batch jobs, and a fourth way is shown because it fails.
 
 The names to call are the external names of the library, not the C names. A
 function that the header declares with #cmd("asm(\"...\")") has exactly that
@@ -472,7 +511,13 @@ The program calls the stub with #cmd("L 15,=V(CMKDIR)") and #cmd("BALR 14,15"),
 with register 1 pointing to a list of words, one for each parameter. A word
 holds the #emph[value] of the parameter (a pointer, for a string or a handle),
 not the address of the value, as in the program below, and the last word has
-its high bit set. The functions of the C runtime that the program
+its high bit set. The stub takes at most 16 words, keeps only the 24 low bits
+of each and takes the first word with the high bit as the end of the list. This
+is right for pointers. A number does not arrive as it is if it needs more than
+24 bits, or if it is negative. A function without a parameter needs register 1
+set to 0 (#cmd("SR 1,1")) before the call, because the stub takes a register 1 of
+another value for a list. Without it, the call of #cmd("CUFSNEW") ended in a
+user abend in the test (U3104). The functions of the C runtime that the program
 needs, such as #cmd("clib_apf_setup") (#cmd("@@APFSET")) and #cmd("puts"), are
 called the same way. The return value comes back in register 15.
 
@@ -484,7 +529,13 @@ file:
 sources = ["asm/ufsasmb.asm"]
 startup = false
 entry = "UFSASMB"
+rent = false
+reus = false
 ```)
+
+MBT 3 needs the two attributes declared and aborts the build without them. The
+program keeps its save area and its data in the module, in static areas, and
+is therefore not reentrant.
 
 The program asks for authority, opens a session, creates a directory and a
 file, writes a line, reads it back, prints it with #cmd("puts"), removes the
@@ -503,6 +554,41 @@ the file cannot be opened with 8, in both cases after a message. Otherwise it
 ends with 0. It does not check the return value of #cmd("ufs_mkdir"); a
 program of your own should.
 
+*Do not leave out #cmd("CCTERM").* It writes what the C runtime has buffered and
+closes the files that are still open. A program that ends without it loses
+both, and nothing says so. With the call taken out, the program above ended with
+the condition code 0 and the line it should have printed did not appear.
+
+=== An Assembler Main Program Under the C Startup <ug-libufs-asmd>
+
+The third way needs neither stubs nor #cmd("CCTERM"). The C startup (the
+module #cmd("@@CRT0"), which MBT links by itself) builds the C environment and
+then calls an entry point named #cmd("MAIN") as it calls the #cmd("main") of
+a C program: register 1 points to the list of the two parameters #cmd("argc")
+and #cmd("argv"), and the return code is expected in register 15. The main
+program may be assembler. It follows the C linkage, as the routine of
+@ug-libufs-asma does: it takes its frame from the C stack, and it calls the
+functions of libufs and of the C runtime directly, with the lists of values
+described above. When #cmd("MAIN") returns, the startup ends the environment.
+The module needs no #cmd("startup") and no #cmd("entry") in the project file:
+
+#screen(```
+[module.UFSASMD]
+sources = ["asm/ufsasmd.asm"]
+rent = false
+reus = false
+```)
+
+The program does the same work as the one of the previous section, and it
+passes the code 0, 8 or 12 back in register 15:
+
+#code(read("../ex/ug-libufs/ufsasmd.asm"), size: 7.5pt)
+
+#v(0.8em)
+It ended with the condition code 0 and printed:
+
+#screen(raw(read("../ex/ug-libufs/asmd.txt")))
+
 === What Does Not Work <ug-libufs-asmno>
 
 Calling a libufs function from OS linkage without the stub does not work.
@@ -516,12 +602,13 @@ The linkage editor resolved the name, and the step ended with a system abend:
 
 #screen(raw(read("../ex/ug-libufs/asmc.txt")))
 
-The functions need the C stack and the C heap: #cmd("ufsnew"), #cmd("ufs_fopen")
-and #cmd("ufs_diropen") allocate memory. A routine that does not set the
-environment up or pass the calls through #cmd("CCALL") has none. These
-other ways were not built, and the book makes no claim about them: an
-assembler #cmd("main") entered by the C startup, a program in another language,
-and a program in an environment other than a batch job.
+The functions need the C environment: a C stack with its frames, and the C
+heap, because #cmd("ufsnew"), #cmd("ufs_fopen") and #cmd("ufs_diropen")
+allocate memory. A routine that does not set the environment up or pass the
+calls through #cmd("CCALL") has neither, and such a call typically ends in a
+program check. These other ways were not built, and the book makes no claim
+about them: a program in another language, and a program in an environment
+other than a batch job.
 
 This book does not describe C linkage or the C environment in general; see
 the documentation of CC/370 (cc370) and LIBC/370 (libc370).
@@ -556,7 +643,12 @@ the documentation of CC/370 (cc370) and LIBC/370 (libc370).
     [A file holds only the last write, or text in the wrong order], [The mode
       #cmd("\"a\"") empties the file, and the text of #cmd("ufs_fputs") is sent
       after #cmd("ufs_fwrite") (@ug-libufs-stdio).],
-    [S0C1 or S0C4 in an assembler program], [A libufs function was called
+    [A program check (S0C1 in the test) in an assembler program], [A libufs function was called
       without #cmd("CCALL") and the C environment (@ug-libufs-asmno).],
+    [Abend U3104 in an assembler program], [A function without parameters was
+      called through a #cmd("CCALL") stub with a register 1 that is not 0
+      (@ug-libufs-asmb).],
+    [An assembler program ends with 0 and prints nothing], [The program did not
+      call #cmd("CCTERM") (@ug-libufs-asmb).],
   )
 ]

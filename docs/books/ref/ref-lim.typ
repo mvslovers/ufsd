@@ -20,8 +20,10 @@ that UFSD gives to its clients. Where a limit is checked, the message is named.
       #cmd("UFSD101W") and is skipped.],
     [Sessions], [64], [One session for each client program.],
     [Open files in a session], [64], [The count is shown as #cmd("FDS=n/64") by
-      #cmd("SESSIONS").],
-    [Open files in all sessions], [256], [The table of open files.],
+      #cmd("SESSIONS"). Open directories (#cmd("ufs_diropen")) count as files.],
+    [Open files in all sessions], [256], [The table of open files. Open
+      directories count, too. #cmd("ufs_fopen") gets #cmd("UFSD_RC_NOREQ") and
+      #cmd("ufs_diropen") returns NULL when it is full.],
     [Request blocks], [32], [In the common storage. #cmd("STATS") shows how many
       are free.],
     [Buffers of 4096 bytes], [16], [In the common storage. They carry the data of
