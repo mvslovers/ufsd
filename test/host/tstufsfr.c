@@ -207,12 +207,14 @@ do_read(unsigned count, RESULT *r)
     if (r->rc == UFSD_RC_OK && r->len == 4U && count > UFSREQ_MAX_INLINE - 4U) {
         memcpy(&n, r->resp, 4);
         memcpy(&stg, r->resp + 4, sizeof stg);
-        r->handed_off = (stg != NULL);
-        for (i = 0; i < g_nlive; i++)
-            if (stg != NULL && g_live[i] == (void *)stg) r->stg_was_live = 1;
-        if (r->stg_was_live) {
-            memcpy(r->stg_data, stg, n < FILESIZE ? n : FILESIZE);
-            t_free(stg);
+        if (stg != NULL) {
+            r->handed_off = 1;
+            for (i = 0; i < g_nlive; i++)
+                if (g_live[i] == (void *)stg) r->stg_was_live = 1;
+            if (r->stg_was_live) {
+                memcpy(r->stg_data, stg, n < FILESIZE ? n : FILESIZE);
+                t_free(stg);
+            }
         }
     }
 }
