@@ -1306,6 +1306,92 @@ test_path_limit(void)
     close_session(&ufs);
 }
 
+/* ============================================================
+** Path length for ufs_stat, ufs_diropen and ufs_fopen: the
+** boundary is 255 (251 for fopen); a longer path is refused
+** before any request is built and leaves last_rc as it was
+** ============================================================ */
+
+static void
+make_path(char *path, unsigned len)
+{
+    memset(path, 'c', len);
+    path[0] = '/';
+    path[len] = '\0';
+}
+
+static void
+test_path_limit_others(void)
+{
+    UFS       *ufs;
+    UFSDLIST   ent;
+    char       path[UFSREQ_MAX_INLINE + 8];
+    unsigned   n;
+
+    printf("\n--- path length limit (stat, diropen, fopen) ---\n");
+
+    ufs = new_session();
+    if (!ufs) return;
+
+    /* stat: 255 is sent whole, 256 and more is INVALID, nothing sent */
+    make_path(path, 255U);
+    begin();
+    s_rc(UFSD_RC_NOFILE);
+    CHECK_EQ(ufs_stat(ufs, path, &ent), UFSD_RC_NOFILE, "stat 255: sent");
+    CHECK_EQ(g_ncall, 1, "stat 255: one request");
+    CHECK_EQ(g_seen[0].func, UFSREQ_STAT, "stat 255: function");
+    CHECK_EQ(g_seen[0].data_len, 256U, "stat 255: data_len counts the NUL");
+    CHECK_EQ(g_seen[0].data[255], '\0', "stat 255: last byte is NUL");
+    for (n = 256U; n <= 262U; n += 6U) {
+        make_path(path, n);
+        begin();
+        ufs->last_rc = UFSD_RC_EXIST;
+        CHECK_EQ(ufs_stat(ufs, path, &ent), UFSD_RC_INVALID, "stat long: INVALID");
+        CHECK_EQ(g_ncall, 0, "stat long: no request");
+        CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_EXIST, "stat long: last_rc unchanged");
+    }
+
+    /* diropen: 255 is sent, 256 and more is NULL, nothing sent */
+    make_path(path, 255U);
+    begin();
+    ufs->last_rc = UFSD_RC_EXIST;
+    s_rc(UFSD_RC_NOFILE);
+    CHECK(ufs_diropen(ufs, path, "*") == NULL, "diropen 255: refused by UFSD");
+    CHECK_EQ(g_ncall, 1, "diropen 255: one request");
+    CHECK_EQ(g_seen[0].func, UFSREQ_DIROPEN, "diropen 255: function");
+    CHECK_EQ(g_seen[0].data_len, 256U, "diropen 255: data_len counts the NUL");
+    CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_EXIST, "diropen 255: last_rc unchanged");
+    for (n = 256U; n <= 262U; n += 6U) {
+        make_path(path, n);
+        begin();
+        ufs->last_rc = UFSD_RC_EXIST;
+        CHECK(ufs_diropen(ufs, path, "*") == NULL, "diropen long: NULL");
+        CHECK_EQ(g_ncall, 0, "diropen long: no request");
+        CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_EXIST, "diropen long: last_rc unchanged");
+    }
+
+    /* fopen: 251 is sent (4 + 251 + NUL = 256), 252 and more is NULL */
+    make_path(path, 251U);
+    begin();
+    s_rc(UFSD_RC_NOFILE);
+    CHECK(ufs_fopen(ufs, path, "r") == NULL, "fopen 251: refused by UFSD");
+    CHECK_EQ(g_ncall, 1, "fopen 251: one request");
+    CHECK_EQ(g_seen[0].func, UFSREQ_FOPEN, "fopen 251: function");
+    CHECK_EQ(g_seen[0].data_len, 256U, "fopen 251: data_len is 4 + path + NUL");
+    CHECK_EQ(g_seen[0].data[255], '\0', "fopen 251: last byte is NUL");
+    CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_NOFILE, "fopen 251: UFSD's code stored");
+    for (n = 252U; n <= 262U; n += 5U) {
+        make_path(path, n);
+        begin();
+        ufs->last_rc = UFSD_RC_EXIST;
+        CHECK(ufs_fopen(ufs, path, "r") == NULL, "fopen long: NULL");
+        CHECK_EQ(g_ncall, 0, "fopen long: no request");
+        CHECK_EQ(ufs_last_rc(ufs), UFSD_RC_EXIST, "fopen long: last_rc unchanged");
+    }
+
+    close_session(&ufs);
+}
+
 int
 main(void)
 {
@@ -1321,6 +1407,7 @@ main(void)
     test_error_propagation();
     test_write_pool_empty();
     test_path_limit();
+    test_path_limit_others();
 
     CHECK_EQ(g_badssob, 0, "every SSOB/SSIB/UFSSSOB libufs built was well formed");
 
