@@ -36,7 +36,12 @@ t_malloc(size_t n)
     g_nmalloc++;
     if (g_failmalloc != 0U && g_nmalloc == g_failmalloc) return NULL;
     p = malloc(n);
-    if (p != NULL && g_nlive < MAXLIVE) g_live[g_nlive++] = p;
+    if (p == NULL) return NULL;
+    if (g_nlive >= MAXLIVE) {           /* untracked blocks would hide leaks */
+        free(p);
+        return NULL;
+    }
+    g_live[g_nlive++] = p;
     return p;
 }
 
@@ -172,13 +177,22 @@ typedef struct result {
     int      rc;
     unsigned len;                       /* resp_data_len                    */
     char     resp[UFSREQ_MAX_INLINE + 16];
+    unsigned live_at_return;            /* blocks live when dispatch returned */
+    int      handed_off;                /* a staging pointer came back      */
+    int      stg_was_live;              /* ... and it was a live block      */
+    char     stg_data[FILESIZE];        /* copy of the staging buffer       */
 } RESULT;
 
+/* Issues the read and then plays ufsd_dispatch: a staging pointer that comes
+** back with rc OK is copied and freed here, on every path, so a test never
+** leaves a block behind.  What the call itself left live is in the result. */
 static void
 do_read(unsigned count, RESULT *r)
 {
     UFSREQ req;
     int    fd = 0;
+    char  *stg;
+    unsigned n, i;
 
     memset(&req, 0, sizeof req);
     memset(r, 0, sizeof *r);
@@ -188,6 +202,19 @@ do_read(unsigned count, RESULT *r)
     memcpy(req.data + 4, &count, 4);
 
     r->rc = ufsd_fil_dispatch(&g_anchor, &g_sess, &req, r->resp, &r->len);
+    r->live_at_return = g_nlive;
+
+    if (r->rc == UFSD_RC_OK && r->len == 4U && count > UFSREQ_MAX_INLINE - 4U) {
+        memcpy(&n, r->resp, 4);
+        memcpy(&stg, r->resp + 4, sizeof stg);
+        r->handed_off = (stg != NULL);
+        for (i = 0; i < g_nlive; i++)
+            if (stg != NULL && g_live[i] == (void *)stg) r->stg_was_live = 1;
+        if (r->stg_was_live) {
+            memcpy(r->stg_data, stg, n < FILESIZE ? n : FILESIZE);
+            t_free(stg);
+        }
+    }
 }
 
 /* ============================================================
@@ -206,7 +233,7 @@ check_inode_read_fails(void)
 
     CHECK_EQ(r.rc, UFSD_RC_IO, "the inode error is the answer");
     CHECK_EQ(g_nmalloc, 1U, "only the staging buffer was allocated");
-    CHECK_EQ(g_nlive, 0U, "the staging buffer is freed");
+    CHECK_EQ(r.live_at_return, 0U, "the staging buffer is freed");
     CHECK_EQ(g_badfree, 0U, "nothing is freed twice");
 }
 
@@ -222,7 +249,7 @@ check_block_malloc_fails(void)
 
     CHECK_EQ(r.rc, UFSD_RC_IO, "a failed block buffer is an I/O error");
     CHECK_EQ(g_nmalloc, 2U, "staging and block buffer were attempted");
-    CHECK_EQ(g_nlive, 0U, "the staging buffer is freed");
+    CHECK_EQ(r.live_at_return, 0U, "the staging buffer is freed");
     CHECK_EQ(g_badfree, 0U, "nothing is freed twice");
 }
 
@@ -237,7 +264,7 @@ check_block_read_fails(void)
     do_read(4096U, &r);
 
     CHECK_EQ(r.rc, UFSD_RC_IO, "the read error is the answer");
-    CHECK_EQ(g_nlive, 0U, "staging and block buffer are both freed");
+    CHECK_EQ(r.live_at_return, 0U, "staging and block buffer are both freed");
     CHECK_EQ(g_badfree, 0U, "nothing is freed twice");
 }
 
@@ -245,7 +272,6 @@ static void
 check_success_hands_off(void)
 {
     RESULT r;
-    char  *stg;
     unsigned n;
 
     printf("-- 4K read, success\n");
@@ -253,21 +279,19 @@ check_success_hands_off(void)
     do_read(4096U, &r);
 
     memcpy(&n, r.resp, 4);
-    memcpy(&stg, r.resp + 4, sizeof stg);
 
     CHECK_EQ(r.rc, UFSD_RC_OK, "rc OK");
     CHECK_EQ(n, FILESIZE, "the whole file is read");
     CHECK_EQ(r.len, 4U, "only the count travels in resp_data");
-    CHECK_EQ(g_nlive, 1U, "exactly one block is live: the staging buffer");
-    CHECK(stg != NULL && g_nlive == 1U && g_live[0] == (void *)stg,
+    CHECK_EQ(r.live_at_return, 1U, "exactly one block is live: the staging buffer");
+    CHECK(r.handed_off && r.stg_was_live,
           "resp_data[4..7] names the live staging buffer");
-    CHECK(stg != NULL && stg[0] == 'a' && stg[BLKSIZE - 1U] == 'a'
-          && stg[BLKSIZE] == 'b' && stg[FILESIZE - 1U] == 'b',
+    CHECK(r.stg_data[0] == 'a' && r.stg_data[BLKSIZE - 1U] == 'a'
+          && r.stg_data[BLKSIZE] == 'b' && r.stg_data[FILESIZE - 1U] == 'b',
           "the staging buffer holds the file data");
     CHECK_EQ(g_gfile.position, FILESIZE, "the file position advanced");
-
-    t_free(stg);                        /* what ufsd_dispatch does */
     CHECK_EQ(g_nlive, 0U, "after the dispatcher frees it nothing is live");
+    CHECK_EQ(g_badfree, 0U, "nothing is freed twice");
 }
 
 static void
@@ -286,14 +310,14 @@ check_inline_read(void)
     CHECK_EQ(r.len, 104U, "count and data travel in resp_data");
     CHECK(r.resp[4] == 'a' && r.resp[103] == 'a', "the data is inline");
     CHECK_EQ(g_nmalloc, 1U, "only the block buffer was allocated");
-    CHECK_EQ(g_nlive, 0U, "the block buffer is freed");
+    CHECK_EQ(r.live_at_return, 0U, "the block buffer is freed");
 
     printf("-- inline read, inode read fails\n");
     setup();
     g_ino_rc = UFSD_RC_IO;
     do_read(100U, &r);
     CHECK_EQ(r.rc, UFSD_RC_IO, "the inode error is the answer");
-    CHECK_EQ(g_nlive, 0U, "nothing is live");
+    CHECK_EQ(r.live_at_return, 0U, "nothing is live");
 }
 
 static void
@@ -311,7 +335,7 @@ check_staging_malloc_fails(void)
     CHECK_EQ(r.rc, UFSD_RC_OK, "rc OK");
     CHECK_EQ(n, UFSREQ_MAX_INLINE - 4U, "clamped to the inline maximum");
     CHECK_EQ(r.len, 4U + n, "the data travels inline");
-    CHECK_EQ(g_nlive, 0U, "the block buffer is freed");
+    CHECK_EQ(r.live_at_return, 0U, "the block buffer is freed");
 }
 
 int
