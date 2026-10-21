@@ -83,9 +83,12 @@ Two things in the job matter:
 - The `APPLY` and the `ACCEPT` step each carry a `HMASMP.LINKLIB` and a
   `HMASMP.AUFSDLOD` statement. SMP deletes the modules from the libraries that
   these DD names point to. Without `HMASMP.AUFSDLOD`, the `ACCEPT` ends with
-  return code 12 and the message `HMA2833 ** AUFSDLOD DDCARD MISSING`. The
-  statements come after the `EXEC` statement and before `SMPCNTL`, as in the
-  install job.
+  return code 12 and the message `HMA2833 ** AUFSDLOD DDCARD MISSING`. Without
+  `HMASMP.LINKLIB`, the `APPLY` still ends with return code 04 and prints the
+  same `HMA2240` lines, but it deletes from the library that the procedure names
+  itself (`SYS1.LINKLIB` on the systems measured), and `UFSD.LINKLIB` keeps its
+  members. The member list of the last step is the only proof. The statements
+  come after the `EXEC` statement and before `SMPCNTL`, as in the install job.
 - The later steps run only on `COND=(4,LT,...)`. The `RECEIVE` ends with return
   code 04, because a function without elements raises `HMA3971`. With the usual
   `COND=(0,NE,...)` the job would stop right after the receive.
