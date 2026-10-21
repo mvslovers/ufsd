@@ -1,0 +1,6 @@
+mkdir /newdir            rc=68
+mkdir /u/herc01/ufsperm  rc=72
+setuser HERC01 rc=0
+mkdir /u/herc01/ufsperm  rc=0
+setuser MALORY rc=0
+mkdir /u/herc01/ufsperm2 rc=72

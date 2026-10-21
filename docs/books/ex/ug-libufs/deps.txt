@@ -1,0 +1,3 @@
+[mbt] mvslovers/ufsd ^1.5 -> 1.5.0
+[mbt]   staged -> .mbt/deps/ufsd (sha 7cd78cc51d90)
+[mbt] Locked 1 dependency(ies) -> mbt.lock

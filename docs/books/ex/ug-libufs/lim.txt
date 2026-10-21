@@ -1,0 +1,3 @@
+files created in one directory: 125, then rc=48
+files open at once in one session: 64, then rc=4
+cleanup rmdir rc=0

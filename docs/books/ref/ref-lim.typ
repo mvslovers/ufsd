@@ -116,6 +116,15 @@ inode numbers. The two numbers after #cmd("FREEBLK=") in #cmd("UFSD018I") are
 the number of entries in the cache and the total number of free blocks. Read
 the free space from the second number.
 
+#note[*A defect* (ufsd\#130): inodes of removed files and directories can be
+lost for good. A removed inode is not cleared on the disk, and once more than
+64 inodes have been freed since the start, the cache cannot hold the others.
+#cmd("F UFSD,REBUILD") looks for inodes whose mode is 0, so it does not find
+them, and #cmd("STATS") still shows the old count of free inodes. On a file
+system with 126 free inodes, creating 125 files in one directory and removing
+them again left no free inode: every later create got the return code 48. Only
+a new format with #cmd("FORCE") (UFSD stopped) gave the inodes back.]
+
 == The Layout of a Disk <ref-lim-format>
 
 #idx("disk format")

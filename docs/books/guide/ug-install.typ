@@ -57,7 +57,7 @@ The load modules are #cmd("UFSD"), #cmd("UFSDSSIR"), #cmd("UFSDCLNP") and
 
 The fourth file of the release, #cmd("ufsd-1.5.0-lib.tar.gz"), is not part of
 the package and is not needed to install UFSD. It holds #cmd("libufs") and
-its headers for programs that want to use UFSD.
+its headers for programs that want to use UFSD (@ug-libufs-get).
 
 == What You Need <ug-install-prereq>
 
