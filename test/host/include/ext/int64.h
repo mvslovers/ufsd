@@ -8,4 +8,8 @@ typedef union {
     uint64_t u64;
     uint32_t u32[2];
 } __64;
+/* Called by src/ufsd#fil.c; the test that builds it supplies them. */
+extern void __64_from_u32(__64 *r, unsigned v);
+extern void __64_mul_u32(__64 *a, unsigned v, __64 *r);
+extern void __64_add_u32(__64 *a, unsigned v, __64 *r);
 #endif

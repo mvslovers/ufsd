@@ -908,10 +908,16 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     }
 
     rc = ufsd_ino_read(disk, gfile->ino, &dino);
-    if (rc != UFSD_RC_OK) return rc;
+    if (rc != UFSD_RC_OK) {
+        if (staging) free(staging);
+        return rc;
+    }
 
     blk = (char *)malloc(disk->blksize);
-    if (!blk) return UFSD_RC_IO;
+    if (!blk) {
+        if (staging) free(staging);
+        return UFSD_RC_IO;
+    }
 
     bytes_read = 0;
     rc         = UFSD_RC_OK;
@@ -944,7 +950,12 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     free(blk);
 
     *(unsigned *)resp_data = bytes_read;
-    if (staging != NULL) {
+    if (staging != NULL && rc != UFSD_RC_OK) {
+        /* ufsd_dispatch only takes the staging pointer on success, so
+        ** nobody else would free it. */
+        free(staging);
+        *resp_data_len = 4U;
+    } else if (staging != NULL) {
         /* 4K path: pass staging pointer in resp_data[4..7].
         ** ufsd_dispatch copies to CSA buffer in key-0 and frees staging. */
         *(char **)(resp_data + 4) = staging;
