@@ -450,16 +450,19 @@ ones a program meets, with what was measured on the test system:
   )
 ]
 
-#note[*A defect* (ufsd\#130): inodes of removed files and directories are not
-all returned to the file system. The superblock caches 64 free inodes. Once
-more than 64 have been removed since the start, the others are lost for good,
-and neither #cmd("F UFSD,REBUILD") nor a restart of UFSD gives them back. On the
-test system, after a program had created 125 files in an empty directory and
-removed all of them, #cmd("STATS") showed 64 of 126 inodes free, and the next
-run of the program created only 63 files. After #cmd("F UFSD,REBUILD") the
-count was 0 of 126, and every later create failed with 48. A program that creates and removes
-many objects in one file system should not rely on the free space coming
-back.]
+#note[*Removed inodes* (ufsd\#130): UFSD 1.6.0 clears the inode of a removed
+file or directory on the disk, so the cache refill and #cmd("F UFSD,REBUILD")
+find it again, and a program can create and remove objects in one file system
+without using it up. UFSD 1.5.0 and earlier did not clear the inode. The
+superblock caches 64 free inodes, and every removed inode beyond the 64 was
+lost for good. On the test system, which ran UFSD 1.4.0, after a program had
+created 125 files in an empty directory and removed all of them, #cmd("STATS")
+showed 64 of 126 inodes free, and the next run of the program created only 63
+files. After #cmd("F UFSD,REBUILD") the count was 0 of 126, and every later
+create failed with 48. UFSD 1.6.0 does not repair a disk that has lost inodes
+under an earlier release: such an inode still has its mode on the disk and has
+no directory entry, so #cmd("F UFSD,REBUILD") does not find it. Only a new
+format with #cmd("FORCE") gives these inodes back.]
 
 == Using libufs from Assembler <ug-libufs-asm>
 
