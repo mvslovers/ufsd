@@ -104,6 +104,9 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
     resp_data_len = 0;
     sess          = NULL;
     stg_free      = NULL;
+    /* An inline FREAD that hits EOF also answers with resp_data_len == 4 and
+    ** never writes resp_data[4..7]; zero means "no staging buffer" below. */
+    memset(resp_data, 0, sizeof resp_data);
 
     /* --- Eye-catcher check --- */
     if (memcmp(req->eye, "UFSREQ__", 8) != 0) {
@@ -226,8 +229,9 @@ ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)
                 req->buf = ufsd_buf_alloc(anchor);
                 if (req->buf)
                     memcpy(req->buf->data, stg, bread);
-                stg_free = stg;  /* defer free() until after __prob */
             }
+            /* do_fread hands the staging buffer over even for 0 bytes. */
+            stg_free = stg;  /* defer free() until after __prob */
         } else if (resp_data_len > 0) {
             /* AP-1e: copy file op response from STC stack to CSA block */
             req->data_len = resp_data_len;

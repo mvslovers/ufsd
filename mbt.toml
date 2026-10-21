@@ -157,6 +157,15 @@ rent = false          # mbtcheck.h keeps file-static counters
 host = false                                                          # MVS-only: needs a live ASVT
 sources = ["test/mvs/tstufsrc.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 
+# TSTUFSFQ — ufsd_dispatch's end of the FREAD staging-buffer hand-off (#137).
+# Includes src/ufsd#que.c whole and stubs the key-0 window, the CSA pool and
+# ufsd_fil_dispatch; counts malloc/free. Host-only (mvs = false): needs the
+# stand-in headers and its own stubs.
+[test.TSTUFSFQ]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs the stand-in headers and its own stubs
+sources = ["test/host/tstufsfq.c"]
+
 # TSTUFSIO — the ferror() guards behind UFSD106E and UFSFMT17E (#69): a read
 # error on DD:UFSDPRM / SYSIN must stop ufsd_cfg_read() and parse_sysin(), not
 # pass for end of file. Builds its own data sets (a wrong-length block) with
