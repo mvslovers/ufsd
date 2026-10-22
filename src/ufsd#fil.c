@@ -411,6 +411,19 @@ ufsd_check_write(UFSD_DISK *disk, UFSD_SESSION *sess)
     return UFSD_RC_OK;
 }
 
+/* ============================================================
+** req_string_ok
+**
+** A path in req->data[off..] is only usable if its NUL lies inside
+** the data_len bytes the request carries.
+** ============================================================ */
+static int
+req_string_ok(const UFSREQ *req, unsigned off)
+{
+    if (req->data_len <= off || req->data_len > UFSREQ_MAX_INLINE) return 0;
+    return memchr(req->data + off, '\0', req->data_len - off) != NULL;
+}
+
 static int
 do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
          UFSREQ *req, char *resp_data, unsigned *resp_data_len)
@@ -438,8 +451,9 @@ do_mkdir(UFSD_STC *stc, UFSD_SESSION *sess,
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
 
+    if (!req_string_ok(req, 0U)) return UFSD_RC_INVALID;
     path = req->data;
-    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+    if (path[0] == '\0') return UFSD_RC_INVALID;
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
@@ -551,8 +565,9 @@ do_rmdir(UFSD_STC *stc, UFSD_SESSION *sess,
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
 
+    if (!req_string_ok(req, 0U)) return UFSD_RC_INVALID;
     path = req->data;
-    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+    if (path[0] == '\0') return UFSD_RC_INVALID;
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
@@ -611,8 +626,9 @@ do_chgdir(UFSD_STC *stc, UFSD_SESSION *sess,
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
 
+    if (!req_string_ok(req, 0U)) return UFSD_RC_INVALID;
     path = req->data;
-    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+    if (path[0] == '\0') return UFSD_RC_INVALID;
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
@@ -663,8 +679,9 @@ do_remove(UFSD_STC *stc, UFSD_SESSION *sess,
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
 
+    if (!req_string_ok(req, 0U)) return UFSD_RC_INVALID;
     path = req->data;
-    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+    if (path[0] == '\0') return UFSD_RC_INVALID;
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
@@ -739,7 +756,7 @@ do_fopen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
 
-    if (req->data_len < 5U) return UFSD_RC_INVALID;
+    if (req->data_len < 5U || !req_string_ok(req, 4U)) return UFSD_RC_INVALID;
     mode = *(unsigned *)req->data;
     path = req->data + 4;
 
@@ -1057,7 +1074,15 @@ do_fwrite(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
         *resp_data_len         = 4U;
         return UFSD_RC_OK;
     }
-    if (req->buf == NULL && req->data_len < 8U + count) return UFSD_RC_INVALID;
+
+    /* count comes from the request: compare it with what the request
+    ** holds, and do not add to it before comparing. */
+    if (req->buf != NULL) {
+        if (count > (unsigned)sizeof req->buf->data) return UFSD_RC_INVALID;
+    } else {
+        if (req->data_len > UFSREQ_MAX_INLINE) return UFSD_RC_INVALID;
+        if (count > req->data_len - 8U) return UFSD_RC_INVALID;
+    }
 
     gidx  = sess->fd_table[fd].gfile_idx;
     gfile = &anchor->gfiles[gidx];
@@ -1186,8 +1211,9 @@ do_diropen(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
 
+    if (!req_string_ok(req, 0U)) return UFSD_RC_INVALID;
     path = req->data;
-    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+    if (path[0] == '\0') return UFSD_RC_INVALID;
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
@@ -1458,8 +1484,9 @@ do_stat(UFSD_STC *stc, UFSD_SESSION *sess,
     ufs = (UFSD_UFS *)sess->ufs;
     if (!ufs) return UFSD_RC_BADSESS;
 
+    if (!req_string_ok(req, 0U)) return UFSD_RC_INVALID;
     path = req->data;
-    if (!path || path[0] == '\0') return UFSD_RC_INVALID;
+    if (path[0] == '\0') return UFSD_RC_INVALID;
 
     disk = resolve_path_disk(stc, ufs, path, &didx, &start_ino, &mnt_path);
     if (!disk) return UFSD_RC_IO;
