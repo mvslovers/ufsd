@@ -1,0 +1,4 @@
+# Example files in the books are real output captured from MVS; the capture
+# path leaves CR LF line ends. Store them with LF only, so a reader who copies
+# a control-card example does not carry CRs to MVS.
+docs/books/ex/** text eol=lf
