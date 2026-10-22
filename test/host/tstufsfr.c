@@ -238,8 +238,8 @@ check_inode_read_fails(void)
     do_read(4096U, &r);
 
     CHECK_EQ(r.rc, UFSD_RC_IO, "the inode error is the answer");
-    CHECK_EQ(g_nmalloc, 1U, "only the staging buffer was allocated");
-    CHECK_EQ(r.live_at_return, 0U, "the staging buffer is freed");
+    CHECK_EQ(g_nmalloc, 0U, "nothing was allocated before the inode was read");
+    CHECK_EQ(r.live_at_return, 0U, "nothing is live");
     CHECK_EQ(g_badfree, 0U, "nothing is freed twice");
 }
 
@@ -250,12 +250,12 @@ check_block_malloc_fails(void)
 
     printf("-- 4K read, block buffer malloc fails\n");
     setup();
-    g_failmalloc = 2U;                  /* 1 = staging, 2 = block buffer   */
+    g_failmalloc = 1U;                  /* 1 = block buffer, 2 = staging   */
     do_read(4096U, &r);
 
     CHECK_EQ(r.rc, UFSD_RC_IO, "a failed block buffer is an I/O error");
-    CHECK_EQ(g_nmalloc, 2U, "staging and block buffer were attempted");
-    CHECK_EQ(r.live_at_return, 0U, "the staging buffer is freed");
+    CHECK_EQ(g_nmalloc, 1U, "only the block buffer was attempted");
+    CHECK_EQ(r.live_at_return, 0U, "nothing is live");
     CHECK_EQ(g_badfree, 0U, "nothing is freed twice");
 }
 
@@ -334,7 +334,7 @@ check_staging_malloc_fails(void)
 
     printf("-- 4K read, staging malloc fails: inline fallback\n");
     setup();
-    g_failmalloc = 1U;
+    g_failmalloc = 2U;                  /* 1 = block buffer, 2 = staging   */
     do_read(4096U, &r);
 
     memcpy(&n, r.resp, 4);
