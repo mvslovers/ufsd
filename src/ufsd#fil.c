@@ -935,6 +935,14 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
     disk = stc->disks[gfile->disk_idx];
     if (!disk) return UFSD_RC_IO;
 
+    /* Everything that can fail before the read comes first, so the staging
+    ** buffer below is allocated after the last early return. */
+    rc = ufsd_ino_read(disk, gfile->ino, &dino);
+    if (rc != UFSD_RC_OK) return rc;
+
+    blk = (char *)malloc(disk->blksize);
+    if (!blk) return UFSD_RC_IO;
+
     /*
     ** Buffer selection: when count > inline max, ufsd_dispatch has already
     ** reserved a CSA pool buffer (req->buf).  Read into a heap staging
@@ -952,27 +960,10 @@ do_fread(UFSD_STC *stc, UFSD_ANCHOR *anchor, UFSD_SESSION *sess,
         if (count > 4096U) count = 4096U;
         if (req->buf != NULL)
             staging = (char *)malloc(count);
-        if (staging) {
-            dst = staging;
-        } else {
+        if (staging == NULL)
             count = UFSREQ_MAX_INLINE - 4U;
-            dst = resp_data + 4;
-        }
-    } else {
-        dst = resp_data + 4;
     }
-
-    rc = ufsd_ino_read(disk, gfile->ino, &dino);
-    if (rc != UFSD_RC_OK) {
-        if (staging) free(staging);
-        return rc;
-    }
-
-    blk = (char *)malloc(disk->blksize);
-    if (!blk) {
-        if (staging) free(staging);
-        return UFSD_RC_IO;
-    }
+    dst = (staging != NULL) ? staging : resp_data + 4;
 
     bytes_read = 0;
     rc         = UFSD_RC_OK;
