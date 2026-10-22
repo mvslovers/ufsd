@@ -150,6 +150,16 @@ rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs the stand-in headers and its own stubs
 sources = ["test/host/tstufsfr.c"]
 
+# TSTUFSFW — request lengths are checked against what the request carries (#150):
+# the FWRITE count against the bytes the request carries, and the path of every
+# path function against a NUL inside the request. Includes src/ufsd#fil.c whole
+# to reach the static do_* functions. Host-only (mvs = false): needs the
+# stand-in headers and stubs for the layers below the file layer.
+[test.TSTUFSFW]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs the stand-in headers and its own stubs
+sources = ["test/host/tstufsfw.c"]
+
 # TSTUFSIN — a removed or rolled-back inode is cleared on disk and found again
 # by the cache refill and MODIFY REBUILD (#130). Includes src/ufsd#fil.c whole
 # to reach the static do_remove/do_rmdir/do_mkdir/do_fopen and links the real
