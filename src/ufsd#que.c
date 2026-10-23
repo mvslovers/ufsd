@@ -16,7 +16,7 @@
 ** corruption.
 **
 ** ufsd_server_ecb_reset  - zero server_ecb before WAIT
-** ufsd_dequeue           - pop one request from req_head
+** ufsd_dequeue           - take the oldest request (UFSD#RQ)
 ** ufsd_dispatch          - validate + dispatch + post client ECB
 */
 
@@ -51,8 +51,8 @@ ufsd_server_ecb_reset(UFSD_ANCHOR *anchor)
 ** Pop one UFSREQ from the head of the active request queue.
 ** Returns NULL if the queue is empty.
 **
-** The server is the sole consumer; no CS lock is needed here.
-** Writes to req_head/req_tail still require key 0 (CSA).
+** The server is the sole consumer (UFSD#RQ).  The queue words are in
+** CSA, so the pop runs in a key-0 window.
 ** ============================================================ */
 UFSREQ *
 ufsd_dequeue(UFSD_ANCHOR *anchor)
@@ -61,16 +61,12 @@ ufsd_dequeue(UFSD_ANCHOR *anchor)
     UFSREQ         *req;
 
     if (!anchor) return NULL;
-    if (!anchor->req_head) return NULL;  /* quick check, no key needed */
+    if (!anchor->req_ready && !anchor->req_head)
+        return NULL;                     /* quick check, no key needed */
 
     if (__super(PSWKEY0, &savekey)) return NULL;
 
-    req = anchor->req_head;
-    if (req) {
-        anchor->req_head = req->next;
-        if (!anchor->req_head) anchor->req_tail = NULL;
-        req->next = NULL;
-    }
+    req = ufsd_rq_pop(anchor);
 
     __prob(savekey, NULL);
     return req;

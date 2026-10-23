@@ -164,7 +164,8 @@ No Cross-Memory Services (PC/PT) are available on S/370. The IPC uses IEFSSREQ (
 | UFSD#BUF | `src/ufsd#buf.c` | 78 | 4K buffer pool (CS lock-free) |
 | UFSD#SCT | `src/ufsd#sct.c` | 159 | SSCT/SSVT registration |
 | UFSD#SSI | `src/ufsd#ssi.c` | 436 | SSI thin router (runs in client AS) |
-| UFSD#QUE | `src/ufsd#que.c` | 274 | Lock-free queue, dispatch routing |
+| UFSD#RQ | `src/ufsd#rq.c`, `src/ufsd#rqc.c` | 109 | Request queue: client push, server pop, the CS |
+| UFSD#QUE | `src/ufsd#que.c` | 274 | Dequeue, dispatch routing |
 | UFSD#SES | `src/ufsd#ses.c` | 434 | Session management |
 | UFSD#INI | `src/ufsd#ini.c` | 747 | Disk init (DYNALLOC, BDAM open, mount) |
 | UFSD#BLK | `src/ufsd#blk.c` | 80 | BDAM block read/write |
