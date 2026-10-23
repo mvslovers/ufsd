@@ -25,11 +25,13 @@ ufsd_pool_cds(UFSPOOL *pool, UFSPOOL *expect, void *new_head, unsigned new_tag)
     nw.w.head  = new_head;
     nw.w.tag   = new_tag;
 
+    /* "memory": keep the chain-word accesses of the caller on their side
+    ** of the swap, in the asm itself and not only at the call boundary. */
     __asm__ __volatile__(
         "CDS %0,%2,%1"
         : "+r"(old.dw), "+m"(*pool)
         : "r"(nw.dw)
-        : "cc");
+        : "cc", "memory");
 
     if (old.w.head == expect->head && old.w.tag == expect->tag)
         return 0;                       /* swapped */
