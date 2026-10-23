@@ -407,7 +407,7 @@ ones that were measured in the output of @ug-libufs-errors (the program
       neither sets #cmd("ufs_last_rc"). UFSD 1.5.0 cut a path of 256
       characters or more to 255 in #cmd("ufs_chgdir"), #cmd("ufs_mkdir"),
       #cmd("ufs_rmdir") and #cmd("ufs_remove") and sent it with its 256th
-      character in place of the terminating null\; UFSD 1.6.0 refuses it.],
+      character in place of the terminating null\; UFSD 1.5.1 refuses it.],
   )
 ]
 
@@ -450,7 +450,7 @@ ones a program meets, with what was measured on the test system:
   )
 ]
 
-#note[*Removed inodes* (ufsd\#130): UFSD 1.6.0 clears the inode of a removed
+#note[*Removed inodes* (ufsd\#130): UFSD 1.5.1 clears the inode of a removed
 file or directory on the disk, so the cache refill and #cmd("F UFSD,REBUILD")
 find it again, and a program can create and remove objects in one file system
 without using it up. UFSD 1.5.0 and earlier did not clear the inode. The
@@ -459,7 +459,7 @@ lost for good. On the test system, which ran UFSD 1.4.0, after a program had
 created 125 files in an empty directory and removed all of them, #cmd("STATS")
 showed 64 of 126 inodes free, and the next run of the program created only 63
 files. After #cmd("F UFSD,REBUILD") the count was 0 of 126, and every later
-create failed with 48. UFSD 1.6.0 does not repair a disk that has lost inodes
+create failed with 48. UFSD 1.5.1 does not repair a disk that has lost inodes
 under an earlier release: such an inode still has its mode on the disk and has
 no directory entry, so #cmd("F UFSD,REBUILD") does not find it. Only a new
 format with #cmd("FORCE") gives these inodes back.]

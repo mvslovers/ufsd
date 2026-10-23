@@ -13,6 +13,6 @@ way it did not plan. The manuals are kept next to the code in
 | What UFSD does not do (access control per mount only, no locking, the limit on the size of a file) | _UFSD User's Guide_, chapter 1, "Introducing UFSD", section "What UFSD Does Not Do" |
 | The subsystem name `UFS1` and what to do on a system that ever ran UFSD 1.0.0 | _UFSD User's Guide_, chapter 6, section "Changing the Subsystem Name" |
 
-The books are attached to each release from 1.6.0 on as `ml05-0001-<edition>.pdf`
+The books are attached to each release from 1.5.1 on as `ml05-0001-<edition>.pdf`
 and `ml05-0002-<edition>.pdf`. The sources are in [`docs/books`](books); the
 chapters are in `guide/` and `ref/`.

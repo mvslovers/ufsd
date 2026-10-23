@@ -25,7 +25,7 @@ console messages and, for an install problem, the job output.
 
 This guide is complete for installing, upgrading and removing UFSD. For
 everything else there are two manuals: the _UFSD User's Guide_ (ML05-0001) and
-the _UFSD Reference_ (ML05-0002). They are attached to each release from 1.6.0
+the _UFSD Reference_ (ML05-0002). They are attached to each release from 1.5.1
 on as `ml05-0001-<edition>.pdf` and `ml05-0002-<edition>.pdf`, and their
 sources are in `docs/books` in the repository. Where this guide sends you to a
 chapter, it means one of these.

@@ -239,7 +239,7 @@ empty (@ref-lim-limits).
       #cmd("ufs_remove")], [255], [Return #cmd("UFSD_RC_INVALID") before a
       request is sent; the code is stored for #cmd("ufs_last_rc"). UFSD 1.5.0
       cut a path of 256 characters or more to 255 and sent it with its 256th
-      character in place of the terminating null\; UFSD 1.6.0 refuses it.],
+      character in place of the terminating null\; UFSD 1.5.1 refuses it.],
     [#cmd("ufs_diropen")], [255], [Returns NULL; #cmd("ufs_last_rc") is not set.],
     [#cmd("ufs_stat")], [255], [Returns #cmd("UFSD_RC_INVALID"); the code is not
       stored for #cmd("ufs_last_rc").],
