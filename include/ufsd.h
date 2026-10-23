@@ -50,6 +50,7 @@ typedef struct ufsd_stc     UFSD_STC;
 typedef struct ufsd_anchor  UFSD_ANCHOR;
 typedef struct ufsreq       UFSREQ;
 typedef struct ufsbuf       UFSBUF;
+typedef struct ufspool      UFSPOOL;
 typedef struct ufsd_session UFSD_SESSION;
 typedef struct ufsd_fd      UFSD_FD;
 typedef struct ufsd_gfile   UFSD_GFILE;
@@ -248,9 +249,34 @@ struct ufsd_stc {
 #define UFSD_ANCHOR_QUIESCE  0x40000000U
 #define UFSD_ANCHOR_TRACE_ON 0x20000000U  /* AP-1f: trace ring enabled */
 
+/* ============================================================
+** CDS-protected pool head (issue #142)
+**
+** Head of a free chain plus a tag that is bumped on every pop and
+** push.  The pair is changed only with CDS (compare double and
+** swap), so a pop whose snapshot went stale -- another CPU popped
+** the same block and pushed it back, head unchanged but its
+** successor not (ABA) -- fails the compare on the tag instead of
+** handing one block to two owners.
+**
+** Must sit on a doubleword boundary: CDS on anything else is a
+** specification exception (S0C6).  The compiler pads the member into
+** place inside the anchor (UFSD#CSA asserts the offsets at compile
+** time), and GETMAIN returns the anchor doubleword aligned.
+** ============================================================ */
+struct ufspool {
+    void           *head;           /* first free item, NULL = empty */
+    unsigned        tag;            /* bumped on every pop and push  */
+} __attribute__((aligned(8)));
+
+/* Anchor layout version.  1: single-word CS heads (free_head,
+** buf_free).  2: CDS pool heads (req_pool, buf_pool), appended at the
+** end of the anchor; every field of version 1 keeps its offset. */
+#define UFSD_ANCHOR_VERSION  2
+
 struct ufsd_anchor {
     char            eye[8];         /* "UFSDANCR"                  */
-    unsigned        version;        /* anchor version              */
+    unsigned        version;        /* UFSD_ANCHOR_VERSION         */
     unsigned        flags;          /* UFSD_ANCHOR_*               */
 
     ECB             server_ecb;     /* master ECB: STC WAIT target */
@@ -259,14 +285,18 @@ struct ufsd_anchor {
     UFSREQ         *req_head;       /* dequeue from head           */
     UFSREQ         *req_tail;       /* enqueue to tail (CS)        */
 
-    /* Free Request Pool (free chain, CS-protected) */
-    UFSREQ         *free_head;
-    unsigned        free_count;
+    /* Free Request Pool.  The head is req_pool at the end of the
+    ** anchor since version 2; this word is unused but keeps the
+    ** offsets of everything behind it, so the reclaim of a
+    ** predecessor's anchor (UFSD#RCL) reads the layout it was
+    ** written with. */
+    UFSREQ         *rsv_free_head;
+    unsigned        free_count;     /* diagnostics only            */
     unsigned        total_reqs;
 
-    /* 4K Buffer Pool (free chain) */
-    UFSBUF         *buf_free;
-    unsigned        buf_count;
+    /* 4K Buffer Pool; head is buf_pool, as above */
+    UFSBUF         *rsv_buf_free;
+    unsigned        buf_count;      /* diagnostics only            */
     unsigned        buf_total;
 
     /* Session + Global File Tables (pointers, arrays in STC space) */
@@ -316,6 +346,13 @@ struct ufsd_anchor {
     ** offsets shared with UFSDSSIR/UFSDCLNP are unchanged -- but all
     ** three load modules must still be rebuilt and deployed together. */
     unsigned        inflight;
+
+    /* Issue #142: CDS-protected heads of the two free pools.
+    ** Doubleword aligned (see struct ufspool).  Appended, so no
+    ** version 1 offset moves; a version 1 anchor ends before them
+    ** and must never be written here. */
+    UFSPOOL         req_pool;       /* free UFSREQ chain           */
+    UFSPOOL         buf_pool;       /* free UFSBUF chain           */
 };
 
 /* ============================================================
@@ -617,6 +654,19 @@ int          ufsd_csa_init(UFSD_ANCHOR *anchor)                      asm("UFSD@C
 void         ufsd_csa_free(UFSD_ANCHOR *anchor)                      asm("UFSD@CAF");
 UFSREQ      *ufsd_req_alloc(UFSD_ANCHOR *anchor)                     asm("UFSD@RQA");
 void         ufsd_req_free(UFSD_ANCHOR *anchor, UFSREQ *req)         asm("UFSD@RQF");
+
+/* ufsd#pol.c -- CDS pop/push on a UFSPOOL (portable, host-tested).
+** link_off: offset of the chain word inside an item.  Key-0 callers:
+** the items live in CSA. */
+void *ufsd_pool_pop(UFSPOOL *pool, unsigned link_off)                asm("UFSD@PPO");
+void  ufsd_pool_push(UFSPOOL *pool, void *item, unsigned link_off)   asm("UFSD@PPU");
+
+/* ufsd#cds.c -- the one machine-dependent step.  Stores (new_head,
+** new_tag) into *pool only if *pool still equals *expect.  Returns 0
+** when it did; 1 when it did not, and then *expect is what *pool held.
+** Atomic over all 8 bytes; *pool must be doubleword aligned. */
+int ufsd_pool_cds(UFSPOOL *pool, UFSPOOL *expect,
+                  void *new_head, unsigned new_tag)                  asm("UFSD@PCD");
 
 /* ufsd#buf.c — buffer pool alloc/free (split from ufsd#csa.c) */
 UFSBUF      *ufsd_buf_alloc(UFSD_ANCHOR *anchor)                     asm("UFSD@BFA");

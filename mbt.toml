@@ -83,7 +83,7 @@ reus = true
 entry = "UFSDSSIR"
 startup = false
 ac = 1
-sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c"]
+sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c", "src/ufsd#pol.c", "src/ufsd#cds.c"]
 
 # UFSDCLNP — cleanup utility (all defaults: entry=@@CRT0)
 # Wraps the shared reclaim routine (ufsd#rcl.c, also part of UFSD).
@@ -185,6 +185,17 @@ sources = ["test/mvs/tstufsrc.c", "src/ufsd#rcl.c", "src/ufsd#asv.c"]
 rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs the stand-in headers and its own stubs
 sources = ["test/host/tstufsfq.c"]
+
+# TSTUFSPL — the CSA free pools pop and push with CDS on head and tag (#142).
+# Links src/ufsd#pol.c with a stand-in for the CDS (src/ufsd#cds.c on the
+# target) that lets a second "CPU" run between a pop's snapshot and its swap:
+# the ABA case, once with a head-only compare as a control, once through
+# ufsd_pool_pop, then a seeded random run. Host-only (mvs = false): the stand-in
+# is the test's own.
+[test.TSTUFSPL]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs its own ufsd_pool_cds
+sources = ["test/host/tstufspl.c", "src/ufsd#pol.c"]
 
 # TSTUFSIO — the ferror() guards behind UFSD106E and UFSFMT17E (#69): a read
 # error on DD:UFSDPRM / SYSIN must stop ufsd_cfg_read() and parse_sysin(), not

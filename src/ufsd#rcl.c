@@ -256,18 +256,20 @@ ufsd_reclaim(int force)
             anchor->trace_buf = NULL;
         }
 
+        /* The pool heads (req_pool, buf_pool) are not cleared here: the
+        ** anchor may be a predecessor's of layout version 1, which ends
+        ** before them, and it is freed below anyway. */
+
         /* Free 4K buffer pool (contiguous allocation) */
         if (anchor->buf_pool_base) {
             freemain(anchor->buf_pool_base);
             anchor->buf_pool_base = NULL;
-            anchor->buf_free      = NULL;
         }
 
         /* Free request pool (contiguous allocation) */
         if (anchor->req_pool_base) {
             freemain(anchor->req_pool_base);
             anchor->req_pool_base = NULL;
-            anchor->free_head     = NULL;
         }
 
         wtof("UFSD147I RECLAIM: CSA POOLS FREED");

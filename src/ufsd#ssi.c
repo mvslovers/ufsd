@@ -36,6 +36,7 @@
 */
 
 #include "ufsd.h"
+#include <stddef.h>
 #include <string.h>
 #include <mvs/apf.h>
 #include <mvs/xmem.h>
@@ -92,37 +93,18 @@ cs_lock_release(UFSD_ANCHOR *anchor)
 }
 
 /*
-** free_pop: CS-based lock-free pop from the free request pool.
-**
-** We load free_head and attempt to CS the pointer from *req to
-** req->next.  If the CS succeeds (old == expected), the pop is
-** done.  If another producer changed free_head between our load
-** and our CS, the CS fails and we retry.
+** free_pop: lock-free pop from the free request pool (CDS on head and
+** tag, ufsd#pol.c; a head-only CS could hand one block to two clients).
 */
 static UFSREQ *
 free_pop(UFSD_ANCHOR *anchor)
 {
-    UFSREQ  *req;
-    unsigned old;
-    unsigned nxt;
+    UFSREQ *req;
 
-    for (;;) {
-        req = anchor->free_head;
-        if (!req) return NULL;
-        old = (unsigned)req;
-        nxt = (unsigned)req->next;
-        __asm__ __volatile__(
-            "CS %0,%2,%1"
-            : "+r"(old), "+m"(anchor->free_head)
-            : "r"(nxt)
-            : "cc");
-        if (old == (unsigned)req) break; /* CS succeeded */
-        /* CS failed: old now contains current free_head; retry */
-    }
-
-    req->next = NULL;
+    req = (UFSREQ *)ufsd_pool_pop(&anchor->req_pool,
+                                  (unsigned)offsetof(UFSREQ, next));
     /* Decrement free_count (approximate; diagnostics only) */
-    __udec(&anchor->free_count);
+    if (req) __udec(&anchor->free_count);
     return req;
 }
 
@@ -402,23 +384,10 @@ ufsdssir(void)
 
         ssob->SSOBRETN = req->rc;
 
-        /* --- Return request block to the free pool (CS-push) --- */
-        {
-            UFSREQ  *old_head;
-            unsigned old;
-            for (;;) {
-                old_head  = anchor->free_head;
-                req->next = old_head;
-                old       = (unsigned)old_head;
-                __asm__ __volatile__(
-                    "CS %0,%2,%1"
-                    : "+r"(old), "+m"(anchor->free_head)
-                    : "r"((unsigned)req)
-                    : "cc");
-                if (old == (unsigned)old_head) break;
-            }
-            __uinc(&anchor->free_count);
-        }
+        /* --- Return request block to the free pool (CDS push) --- */
+        ufsd_pool_push(&anchor->req_pool, req,
+                       (unsigned)offsetof(UFSREQ, next));
+        __uinc(&anchor->free_count);
 
         /* Leave the router: decrement inflight LAST, so a shutdown drain
         ** only observes us gone after every other CSA write is complete. */

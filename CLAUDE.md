@@ -10,7 +10,7 @@ Phase history and plan: `internals/concept.md` (changes table, section 14).
 
 UFSD is an MVS Started Task (STC) that owns all BDAM disk I/O. Clients
 (HTTPD, batch, TSO) communicate via IEFSSREQ (SVC 34) through an SSI
-thin router. Requests flow through a lock-free CSA queue (CS instruction).
+thin router. Requests flow through a lock-free CSA queue (CS instruction); the request and buffer free pools are CDS-protected (head + tag, ABA-safe).
 Cross-AS POST uses `__xmpost` (CVT0PT01), not SVC 2. Client ECBs live on
 the caller's stack (key-8), not in CSA (key-0).
 
@@ -76,6 +76,8 @@ in `test/host/include/`.
 | UFSD#CFG | `src/ufsd#cfg.c` | PARMLIB configuration parser |
 | UFSD#CSA | `src/ufsd#csa.c` | CSA pools (request + trace) |
 | UFSD#BUF | `src/ufsd#buf.c` | CSA buffer pool alloc/free |
+| UFSD#POL | `src/ufsd#pol.c` | CDS pool pop/push on head + tag (portable, host-tested) |
+| UFSD#CDS | `src/ufsd#cds.c` | The CDS instruction under the pool core |
 | UFSD#SCT | `src/ufsd#sct.c` | SSCT registration |
 | UFSDSSIR | `src/ufsd#ssi.c` | SSI thin router |
 | UFSD#QUE | `src/ufsd#que.c` | Lock-free queue + dispatch |
