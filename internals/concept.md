@@ -16,6 +16,7 @@ Revision 8 — Reflects completed Phase 4a (AP-4a)
 | 4 | Startup banner | `UFSD000I` before init, `UFSD001I` with version, disk count, CSA size, session/file slot summary (AP-4a #5). |
 | 5 | Session cleanup | `SESSIONS PRUNE` command walks ASVT, detects terminated ASIDs, releases orphaned sessions with FDs and GFT entries (AP-4a #6). |
 | 6 | Test consolidation | Removed `ufsdping` (superseded by `/F UFSD,STATS`) and `ufsdtst` (superseded by `LIBUFTST`). `LIBUFTST` retained as sole regression tool (AP-4a #7). |
+| 7 | Pool ABA safety | Request and buffer pool heads are a CDS-protected head + tag doubleword (`UFSPOOL`); anchor version 2 (Issue #142, section 5.1). |
 
 <details><summary>Changes from Concept #6 (AP-3a + AP-3b)</summary>
 
@@ -72,8 +73,8 @@ UFSD solves this by running the filesystem as a Subsystem Started Task (STC) wit
 │  │  UFSD_ANCHOR                               │       │
 │  │  ├─ HEAD/TAIL (CS lock-free queue)         │       │
 │  │  ├─ server_ecb / server_ascb               │       │
-│  │  ├─ Request Pool (32 × ~304B, CS pop/push) │       │
-│  │  ├─ 4K Buffer Pool (16 × 4K, CS pop/push) │       │
+│  │  ├─ Request Pool (32 × ~304B, CDS pop/push)│       │
+│  │  ├─ 4K Buffer Pool (16 × 4K, CDS pop/push)│       │
 │  │  ├─ Trace Ring (256 × 16B)                │       │
 │  │  ├─ POST bundling (stat_posts_saved)       │       │
 │  │  └─ inflight (quiesce on shutdown)         │       │
@@ -92,7 +93,8 @@ UFSD solves this by running the filesystem as a Subsystem Started Task (STC) wit
 | POST cross-AS | `__xmpost(ascb, ecb_ptr, code)` via CVT0PT01 | Supervisor (key 0) | SVC 2 fails cross-AS from problem state |
 | WAIT on ECB | `WAIT ECB=(ecb_addr)` via SVC 1 | Problem state | ECB must be key-8 storage (stack) |
 | SSI routine entry | R1 = SSOB (MVS convention) | Supervisor (key 0) | Not a C plist — extract via inline asm |
-| CSA pool ops | CS instruction (lock-free) | Supervisor (key 0) | Native S/370, no SVC overhead |
+| CSA queue ops | CS instruction (lock-free) | Supervisor (key 0) | Native S/370, no SVC overhead |
+| CSA pool pop/push | CDS on head + tag (lock-free) | Supervisor (key 0) | ABA-safe, see 5.1 |
 
 ## 4. SSI Router (ufsd#ssi.c)
 
@@ -163,13 +165,63 @@ should be updated together.
 
 | Pool | Count | Unit Size | Total | Allocation |
 |------|-------|-----------|-------|------------|
-| Request | 32 | ~304B | ~9K | CS lock-free stack |
-| Buffer | 16 | 4K | 64K | CS lock-free stack |
+| Request | 32 | ~304B | ~9K | CDS lock-free stack (head + tag) |
+| Buffer | 16 | 4K | 64K | CDS lock-free stack (head + tag) |
 | Trace | 256 | 16B | 4K | Ring buffer |
-| Anchor | 1 | ~512B | ~1K | Fixed |
+| Anchor | 1 | 152B | ~1K | Fixed |
 | **Total** | | | **~78K** | |
 
 All CSA storage is key-0, allocated via GETMAIN SP=241.
+
+### 5.1 Free pools: CDS head and tag (Issue #142)
+
+Both pools are LIFO free chains linked through the `next` member of the
+item. A pop that reads the successor of the head and then swaps the head
+word with CS is not safe: if another CPU pops the same block, pops its
+successor and pushes the block back in between, the head word is unchanged
+(ABA) while the successor is not. The stale swap succeeds and installs a
+block that is already in use, so one buffer or request block has two owners.
+
+Each pool head is therefore a `UFSPOOL`, a doubleword of **head pointer +
+tag**, and pop and push change it only with CDS. The tag is bumped on every
+pop and push (wraps at 2^32; a collision needs 2^32 operations between
+snapshot and swap). The generic core is `ufsd_pool_pop` / `ufsd_pool_push`
+in `src/ufsd#pol.c`; the only machine-dependent step is `ufsd_pool_cds` in
+`src/ufsd#cds.c`, so the core is host-tested (`test/host/tstufspl.c`) with a
+CDS stand-in that lets a second "CPU" run between snapshot and swap.
+
+Notes:
+
+- The successor is read before the CDS and may be stale. It is never
+  dereferenced; it is only the new head if the tag proves nothing changed.
+  The item itself is a pool slot, mapped until shutdown has drained `inflight`.
+- CDS needs an even/odd register pair (a 64-bit operand gives cc370 one) and
+  a doubleword-aligned operand, else S0C6. `__attribute__((aligned(8)))` on
+  `struct ufspool` is honoured by cc370; `UFSD#CSA` asserts the offsets at
+  compile time.
+- `free_count` and `buf_count` are statistics only (`__uinc`/`__udec`); they
+  can be briefly off against the chain.
+- No writable static is involved: the pool state lives in the anchor.
+
+**Anchor layout, version 2.** Start-up reclaim (`UFSD#RCL`) and UFSDCLNP read
+the anchor of a predecessor, which may be a version 1 anchor, so every offset
+of version 1 is kept.
+
+| Field | Offset | Version 1 | Version 2 |
+|-------|--------|-----------|-----------|
+| `version` | 8 | 1 | 2 (`UFSD_ANCHOR_VERSION`) |
+| `rsv_free_head` | 28 | request pool head (CS) | reserved, unused |
+| `free_count` | 32 | statistics | statistics |
+| `rsv_buf_free` | 40 | buffer pool head (CS) | reserved, unused |
+| `buf_count` | 44 | statistics | statistics |
+| `inflight` | 128 | in-flight clients | in-flight clients |
+| `req_pool` | 136 | (did not exist) | `UFSPOOL`, request pool head + tag |
+| `buf_pool` | 144 | (did not exist) | `UFSPOOL`, buffer pool head + tag |
+
+The anchor grows from 132 to 152 bytes. Reclaim of a version 1 anchor never
+writes the new fields (it is freed as a whole). **UFSD, UFSDSSIR and UFSDCLNP
+must be deployed together:** a router that still pops with the old head word
+would work on a reserved word the server no longer maintains.
 
 ## 6. Session and File Descriptor Model
 
@@ -398,7 +450,9 @@ a clean `/P` with no clients in flight completes in a fraction of a second.
 | UFSD#CMD | `src/ufsd#cmd.c` | 357 | MODIFY command parser |
 | UFSD#CFG | `src/ufsd#cfg.c` | 245 | PARMLIB (UFSDPRMx) configuration parser |
 | UFSD#CSA | `src/ufsd#csa.c` | 225 | CSA allocation, request pool |
-| UFSD#BUF | `src/ufsd#buf.c` | 78 | 4K buffer pool (CS lock-free) |
+| UFSD#BUF | `src/ufsd#buf.c` | 53 | 4K buffer pool alloc/free (CDS lock-free) |
+| UFSD#POL | `src/ufsd#pol.c` | 73 | Pool pop/push core on a head + tag (portable, host-tested) |
+| UFSD#CDS | `src/ufsd#cds.c` | 40 | CDS step under the pool core |
 | UFSD#SCT | `src/ufsd#sct.c` | 159 | SSCT/SSVT registration |
 | UFSD#SSI | `src/ufsd#ssi.c` | 436 | SSI thin router |
 | UFSD#QUE | `src/ufsd#que.c` | 274 | Lock-free queue, dispatch routing |
