@@ -70,6 +70,13 @@ messages, between the start banner and the allocation of the new storage:
 
 #screen(raw(read("../ex/ug-recover/reclaim.txt")))
 
+The reclaim reads the anchor of an earlier release as well. The anchor of
+the releases 1.4.0 and 1.5.0 is 132 bytes long, that of release 1.5.1 is 152
+bytes (@ug-install-from15), and the reclaim handles either. The screen above
+is the start of release 1.5.1 after a cancelled server of release 1.4.0. A
+server of release 1.5.0 was not run for this book; its anchor has the same
+layout as the one of 1.4.0, which was checked in the source.
+
 If clients were still waiting in the router when the server died, the reclaim
 gives them a short time to leave before it frees the router. The time is
 about 12 seconds at most. If a count of clients still stands after that, the

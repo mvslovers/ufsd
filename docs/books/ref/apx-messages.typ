@@ -5,7 +5,7 @@
 #idx("messages", "list")
 This appendix lists every message that UFSD, its cleanup program UFSDCLNP and
 the format utility UFSFMT can issue, in the order of the numbers. Each text is
-the one in the code of release 1.5.0.
+the one in the code of release 1.5.1.
 
 A message of UFSD or UFSDCLNP has the form #cmd("UFSDnnnx"), a message of the
 format utility #cmd("UFSFMTnnx"). The letter at the end is the severity:
@@ -110,11 +110,11 @@ The answers to the MODIFY command are described with the commands in @ref-cmd.
     [#cmd("UFSD043E CANNOT OPEN ddname")], [The data set could not be opened with BDAM. The mount fails. The DD name is the one that UFSD allocated for the data set.],
     [#cmd("UFSD044E ddname: NOT A VALID UFS DISK (TYPE=xxxx)")], [Block 0 of the data set is not the boot block of a UFS file system. The data set was not formatted with UFSFMT, or it is not the one you meant. The mount fails. The value is the type found in the block.],
     [#cmd("UFSD045E CANNOT ALLOCATE SESSION TABLE")], [No storage for the session table. Return code 8.],
-    [#cmd("UFSD045I SESSION TABLE: n SLOTS")], [The session table is ready. UFSD 1.5.0 has 64 slots.],
+    [#cmd("UFSD045I SESSION TABLE: n SLOTS")], [The session table is ready. UFSD 1.5.1 has 64 slots.],
     [#cmd("UFSD046E CANNOT ENTER SUPERVISOR STATE FOR SESSION INIT")], [Supervisor state could not be entered for the session table. Return code 8.],
     [#cmd("UFSD046I SESSION TABLE FREED")], [A stop freed the session table.],
     [#cmd("UFSD047E CANNOT ALLOCATE GLOBAL FILE TABLE")], [No storage for the table of open files. Return code 8.],
-    [#cmd("UFSD047I GLOBAL FILE TABLE: n SLOTS")], [The table of open files is ready. UFSD 1.5.0 has 256 slots.],
+    [#cmd("UFSD047I GLOBAL FILE TABLE: n SLOTS")], [The table of open files is ready. UFSD 1.5.1 has 256 slots.],
     [#cmd("UFSD048E CANNOT ENTER SUPERVISOR STATE FOR GFT INIT")], [Supervisor state could not be entered for the table of open files. Return code 8.],
     [#cmd("UFSD048I GLOBAL FILE TABLE FREED")], [A stop freed the table of open files.],
     [#cmd("UFSD049E ddname: NO STORAGE FOR BOOT BLOCK (n BYTES)")], [There was no storage to read block 0 of the file system. The mount fails.],

@@ -13,6 +13,6 @@ look.
 | Authorization (RAKF or the APF list) | _UFSD User's Guide_, chapter 2, "Installing UFSD", section "Authority" |
 | The meaning of a console message | _UFSD Reference_, appendix A, "Messages" |
 
-The books are attached to each release from 1.6.0 on as `ml05-0001-<edition>.pdf`
+The books are attached to each release from 1.5.0 on as `ml05-0001-<edition>.pdf`
 and `ml05-0002-<edition>.pdf`. The sources are in [`docs/books`](books); the
 chapters are in `guide/` and `ref/`.

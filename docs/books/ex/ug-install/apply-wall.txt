@@ -1,0 +1,12 @@
+ APPLY S(TUFS151) DIS(WRITE) .
+HMA4140    SMPCDS DIRECTORY SUCCESSFULLY LOADED FOR IN-STORAGE UPDATE OPERATIONS
+HMA4180    INLINE JCLIN PROCESSING SUCCESSFUL FOR SYSMOD=TUFS151
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS151
+HMA3680    SMPCDS IN STORAGE DIRECTORY SUCCESSFULLY REWRITTEN
+HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00
+ELEM   ELEMENT   ELEM      CURRENT  CURRENT  MAC/SRC   DISTSRC   ASSEM    LOAD MOD  ---LMOD SYSLIB---  SYSMOD   SYSMOD
+TYPE   NAME      STATUS    FMID     RMID     SYSLIB    LIBRARY   NAMES                                 NAME     STATUS
+MOD    UFSD      NOT SEL                                                                               TUFS151  APPLIED
+MOD    UFSDCLNP  NOT SEL                                                                               TUFS151  APPLIED
+MOD    UFSDSSIR  NOT SEL                                                                               TUFS151  APPLIED
+MOD    UFSFMT    NOT SEL                                                                               TUFS151  APPLIED

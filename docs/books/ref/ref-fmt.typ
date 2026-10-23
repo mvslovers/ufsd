@@ -277,7 +277,9 @@ The complete list with the exact texts is in @apx-messages-fmt.
 #idx("report")
 At the end of a successful run the program prints the report and, last, the
 statement that mounts the new disk. The following run formatted a data set
-of 256 blocks:
+of 256 blocks. It was recorded with release 1.5.0. Release 1.5.1 prints the
+same report with its own version in the first line, because UFSFMT did not
+change between the two releases.
 
 #screen(```
 UFSFMT10I UFSFMT 1.5.0 -- UFS370 disk format utility

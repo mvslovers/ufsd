@@ -204,7 +204,7 @@ has caught somebody.
     characters, and UFSD goes on.],
   [The block size], [The statement #cmd("ROOT") accepts #cmd("BLKSIZE(n)"),
     with a suffix #cmd("K") or #cmd("M"). UFSD ignores the value in release
-    1.5.0. The block size of a file system is the one with which it was
+    1.5.1. The block size of a file system is the one with which it was
     formatted.],
 )
 

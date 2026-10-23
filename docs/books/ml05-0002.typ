@@ -12,10 +12,10 @@
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
     This edition applies to Version 1 Release 5 of UFSD, the virtual
-    filesystem server for MVS 3.8j (ufsd 1.5.0), and to all subsequent
+    filesystem server for MVS 3.8j (ufsd 1.5.1), and to all subsequent
     releases and modifications until otherwise indicated in new editions.
 
-    *Draft.* This book describes UFSD 1.5.0 as released. It is written after
+    *Draft.* This book describes UFSD 1.5.1 as released. It is written after
     the release and has not yet been read by a second person against the
     code.
 

@@ -3,13 +3,13 @@
 = Limits and Disk Format <ref-lim>
 
 #idx("limits")
-This chapter collects the fixed limits of UFSD (ufsd) 1.5.0, describes the
+This chapter collects the fixed limits of UFSD (ufsd) 1.5.1, describes the
 layout of a disk as far as an operator needs it, and lists the return codes
 that UFSD gives to its clients. Where a limit is checked, the message is named.
 
 == Limits <ref-lim-limits>
 
-#tab(caption: [The limits of UFSD 1.5.0])[
+#tab(caption: [The limits of UFSD 1.5.1])[
   #table(columns: (2.3in, 0.9in, 1fr),
     [Item], [Limit], [Notes],
     [File systems mounted], [16], [Including the root. At most 15 further
@@ -48,7 +48,7 @@ that UFSD gives to its clients. Where a limit is checked, the message is named.
       longer path. UFSD 1.5.0 cut a path of 256 characters or more to 255
       in #cmd("ufs_chgdir"), #cmd("ufs_mkdir"), #cmd("ufs_rmdir") and
       #cmd("ufs_remove") and sent it with its 256th character in place of the
-      terminating null\; UFSD 1.6.0 refuses it. Keep paths well below 250
+      terminating null\; UFSD 1.5.1 refuses it. Keep paths well below 250
       characters.],
     [Entries in a directory], [_b_/64 × 16], [A directory has direct blocks
       only: 16 blocks of _b_/64 entries, the entries "." and ".." included.
@@ -118,7 +118,7 @@ inode numbers. The two numbers after #cmd("FREEBLK=") in #cmd("UFSD018I") are
 the number of entries in the cache and the total number of free blocks. Read
 the free space from the second number.
 
-#note[*Removed inodes* (ufsd\#130): UFSD 1.6.0 clears the inode of a removed
+#note[*Removed inodes* (ufsd\#130): UFSD 1.5.1 clears the inode of a removed
 file or directory on the disk, so the cache refill and #cmd("F UFSD,REBUILD")
 find it again. UFSD 1.5.0 and earlier did not clear it, and once more than 64
 inodes had been freed since the start, the cache could not hold the others and
@@ -126,7 +126,7 @@ they were lost for good. On a file system with 126 free inodes, after creating
 125 files in one directory and removing them again, #cmd("STATS") showed 64 of
 126 inodes free, and the next run created only 63 files. After
 #cmd("F UFSD,REBUILD") the count was 0 of 126, and every later create got the
-return code 48. UFSD 1.6.0 does not repair a disk that has lost inodes under an
+return code 48. UFSD 1.5.1 does not repair a disk that has lost inodes under an
 earlier release: such an inode still has its mode on the disk and has no
 directory entry, so #cmd("F UFSD,REBUILD") does not find it. Only a new format
 with #cmd("FORCE") (UFSD stopped) gives these inodes back.]
@@ -179,12 +179,12 @@ see @ref-fmt-geometry.
     [000], [4], [The first data block.],
     [004], [4], [The number of blocks of the disk.],
     [008], [1], [The lock byte of the free blocks. #cmd("UFSFMT") writes 0;
-      UFSD 1.5.0 neither sets nor reads it.],
+      UFSD 1.5.1 neither sets nor reads it.],
     [009], [1], [The lock byte of the free inodes. The same.],
     [00A], [1], [The flag: modified.],
     [00B], [1], [The flag: read only.],
     [00C], [4], [The time of the last update. #cmd("UFSFMT") writes 0;
-      UFSD 1.5.0 neither sets nor reads it.],
+      UFSD 1.5.1 neither sets nor reads it.],
     [010], [4], [The total number of free blocks.],
     [014], [4], [The total number of free inodes.],
     [018], [4], [The time of the creation. The same as 00C.],
@@ -197,7 +197,7 @@ see @ref-fmt-geometry.
     [1F8], [4], [The block where the inode list begins.],
     [1FC], [4], [The block where the last scan for free blocks stopped. UFSD
       sets it during the scan and writes it with the rest of the superblock,
-      so the value reaches the disk; UFSD 1.5.0 never reads it, and
+      so the value reaches the disk; UFSD 1.5.1 never reads it, and
       #cmd("UFSFMT") writes 0.],
   )
 ]

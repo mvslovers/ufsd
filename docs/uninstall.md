@@ -1,7 +1,7 @@
 # Removing UFSD
 
 This is the supported way to take UFSD back off an MVS 3.8j system and free
-its FMID for a re-install. The same procedure is chapter 7, "Removing UFSD",
+its FMID for a re-install. The same procedure is chapter 8, "Removing UFSD",
 of the _UFSD User's Guide_ (ML05-0001).
 
 The main way lets SMP do the work: a dummy function, `TUFSDEL`, deletes every
@@ -24,7 +24,7 @@ upgrade routes use it too.
 
 | | |
 |---|---|
-| FMID | `TUFS150` |
+| FMID | `TUFS151` |
 | Load modules | `UFSD`, `UFSDSSIR`, `UFSDCLNP`, `UFSFMT` |
 | Target library | `UFSD.LINKLIB` |
 | Distribution library | `UFSD.AUFSDLOD` |
@@ -43,17 +43,17 @@ step of the install job scratched it.
 before it and leaves its id in the inventory as a mark, in both zones:
 
 ```
-TUFS140   TYPE            = FUNCTION
-          DELBY           = TUFS150
+TUFS150   TYPE            = FUNCTION
+          DELBY           = TUFS151
 ```
 
-A system that went from 1.2.x through 1.3.0 and 1.4.0 to 1.5.0 carries one such
-mark for every step. Deleting the id of the current release and of its
+A system that went from 1.2.x through 1.3.0, 1.4.0 and 1.5.0 to 1.5.1 carries
+one such mark for every step. Deleting the id of the current release and of its
 predecessor clears only the newest of them. Both ways below therefore name
-**every id UFSD has ever used** (`TUFS110`, `TUFS120`, `TUFS130`, `TUFS140` and
-`TUFS150`), and you need not know which releases the system has seen. The jobs
-are written for releases up to 1.5.0. If a later release adds an id, it is
-added to every list here.
+**every id UFSD has ever used** (`TUFS110`, `TUFS120`, `TUFS130`, `TUFS140`,
+`TUFS150` and `TUFS151`), and you need not know which releases the system has
+seen. The jobs are written for releases up to 1.5.1. If a later release adds an
+id, it is added to every list here.
 
 ---
 
@@ -64,14 +64,14 @@ added to every list here.
 ```
 
 If common storage is still held afterwards, run `/S UFSDCLNP` before you go on.
-See chapter 6, "Recovery After a Failure", of the _UFSD User's Guide_.
+See chapter 7, "Recovery After a Failure", of the _UFSD User's Guide_.
 
 ## 2. Delete the release with the dummy function
 
 SMP deletes a function when a later function names it in a `DELETE` operand,
 and it removes the load modules of the deleted function from the libraries on
 the way. The job below receives, applies and accepts such a function.
-`TUFSDEL` has no elements. It deletes all UFSD ids up to 1.5.0 in one `DELETE`
+`TUFSDEL` has no elements. It deletes all UFSD ids up to 1.5.1 in one `DELETE`
 statement.
 
 **`TUFSDEL` is not a release FMID.** No release of UFSD ships it, the job
@@ -102,7 +102,7 @@ Submit this job:
 //RECV    EXEC SMPREC
 //SMPPTFIN DD  *
 ++FUNCTION(TUFSDEL) .
-++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150) .
+++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150,TUFS151) .
 /*
 //SMPCNTL  DD  *
  RESETRC .
@@ -134,14 +134,14 @@ Read the three SMP steps one by one. The receive ends with return code 04:
 ```
  RECEIVE SELECT(TUFSDEL) .
 ----------++FUNCTION(TUFSDEL) .
-----------++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150) .
+----------++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150,TUFS151) .
 HMA3971    SYSMOD TUFSDEL HAS NO ELEMENTS
 HMA3930    SYSMOD TUFSDEL SUCCESSFULLY RECEIVED
 HMA2050    RECEIVE PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
 ```
 
 The apply deletes the four load modules from the target library. It also ends
-with return code 04, because SMP does not find `TUFS150` in the restore data set
+with return code 04, because SMP does not find `TUFS151` in the restore data set
 (`HMA2461`):
 
 ```
@@ -151,7 +151,7 @@ HMA2240    SUCCESSFULLY DELETED LMOD UFSDCLNP ON LINKLIB LIBRARY
 HMA2240    SUCCESSFULLY DELETED LMOD UFSDSSIR ON LINKLIB LIBRARY
 HMA2240    SUCCESSFULLY DELETED LMOD UFSFMT ON LINKLIB LIBRARY
 HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFSDEL
-HMA2461    SYSMOD TUFS150 NOT FOUND ON SMPSCDS LIBRARY
+HMA2461    SYSMOD TUFS151 NOT FOUND ON SMPSCDS LIBRARY
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
 ```
 
@@ -194,16 +194,17 @@ run; the last step does, and shows what is still there. Read the output of the
 failed step; do not repeat the job before you know what it did.
 
 **What has been measured.** The job was run on a test system with a fresh
-installation of release 1.5.0 as the only SMP product with UFSD on it. A system
-with a history of upgrades, a system with more than one product in the same
-zones, and a dummy function with a `++MAC` element instead of none have not been
+installation of release 1.5.1 as the only SMP product with UFSD on it, and on
+one that went from 1.4.0 through 1.5.0 to 1.5.1 by the upgrade of the
+installation guide. A system with more than one product in the same zones, and
+a dummy function with a `++MAC` element instead of none have not been
 measured. Whatever the system, the `LIST` in step 4 is the proof.
 
 ## 3. Free the ids
 
 The dummy function has not made the ids free. It has left `TUFSDEL` itself in
 both zones, with the status `REC APP ACC`, and a mark `DELBY = TUFSDEL` on every
-id it deleted. This job removes the six entries from the CDS (what is applied)
+id it deleted. This job removes the seven entries from the CDS (what is applied)
 and the ACDS (what is accepted). It changes the two SMP data bases and no
 library:
 
@@ -215,6 +216,7 @@ library:
 //SMPCNTL  DD  *
  UCLIN CDS .
   DEL SYSMOD(TUFSDEL) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -226,6 +228,7 @@ library:
 //SMPCNTL  DD  *
  UCLIN ACDS .
   DEL SYSMOD(TUFSDEL) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -238,6 +241,8 @@ library:
  RESETRC .
  LIST CDS  SYSMOD(TUFSDEL) .
  LIST ACDS SYSMOD(TUFSDEL) .
+ LIST CDS  SYSMOD(TUFS151) .
+ LIST ACDS SYSMOD(TUFS151) .
  LIST CDS  SYSMOD(TUFS150) .
  LIST ACDS SYSMOD(TUFS150) .
  LIST CDS  SYSMOD(TUFS140) .
@@ -261,6 +266,8 @@ output of step `UCLCDS`:
  UCLIN CDS .
   DEL SYSMOD(TUFSDEL) .
 HMA2550    UPDATE COMPLETE FOR TUFSDEL
+  DEL SYSMOD(TUFS151) .
+HMA2550    UPDATE COMPLETE FOR TUFS151
   DEL SYSMOD(TUFS150) .
 HMA2550    UPDATE COMPLETE FOR TUFS150
   DEL SYSMOD(TUFS140) .
@@ -280,7 +287,7 @@ Step `UCLACDS` gives the same. Any other message is not expected.
 ## 4. Read the LIST — this is the actual result
 
 The last step of the job is the result. For every id, in both zones, it must
-answer that the entry was not found. These are the first two of the twelve
+answer that the entry was not found. These are the first two of the fourteen
 statements, as the step printed them:
 
 ```
@@ -303,18 +310,18 @@ zones count: an id gone from one and still in the other is not free.
 
 **Read the stanzas, not the return code of the step.** A mark that is still
 there answers with return code 00, so it does not raise the return code of the
-step above the 04 that you expect. The job has twelve `LIST` statements, and all
-twelve must show the id as not found. A stanza that names `TYPE = FUNCTION` is an
-entry that is still there, whether it shows the status `REC APP ACC` or only a
-`DELBY` of its successor. This is what the statements
-`LIST CDS SYSMOD(TUFS150)` and `LIST CDS SYSMOD(TUFSDEL)` print after step 2,
+step above the 04 that you expect. The job has fourteen `LIST` statements, and
+all fourteen must show the id as not found. A stanza that names
+`TYPE = FUNCTION` is an entry that is still there, whether it shows the status
+`REC APP ACC` or only a `DELBY` of its successor. This is what the statements
+`LIST CDS SYSMOD(TUFS151)` and `LIST CDS SYSMOD(TUFSDEL)` print after step 2,
 before step 3 has run:
 
 ```
- LIST CDS  SYSMOD(TUFS150) .
+ LIST CDS  SYSMOD(TUFS151) .
 SMPCDS   SYSMOD ENTRIES
   NAME
-TUFS150   TYPE            = FUNCTION
+TUFS151   TYPE            = FUNCTION
           DELBY           = TUFSDEL
 
  LIST CDS  SYSMOD(TUFSDEL) .
@@ -323,10 +330,10 @@ SMPCDS   SYSMOD ENTRIES
 TUFSDEL   TYPE            = FUNCTION
           STATUS          = REC  APP  ACC
           FMID            = TUFSDEL
-          DATE/TIME REC   = 26.294  10:36:45
-                    APP   = 26.294  10:36:57
-                    ACC   = 26.294  10:37:07
-          DELETE VER(001) = TUFS110   TUFS120   TUFS130   TUFS140   TUFS150
+          DATE/TIME REC   = 26.296  12:24:23
+                    APP   = 26.296  12:24:46
+                    ACC   = 26.296  12:25:02
+          DELETE VER(001) = TUFS110   TUFS120   TUFS130   TUFS140   TUFS150   TUFS151
 ```
 
 ## 5. Scratch the libraries
@@ -358,10 +365,10 @@ library:
 //UCLCDS  EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN CDS .
-  DEL SYSMOD(TUFS150) MOD(UFSD) .
-  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) MOD(UFSD) .
+  DEL SYSMOD(TUFS151) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS151) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS151) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
@@ -370,6 +377,7 @@ library:
   DEL LMOD(UFSDSSIR) .
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -380,14 +388,15 @@ library:
 //UCLACDS EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN ACDS .
-  DEL SYSMOD(TUFS150) MOD(UFSD) .
-  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) MOD(UFSD) .
+  DEL SYSMOD(TUFS151) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS151) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS151) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -398,6 +407,8 @@ library:
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
  RESETRC .
+ LIST CDS  SYSMOD(TUFS151) .
+ LIST ACDS SYSMOD(TUFS151) .
  LIST CDS  SYSMOD(TUFS150) .
  LIST ACDS SYSMOD(TUFS150) .
  LIST CDS  SYSMOD(TUFS140) .
@@ -419,18 +430,18 @@ statements after it are still processed. It is no sign that a line did what you
 wanted, and a step that ends with return code 08 can also hide a statement that
 failed for another reason. Read every message, and take the `LIST` of step 4 as
 the only proof. This is the output of step `UCLCDS` on a system that had
-installed 1.5.0 new, so that `TUFS130` and the older ids were never in its zone:
+installed 1.5.1 new, so that `TUFS140` and the older ids were never in its zone:
 
 ```
  UCLIN CDS .
-  DEL SYSMOD(TUFS150) MOD(UFSD) .
-HMA2550    UPDATE COMPLETE FOR TUFS150
-  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
-HMA2550    UPDATE COMPLETE FOR TUFS150
-  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
-HMA2550    UPDATE COMPLETE FOR TUFS150
-  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
-HMA2550    UPDATE COMPLETE FOR TUFS150
+  DEL SYSMOD(TUFS151) MOD(UFSD) .
+HMA2550    UPDATE COMPLETE FOR TUFS151
+  DEL SYSMOD(TUFS151) MOD(UFSDSSIR) .
+HMA2550    UPDATE COMPLETE FOR TUFS151
+  DEL SYSMOD(TUFS151) MOD(UFSDCLNP) .
+HMA2550    UPDATE COMPLETE FOR TUFS151
+  DEL SYSMOD(TUFS151) MOD(UFSFMT) .
+HMA2550    UPDATE COMPLETE FOR TUFS151
   DEL MOD(UFSD) .
 HMA2550    UPDATE COMPLETE FOR UFSD
   DEL MOD(UFSDSSIR) .
@@ -447,10 +458,13 @@ HMA2550    UPDATE COMPLETE FOR UFSDSSIR
 HMA2550    UPDATE COMPLETE FOR UFSDCLNP
   DEL LMOD(UFSFMT) .
 HMA2550    UPDATE COMPLETE FOR UFSFMT
+  DEL SYSMOD(TUFS151) .
+HMA2550    UPDATE COMPLETE FOR TUFS151
   DEL SYSMOD(TUFS150) .
 HMA2550    UPDATE COMPLETE FOR TUFS150
   DEL SYSMOD(TUFS140) .
-HMA2550    UPDATE COMPLETE FOR TUFS140
+HMA2532 ** SYSMOD ENTRY TUFS140 TO BE DELETED DOES NOT EXIST
+HMA2560    UPDATE PROCESSING TERMINATED - UPDATE NOT COMPLETE
   DEL SYSMOD(TUFS130) .
 HMA2532 ** SYSMOD ENTRY TUFS130 TO BE DELETED DOES NOT EXIST
 HMA2560    UPDATE PROCESSING TERMINATED - UPDATE NOT COMPLETE
@@ -474,7 +488,7 @@ answers `HMA2293 ** CONTROL STATEMENT IGNORED DUE TO PREVIOUS ERROR` and does
 nothing. With both blocks in one step, the ids that the system never had would
 leave the ACDS untouched.
 
-Then read the `LIST` as in step 4, here ten statements without `TUFSDEL`, and,
+Then read the `LIST` as in step 4, here twelve statements without `TUFSDEL`, and,
 if you remove UFSD for good, scratch the libraries as in step 5. `UCLIN` changes
 only the inventory: until you scratch them, the load modules are still in the
 target library, and the copies that SMP accepted are in the distribution
@@ -499,8 +513,8 @@ accepts the FMID in the same run in which it applies it. That closes both of the
 usual ways back:
 
 ```
-HMA2452 ** SYSMOD TUFS150 SELECTED FOR RESTORE HAS BEEN ACCEPTED
-HMA2462 ** SYSMOD TUFS150 NOT FOUND ON SMPPTS LIBRARY
+HMA2452 ** SYSMOD TUFS151 SELECTED FOR RESTORE HAS BEEN ACCEPTED
+HMA2462 ** SYSMOD TUFS151 NOT FOUND ON SMPPTS LIBRARY
 ```
 
 `RESTORE` refuses a SYSMOD that has been accepted (`HMA2452`, return code 12).

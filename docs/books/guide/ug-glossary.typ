@@ -32,7 +32,7 @@ its own.
   [file system], [One formatted BDAM data set with a boot block, a
     _superblock_, an inode list and data blocks (@ug-intro-fs).],
   [FMID], [The function modification identifier. The identifier of the
-    release in the SMP inventory, #cmd("TUFS150") for UFSD 1.5.0
+    release in the SMP inventory, #cmd("TUFS151") for UFSD 1.5.1
     (@ug-remove).],
   [inode], [The record of a file or directory in a _file system_. The number
     is fixed when the disk is formatted (@ug-disks-space).],
