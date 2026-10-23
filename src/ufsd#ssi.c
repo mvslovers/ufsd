@@ -22,7 +22,7 @@
 **   2. Find UFSD_ANCHOR via ssct_find(UFSD_SSNAME)->ssctsuse
 **   3. CS-pop one UFSREQ from the free pool
 **   4. Fill UFSREQ fields from UFSSSOB
-**   5. CS-enqueue UFSREQ at req_tail (req_lock spin)
+**   5. Queue the UFSREQ (ufsd_rq_push, UFSD#RQ)
 **   6. POST anchor->server_ecb to wake the STC
 **   7. Timed WAIT on req->client_ecb (5 s intervals)
 **      - On timeout: check UFSD_ANCHOR_ACTIVE, bail if dead
@@ -61,38 +61,6 @@
 ** ============================================================ */
 
 /*
-** cs_lock_acquire: spin on anchor->req_lock using CS instruction.
-**
-** S/370 CS R1,R3,D2(B2):
-**   compare memory[D2+B2] with R1;
-**   if equal:  store R3 into memory, CC=0, R1 unchanged;
-**   if unequal: load memory into R1,  CC=1, memory unchanged.
-**
-** We attempt to CS 0 (unlock) -> 1 (locked).
-** If "old" comes back as 0, the CS succeeded; otherwise retry.
-*/
-static void
-cs_lock_acquire(UFSD_ANCHOR *anchor)
-{
-    unsigned old;
-
-    do {
-        old = 0;
-        __asm__ __volatile__(
-            "CS %0,%2,%1"
-            : "+r"(old), "+m"(anchor->req_lock)
-            : "r"(1U)
-            : "cc");
-    } while (old != 0);
-}
-
-static void
-cs_lock_release(UFSD_ANCHOR *anchor)
-{
-    anchor->req_lock = 0;
-}
-
-/*
 ** free_pop: lock-free pop from the free request pool (CDS on head and
 ** tag, ufsd#pol.c; a head-only CS could hand one block to two clients).
 */
@@ -106,32 +74,6 @@ free_pop(UFSD_ANCHOR *anchor)
     /* Decrement free_count (approximate; diagnostics only) */
     if (req) __udec(&anchor->free_count);
     return req;
-}
-
-/*
-** queue_append: append req to the request queue tail.
-**
-** Uses req_lock (CS spin) to serialise multiple concurrent
-** clients.  The server dequeues from req_head without a lock
-** (single consumer).
-*/
-/* Returns 1 if queue was empty before this append, 0 otherwise */
-static int
-queue_append(UFSD_ANCHOR *anchor, UFSREQ *req)
-{
-    int was_empty;
-
-    req->next = NULL;
-    cs_lock_acquire(anchor);
-    was_empty = (anchor->req_head == NULL);
-    if (anchor->req_tail) {
-        anchor->req_tail->next = req;
-    } else {
-        anchor->req_head = req;
-    }
-    anchor->req_tail = req;
-    cs_lock_release(anchor);
-    return was_empty;
 }
 
 /* ============================================================
@@ -276,7 +218,7 @@ ufsdssir(void)
         ECB *ecbp = req->client_ecb_ptr;
 
         /* --- Enqueue the request --- */
-        int was_empty = queue_append(anchor, req);
+        int was_empty = ufsd_rq_push(anchor, req);
 
         /* --- Wake the STC via cross-AS POST (from supervisor state) ---
         ** Only POST if queue was previously empty; otherwise the STC

@@ -83,7 +83,7 @@ reus = true
 entry = "UFSDSSIR"
 startup = false
 ac = 1
-sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c", "src/ufsd#pol.c", "src/ufsd#cds.c"]
+sources = ["src/ufsd#ssi.c", "src/ufsd#buf.c", "src/ufsd#pol.c", "src/ufsd#cds.c", "src/ufsd#rq.c", "src/ufsd#rqc.c"]
 
 # UFSDCLNP — cleanup utility (all defaults: entry=@@CRT0)
 # Wraps the shared reclaim routine (ufsd#rcl.c, also part of UFSD).
@@ -196,6 +196,16 @@ sources = ["test/host/tstufsfq.c"]
 rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs its own ufsd_pool_cds
 sources = ["test/host/tstufspl.c", "src/ufsd#pol.c"]
+
+# TSTUFSRQ — the request queue loses no request when a client appends while the
+# server takes the last one (#159). Links src/ufsd#rq.c with stand-ins for the
+# machine-dependent steps (src/ufsd#rqc.c on the target) that run a second
+# "CPU" at the points where a real one can. Host-only (mvs = false): the
+# stand-ins are the test's own.
+[test.TSTUFSRQ]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs its own ufsd_rq_lock/unlock/window
+sources = ["test/host/tstufsrq.c", "src/ufsd#rq.c"]
 
 # TSTUFSIO — the ferror() guards behind UFSD106E and UFSFMT17E (#69): a read
 # error on DD:UFSDPRM / SYSIN must stop ufsd_cfg_read() and parse_sysin(), not

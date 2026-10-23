@@ -65,12 +65,7 @@ ufsd_dequeue(UFSD_ANCHOR *anchor)
 
     if (__super(PSWKEY0, &savekey)) return NULL;
 
-    req = anchor->req_head;
-    if (req) {
-        anchor->req_head = req->next;
-        if (!anchor->req_head) anchor->req_tail = NULL;
-        req->next = NULL;
-    }
+    req = ufsd_rq_pop(anchor);
 
     __prob(savekey, NULL);
     return req;

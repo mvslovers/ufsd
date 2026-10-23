@@ -124,6 +124,13 @@ ufsd_trace(UFSD_ANCHOR *anchor, unsigned short func, unsigned token,
     (void)anchor; (void)func; (void)token; (void)rc;
 }
 
+UFSREQ *
+ufsd_rq_pop(UFSD_ANCHOR *anchor)
+{
+    (void)anchor;
+    return NULL;                        /* ufsd_dequeue is not under test */
+}
+
 UFSBUF *
 ufsd_buf_alloc(UFSD_ANCHOR *anchor)
 {

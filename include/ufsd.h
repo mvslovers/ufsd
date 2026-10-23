@@ -687,6 +687,16 @@ void ufsd_trace(UFSD_ANCHOR *anchor, unsigned short func,
 /* ufsd#trc.c (AP-1f) */
 void ufsd_trace_dump(UFSD_ANCHOR *anchor)                            asm("UFSD@TRD");
 
+/* ufsd#rq.c -- the request queue (portable, host-tested).  Key-0 callers.
+** push returns 1 if the queue was empty. */
+int     ufsd_rq_push(UFSD_ANCHOR *anchor, UFSREQ *req)               asm("UFSD@RQU");
+UFSREQ *ufsd_rq_pop(UFSD_ANCHOR *anchor)                             asm("UFSD@RQO");
+
+/* ufsd#rqc.c -- the machine-dependent steps under it */
+void    ufsd_rq_lock(UFSD_ANCHOR *anchor)                            asm("UFSD@RQL");
+void    ufsd_rq_unlock(UFSD_ANCHOR *anchor)                          asm("UFSD@RQK");
+void    ufsd_rq_window(void)                                         asm("UFSD@RQW");
+
 /* ufsd#que.c (AP-1c) */
 UFSREQ *ufsd_dequeue(UFSD_ANCHOR *anchor)                            asm("UFSD@DEQ");
 void    ufsd_dispatch(UFSD_ANCHOR *anchor, UFSREQ *req)              asm("UFSD@DSP");
