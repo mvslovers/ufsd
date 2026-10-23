@@ -23,7 +23,7 @@
 **   3. CS-pop one UFSREQ from the free pool
 **   4. Fill UFSREQ fields from UFSSSOB
 **   5. Queue the UFSREQ (ufsd_rq_push, UFSD#RQ)
-**   6. POST anchor->server_ecb to wake the STC
+**   6. POST anchor->server_ecb if the queue was empty (wakes the STC)
 **   7. Timed WAIT on req->client_ecb (5 s intervals)
 **      - On timeout: check UFSD_ANCHOR_ACTIVE, bail if dead
 **      - On POST: continue to step 8

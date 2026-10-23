@@ -16,7 +16,7 @@
 ** corruption.
 **
 ** ufsd_server_ecb_reset  - zero server_ecb before WAIT
-** ufsd_dequeue           - pop one request from req_head
+** ufsd_dequeue           - take the oldest request (UFSD#RQ)
 ** ufsd_dispatch          - validate + dispatch + post client ECB
 */
 
