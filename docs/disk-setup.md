@@ -124,6 +124,6 @@ the block size of the image.
 When the data set exists, name it in the configuration (_UFSD User's Guide_,
 chapter 4, "Configuring UFSD").
 
-The books are attached to each release from 1.5.1 on as `ml05-0001-<edition>.pdf`
+The books are attached to each release from 1.5.0 on as `ml05-0001-<edition>.pdf`
 and `ml05-0002-<edition>.pdf`. The sources are in [`docs/books`](books); the
 chapters are in `guide/` and `ref/`.

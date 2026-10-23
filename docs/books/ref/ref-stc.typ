@@ -65,7 +65,8 @@ must run authorised. There are two ways:
 Without either, the start fails with #cmd("UFSD091E APF SETUP FAILED RC=n
 (STEPLIB NOT APF AUTHORIZED?)") and return code 8. UFSDCLNP fails the same way
 with #cmd("UFSD141E"). The key in the message is inferred from the way, not
-measured. Release 1.5.0 was tested on the RAKF route only; release 1.5.1 was not tested on the APF route again.
+measured. Release 1.5.0 was tested on the RAKF route only. Release 1.5.1 was tested on
+neither route again.
 
 == The Procedure <ref-stc-proc>
 

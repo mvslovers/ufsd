@@ -1,7 +1,7 @@
 # Removing UFSD
 
 This is the supported way to take UFSD back off an MVS 3.8j system and free
-its FMID for a re-install. The same procedure is chapter 7, "Removing UFSD",
+its FMID for a re-install. The same procedure is chapter 8, "Removing UFSD",
 of the _UFSD User's Guide_ (ML05-0001).
 
 The main way lets SMP do the work: a dummy function, `TUFSDEL`, deletes every
@@ -64,7 +64,7 @@ id, it is added to every list here.
 ```
 
 If common storage is still held afterwards, run `/S UFSDCLNP` before you go on.
-See chapter 6, "Recovery After a Failure", of the _UFSD User's Guide_.
+See chapter 7, "Recovery After a Failure", of the _UFSD User's Guide_.
 
 ## 2. Delete the release with the dummy function
 

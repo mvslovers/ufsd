@@ -451,7 +451,8 @@ is set to run through it.
 
 Check the members, not the condition codes. For each module the two messages
 #cmd("HMA2240") (the old module is deleted) and #cmd("HMA2380") (the new one is
-copied) show that the upgrade happened.
+copied) show that the upgrade happened. List the members of #cmd("UFSD.LINKLIB")
+as in @ug-install-verify. All four modules must be there.
 
 If SMP meets an element that it does not own, it prints #cmd("NOT SEL"),
 copies nothing and still ends with RC 00 and #cmd("HMA2270 ... SUCCESSFULLY COMPLETED"). That is an install that reports success and changes nothing.

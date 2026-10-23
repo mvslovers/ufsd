@@ -500,7 +500,7 @@ It is safe to run when UFSD is not registered; it reports that there is nothing
 to do and ends RC 0. When the server is running it refuses with `UFSD157W` and
 RC 8.
 
-Recovery is described in the _UFSD User's Guide_, chapter 6, "Recovery After a
+Recovery is described in the _UFSD User's Guide_, chapter 7, "Recovery After a
 Failure"; the messages are in the _UFSD Reference_, appendix A.
 
 ---
@@ -587,7 +587,8 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 
 In an upgrade, the element reports that follow can show `NOT SEL` next to
 `TUFS150 DELETED`. That is normal; what shows that the upgrade happened is the
-pair `HMA2240` and `HMA2380` for each module. A `NOT SEL` *in place of*
+pair `HMA2240` and `HMA2380` for each module, and the member list of
+`UFSD.LINKLIB` from step 5, which must show all four modules. A `NOT SEL` *in place of*
 `HMA2380` is the failure described next.
 
 If SMP meets an element it does not own it prints `NOT SEL` instead, copies
@@ -833,4 +834,4 @@ not change a client that is already linked.
 
 The meaning of every message, with the action to take, is in the _UFSD
 Reference_, appendix A, "Messages". For what to do after a failure, see
-step 9 and the _UFSD User's Guide_, chapter 6, "Recovery After a Failure".
+step 9 and the _UFSD User's Guide_, chapter 7, "Recovery After a Failure".
