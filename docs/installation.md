@@ -556,7 +556,12 @@ compare-and-swap, and the anchor the server keeps in common storage is 152
 bytes long instead of 132 (anchor version 2). The router `UFSDSSIR` and the
 cleanup utility `UFSDCLNP` use that layout, so all three modules must come from
 the same release; a router of 1.5.0 would work on a pool head word that the 1.5.1
-server no longer maintains. The install job cannot get this wrong, because one
+server no longer maintains. The request queue is also shared by a new rule: the
+router adds a request to one chain with a compare-and-swap, and the server takes
+the whole chain and keeps the requests in a list of its own. The anchor word that
+a 1.5.0 router uses as the tail of the queue is that list in 1.5.1, so a router
+and a server from different releases do not agree on where the queue ends. The
+install job cannot get this wrong, because one
 SYSMOD carries all of them. It matters if you copy modules by hand or keep a
 second library with an older `UFSDCLNP` or `UFSDSSIR` in a `STEPLIB`.
 
