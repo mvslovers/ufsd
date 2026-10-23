@@ -25,8 +25,9 @@ console messages and, for an install problem, the job output.
 
 This guide is complete for installing, upgrading and removing UFSD. For
 everything else there are two manuals: the _UFSD User's Guide_ (ML05-0001) and
-the _UFSD Reference_ (ML05-0002). They are attached to each release from 1.5.1
-on as `ml05-0001-<edition>.pdf` and `ml05-0002-<edition>.pdf`, and their
+the _UFSD Reference_ (ML05-0002). They are attached to each release from 1.5.0
+on as `ml05-0001-<edition>.pdf` and `ml05-0002-<edition>.pdf` (the copy that
+came with 1.5.0 is an early draft), and their
 sources are in `docs/books` in the repository. Where this guide sends you to a
 chapter, it means one of these.
 
@@ -36,7 +37,7 @@ One placeholder is used throughout:
 
 | | |
 |---|---|
-| `<version>` | the release, e.g. `1.5.0` — it appears in every shipped file name |
+| `<version>` | the release, e.g. `1.5.1` — it appears in every shipped file name |
 
 It is already filled in inside the shipped jobs; you only need it to recognise
 which file is which.
@@ -266,8 +267,8 @@ fresh install, because the SYSMOD names it in its `DELETE` operand:
 
 ```
 SYSMOD   STATUS    TYPE      FMID     REQUISITE AND SUPEDBY SYSMODS
-TUFS140  DELETED   FUNCTION
-TUFS150  APPLIED   FUNCTION  TUFS150
+TUFS150  DELETED   FUNCTION
+TUFS151  APPLIED   FUNCTION  TUFS151
 ```
 
 An upgrade ends the `APPLY` with RC 04 (`HMA2461`) instead, and that is also
@@ -296,8 +297,8 @@ If the listing is empty while the job log said success, the `APPLY` printed
 `NOT SEL` instead of `HMA2380`: some other SYSMOD owns those module names in
 the SMP inventory. Each release deletes **only the one immediately before
 it**, so the owner is cleared as part of the install only when you come from
-that release. The usual cause is skipping a release: a system still on 1.3.0
-(`TUFS130`) or 1.2.x (`TUFS120`) installing 1.5.0 -- see section 10, which
+that release. The usual cause is skipping a release: a system still on 1.4.0
+(`TUFS140`), 1.3.0 (`TUFS130`) or 1.2.x (`TUFS120`) installing 1.5.1 -- see section 10, which
 starts with the check that tells the cases apart. Otherwise the names were
 claimed by something this release does not know about: a test install under a
 throwaway id, or ufsd 1.1.x, which was never released but was applied on at
@@ -427,26 +428,26 @@ chapter 3, "The UFSFMT Utility".
 ```
 
 A healthy start ends in `UFSD001I … READY`. The set of lines depends on your
-configuration; this is the console of a 1.5.0 system with three filesystems.
+configuration; this is the console of a 1.5.1 system with three filesystems.
 The version, the build stamps and the addresses are those of that system:
 
 ```
-UFSD000I UFSD 1.5.0 (1AA3EB6) STARTING
-UFSD005I LIBC370 2.24.1 (EF09210)
+UFSD000I UFSD 1.5.1 (C552298) STARTING
+UFSD005I LIBC370 2.25.1 (FCDE4E8)
 UFSD007I AUTHORIZED BY SVC (MODULE KEY 8)
-UFSD030I CSA ALLOCATED: ANCHOR=00BBE7F8
+UFSD030I CSA ALLOCATED: ANCHOR=009D6F48
 UFSD031I   REQUEST POOL: 32 BLOCKS, 9K
 UFSD032I   BUFFER POOL:  16 BLOCKS, 64K
 UFSD033I   TRACE BUFFER: 256 ENTRIES, 4K
 UFSD034I SSCT REGISTERED, SUBSYSTEM NAME=UFS1
-UFSD035I SSI ROUTER LOADED AT 00ACD4C8
+UFSD035I SSI ROUTER LOADED AT 00ACF248
 UFSD045I SESSION TABLE: 64 SLOTS
 UFSD047I GLOBAL FILE TABLE: 256 SLOTS
 UFSD060I MOUNTED UFSD.ROOT ON / (ROOT)
 UFSD060I MOUNTED UFSD.SCRATCH ON /tmp (RW)
 UFSD060I MOUNTED HERC01.UFSHOME ON /u/herc01 (RW, OWNER=HERC01)
 UFSD040I 3 FILESYSTEM(S) MOUNTED
-UFSD001I UFSD 1.5.0 READY -- 3 DISKS, 78K CSA, 64 SESSIONS, 256 FILES
+UFSD001I UFSD 1.5.1 READY -- 3 DISKS, 78K CSA, 64 SESSIONS, 256 FILES
 ```
 
 The two build stamps identify exactly what is running: `UFSD000I` gives the
@@ -517,8 +518,10 @@ only the one immediately before it:
 /*
 ```
 
-- **`TUFS140`:** an upgrade from 1.4.0. Run `/P UFSD`, the install job, then `/S UFSD`.
-- **`TUFS130`:** 1.3.0 — this release skips 1.4.0 and so does not delete it.
+- **`TUFS150`:** an upgrade from 1.5.0. Run `/P UFSD`, the install job, then `/S UFSD`.
+- **`TUFS140`:** 1.4.0 — this release deletes `TUFS150` only. See
+  [Coming from 1.4.0](#coming-from-140).
+- **`TUFS130`:** 1.3.0 — likewise not deleted by this release.
   See [Coming from 1.3.0](#coming-from-130).
 - **`TUFS120`:** 1.2.x. See [Coming from 1.2.x](#coming-from-12x).
 - **not found:** a fresh install, or a system that never had UFSD under SMP —
@@ -526,7 +529,7 @@ only the one immediately before it:
   latter. Run the allocation job, then the install job.
 
 Each release has an FMID of its own and deletes only its predecessor's:
-`TUFS140` is 1.4.0, and `TUFS150` (this release) deletes `TUFS140`. An older
+`TUFS150` is 1.5.0, and `TUFS151` (this release) deletes `TUFS150`. An older
 owner of `MOD(UFSD)` is left in place, and then SMP installs nothing.
 
 An upgrade from the immediately preceding release is **step 3 and step 5, and
@@ -539,13 +542,23 @@ alloc job would fail on `DISP=(NEW,CATLG)` — harmlessly, but it has nothing to
 do.
 
 **There is no `UCLIN` step any more.** Each release carries its own FMID and
-deletes the one before it — 1.5.0 is `TUFS150` and its `++VER` reads
-`DELETE(TUFS140)`. SMP deletes the predecessor's load modules from the target
+deletes the one before it — 1.5.1 is `TUFS151` and its `++VER` reads
+`DELETE(TUFS150)`. SMP deletes the predecessor's load modules from the target
 library and copies the new ones in, and the module entries in its inventory
 become this release's. The removal in
 [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md)
 is for **removing** UFSD, not for replacing it — its dummy function would empty
 and its last step would scratch the datasets you are installing into.
+
+**Install `UFSD`, `UFSDSSIR` and `UFSDCLNP` together.** Since 1.5.1 the free
+request and buffer pools of the server are changed with a double-word
+compare-and-swap, and the anchor the server keeps in common storage is 152
+bytes long instead of 132 (anchor version 2). The router `UFSDSSIR` and the
+cleanup utility `UFSDCLNP` use that layout, so all three modules must come from
+the same release; a router of 1.5.0 would work on a pool head word that the 1.5.1
+server no longer maintains. The install job cannot get this wrong, because one
+SYSMOD carries all of them. It matters if you copy modules by hand or keep a
+second library with an older `UFSDCLNP` or `UFSDSSIR` in a `STEPLIB`.
 
 **Stop the server.** `/P UFSD` before the install job, `/S UFSD` after. A
 running STC holds its own copy of the load module in storage and would go on
@@ -556,8 +569,8 @@ backup entry in `SYS1.SMPSCDS` and never will, so the step reports success and
 *then* a 4:
 
 ```
-HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS150
-HMA2461    SYSMOD TUFS140 NOT FOUND ON SMPSCDS LIBRARY
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS151
+HMA2461    SYSMOD TUFS150 NOT FOUND ON SMPSCDS LIBRARY
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
 ```
 
@@ -573,7 +586,7 @@ HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB
 ```
 
 In an upgrade, the element reports that follow can show `NOT SEL` next to
-`TUFS140 DELETED`. That is normal; what shows that the upgrade happened is the
+`TUFS150 DELETED`. That is normal; what shows that the upgrade happened is the
 pair `HMA2240` and `HMA2380` for each module. A `NOT SEL` *in place of*
 `HMA2380` is the failure described next.
 
@@ -593,7 +606,7 @@ is a **move**: the old datasets are not written to, and you scratch them
 yourself once the new server is up.
 
 **Only 1.3.0 deletes `TUFS120`.** Every release deletes the one immediately
-before it and nothing older, so this release (`TUFS150`, `DELETE(TUFS140)`)
+before it and nothing older, so this release (`TUFS151`, `DELETE(TUFS150)`)
 leaves `TUFS120` owning `MOD(UFSD)`. SMP then prints `NOT SEL` for every
 module, copies nothing and ends `RC 00`: the trap described under section 5 of this guide.
 Release the inventory by hand first, in step 2.
@@ -645,19 +658,78 @@ window you chose and then close — not as a state you can leave the system in.
 
 Each step was measured on its own (the `UCLIN`, a fresh install, and 1.3.0's
 move across the rename). The sequence as a whole has not been run from 1.2.x to
-this release. The alternative is to walk the releases in order — 1.3.0, then
-1.4.0, then this one — each an ordinary upgrade after the first.
+this release. The alternative is to walk the releases in order — 1.3.0, 1.4.0,
+1.5.0, then this one — each an ordinary upgrade after the first.
+
+### Coming from 1.4.0
+
+1.4.0 (`TUFS140`) installs into `UFSD.*` like this release, so there is nothing
+to allocate and no `STEPLIB` to re-point. This release deletes `TUFS150` only,
+and a system that went from 1.4.0 straight to 1.5.1 never had it. `TUFS140`
+still owns `MOD(UFSD)`:
+
+```
+ LIST CDS  MOD(UFSD) .
+SMPCDS  MODULE ENTRIES
+  NAME
+UFSD      LASTUPD         = TUFS140  TYPE=ADD
+          LIBRARIES       = DISTLIB=AUFSDLOD
+          FMID            = TUFS140
+          RMID            = TUFS140
+          LMOD            = UFSD
+```
+
+A plain install then does nothing, and says so only in a place that is easy to
+overlook. This is the `APPLY` step of the install job on such a system. It ends
+with return code 00, there is no `HMA2380` and no `HMA2240`, and every module
+reads `NOT SEL`:
+
+```
+ APPLY S(TUFS151) DIS(WRITE) .
+HMA4140    SMPCDS DIRECTORY SUCCESSFULLY LOADED FOR IN-STORAGE UPDATE OPERATIONS
+HMA4180    INLINE JCLIN PROCESSING SUCCESSFUL FOR SYSMOD=TUFS151
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFS151
+HMA3680    SMPCDS IN STORAGE DIRECTORY SUCCESSFULLY REWRITTEN
+HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00
+ELEM   ELEMENT   ELEM      CURRENT  CURRENT  MAC/SRC   DISTSRC   ASSEM    LOAD MOD  ---LMOD SYSLIB---  SYSMOD   SYSMOD
+TYPE   NAME      STATUS    FMID     RMID     SYSLIB    LIBRARY   NAMES                                 NAME     STATUS
+MOD    UFSD      NOT SEL                                                                               TUFS151  APPLIED
+MOD    UFSDCLNP  NOT SEL                                                                               TUFS151  APPLIED
+MOD    UFSDSSIR  NOT SEL                                                                               TUFS151  APPLIED
+MOD    UFSFMT    NOT SEL                                                                               TUFS151  APPLIED
+```
+
+The server that is started afterwards is still 1.4.0: `UFSD000I` names that
+version. Either install 1.5.0 first and then this release (two ordinary
+upgrades), or release the inventory by hand:
+
+1. `/P UFSD`.
+2. **The fallback in [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#the-fallback-uclin-alone)
+   only**, as in the routes above; do not run its step 2 or its step 5.
+   If you have already run the plain install once, as above, the fallback also
+   removes the `TUFS151` entries that run left behind.
+3. **Steps 3 and 5**, then `/S UFSD` and read `UFSD000I` (step 8): it must name
+   the version and commit you just installed.
+
+This route was run once, on a throwaway system that had 1.4.0 installed under
+SMP, after the plain install above had failed in the way shown. The fallback
+ended RC 08 for the ids that system never had (see uninstall.md), steps 3 and 5
+then ended RC 00 and copied the four modules (`HMA2380`, once per module and
+library), and the server came up as 1.5.1. The server was not stopped with
+`/P UFSD`, as step 1 says, before the second install; a stop is what you should
+do. It was cancelled afterwards, and the 1.5.1 start reclaimed the anchor the
+1.4.0 server had left (`UFSD004I`, see chapter 7 of the User's Guide).
 
 ### Coming from 1.3.0
 
 1.3.0 (`TUFS130`) already installs into `UFSD.*`, so there is no rename to
 cross: nothing to allocate and no `STEPLIB` to re-point. What it shares with
-1.2.x is the inventory wall — this release deletes `TUFS140` only, so
+1.2.x is the inventory wall — this release deletes `TUFS150` only, so
 `TUFS130` still owns `MOD(UFSD)` and a plain install prints `NOT SEL` and ends
 `RC 00` with nothing copied.
 
-Either install 1.4.0 first and then this release (two ordinary upgrades), or
-release the inventory by hand:
+Either install 1.4.0 and 1.5.0 first and then this release (three ordinary
+upgrades), or release the inventory by hand:
 
 1. `/P UFSD`.
 2. **The fallback in [uninstall.md](https://github.com/mvslovers/ufsd/blob/main/docs/uninstall.md#the-fallback-uclin-alone)
@@ -709,7 +781,7 @@ system where this was measured, the cause is `PURGE=YES` in the system entry of
 the `SMPPTS`; a system with `PURGE=NO` has not been measured.
 
 The way back is a **dummy function**, `TUFSDEL`, that deletes every release of
-UFSD up to 1.5.0 and takes the load modules out of both libraries. It carries
+UFSD up to 1.5.1 and takes the load modules out of both libraries. It carries
 no elements and is not a release FMID; the same procedure frees it again. Then
 a `UCLIN` job removes the entries from the two SMP zones, and you read the
 `LIST` and scratch the libraries. A way with `UCLIN` alone is the fallback.
@@ -730,6 +802,12 @@ separate `ufsd-<version>-lib.tar.gz` release asset — it provides `include/` an
 linkage convention are documented in the _UFSD User's Guide_ (ML05-0001),
 chapter 6, "Programming with libufs", and in the _UFSD Reference_ (ML05-0002),
 chapter 5, "The Client Library libufs".
+
+Two of the fixes in 1.5.1 are in `libufs` itself, not in the server: paths of
+256 or more characters are refused, and `ufs_fread` no longer reports
+end-of-file too early (see `CHANGELOG.md`). A client picks them up only when it
+is rebuilt against the `libufs.a` of this release; installing the server does
+not change a client that is already linked.
 
 ---
 

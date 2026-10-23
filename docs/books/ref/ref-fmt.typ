@@ -280,7 +280,7 @@ statement that mounts the new disk. The following run formatted a data set
 of 256 blocks:
 
 #screen(```
-UFSFMT10I UFSFMT 1.5.0 -- UFS370 disk format utility
+UFSFMT10I UFSFMT 1.5.1 -- UFS370 disk format utility
 UFSFMT26I Initialized 256 blocks (1.00 MB)
 UFSFMT51I Formatted 2 index blocks, 64 inode slots
 UFSFMT52I Formatted 252 data blocks

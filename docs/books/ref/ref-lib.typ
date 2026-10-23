@@ -4,14 +4,16 @@
 
 #idx("libufs")
 #idx("client library")
-This chapter describes the client library #cmd("libufs") of UFSD (ufsd) 1.5.0
+This chapter describes the client library #cmd("libufs") of UFSD (ufsd) 1.5.1
 function by function: the prototype, the parameters, the value returned and the
 return codes that the function can give. How to build and run a program with it
 is the subject of the _UFSD User's Guide_. The statements about behaviour in
 this chapter were checked against the source of the library, and those marked
 as measured were run on TK5 with the library of release 1.5.0 against the
 server of the TK5 image, which is UFSD 1.4.0. The functions that were measured
-are the same in both releases; the release 1.5.0 of the server was not run.
+are the same in all three releases except where the text names a difference
+(a path of 256 characters or more, and a read answered inline in #cmd("ufs_fread"));
+the server of release 1.5.1 was not run with this library.
 
 == Conventions <ref-lib-conv>
 
@@ -431,8 +433,12 @@ UINT32 ufs_fread(void *ptr, UINT32 size, UINT32 nitems, UFSFILE *fp);
 ```)
 
 Reads up to #cmd("size × nitems") bytes. The library asks UFSD in pieces of up
-to 4096 bytes. What happens when the common storage has no free buffer for such
-a piece is not specified for reading; do not rely on it.
+to 4096 bytes. If the common storage has no free buffer for such a piece, UFSD
+answers with at most 252 bytes inline and the library asks for the rest in the
+next piece. The library of release 1.5.0 took that short answer for the end of
+the file: it returned a short count and set the end-of-file flag although the
+file went on. Release 1.5.1 does not. This was checked against the source of
+the library, not run.
 
 *Return value:* the number of whole items, which is smaller than #cmd("nitems")
 at the end of the file and on an error, and 0 for a NULL argument, a size of 0,

@@ -82,7 +82,7 @@ FTP server with a few users. It does not suit a heavy parallel load.
   formatted (@ug-disks-space). A directory takes an inode, too.
 - *The sizes of the tables are fixed* when UFSD is built:
 
-#tab(caption: [Fixed sizes of UFSD 1.5.0])[
+#tab(caption: [Fixed sizes of UFSD 1.5.1])[
   #table(columns: (1fr, auto),
     [What], [Number],
     [Mounted file systems, the root included], [16],
@@ -107,15 +107,15 @@ mount fails with #cmd("UFSD061E MOUNT: DISK TABLE FULL (16 SLOTS)").
 UFSD comes as a release on GitHub, in the repository mvslovers/ufsd. A
 release has four files. Only the first is needed for an installation.
 
-#tab(caption: [The files of the release 1.5.0])[
+#tab(caption: [The files of the release 1.5.1])[
   #table(columns: (2.4in, 1fr),
     [File], [Contents],
-    [#cmd("ufsd-1.5.0-dist.zip") or #cmd("ufsd-1.5.0-dist.tar.gz")], [The
+    [#cmd("ufsd-1.5.1-dist.zip") or #cmd("ufsd-1.5.1-dist.tar.gz")], [The
       installation package: the two XMIT files, the two JCL jobs and a
       README with the same text as @ug-install.],
-    [#cmd("ufsd-1.5.0-load.xmit")], [The load modules alone, as an XMIT
+    [#cmd("ufsd-1.5.1-load.xmit")], [The load modules alone, as an XMIT
       file. It is also in the installation package.],
-    [#cmd("ufsd-1.5.0-lib.tar.gz")], [The headers and #cmd("libufs.a") for
+    [#cmd("ufsd-1.5.1-lib.tar.gz")], [The headers and #cmd("libufs.a") for
       programs that use UFSD. It is not needed to install or run UFSD.],
   )
 ]
@@ -142,7 +142,10 @@ command, parameter and message, with all its details, is in the _UFSD
 Reference_.
 
 The screens with console text and job output are real. They were taken from
-UFSD 1.5.0 running on TK5 in a test system, and only the time stamp and the job
-name that the console puts before each message are left out. The examples use
+UFSD running on TK5 in a test system, and only the time stamp and the job
+name that the console puts before each message are left out. The screens of
+the installation, the start, the recovery, the formatting and the removal come
+from UFSD 1.5.1; the others were taken from UFSD 1.5.0, and the chapter on
+libufs says which versions it used. The examples use
 the user ID HERC01 and the data sets of that test system. Replace them with your
 own names.

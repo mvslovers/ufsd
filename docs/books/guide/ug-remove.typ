@@ -15,10 +15,10 @@ would scratch the libraries that the new release installs into.
 
 == What UFSD Put on the System <ug-remove-what>
 
-#tab(caption: [What release 1.5.0 installed])[
+#tab(caption: [What release 1.5.1 installed])[
   #table(columns: (1.6in, 1fr),
     [Item], [Name],
-    [FMID], [#cmd("TUFS150")],
+    [FMID], [#cmd("TUFS151")],
     [Load modules], [#cmd("UFSD"), #cmd("UFSDSSIR"), #cmd("UFSDCLNP"), #cmd("UFSFMT")],
     [Target library], [#cmd("UFSD.LINKLIB")],
     [Distribution library], [#cmd("UFSD.AUFSDLOD")],
@@ -39,17 +39,17 @@ cleanup step of the install job scratched it.
 before it and leaves its id in the inventory as a mark, in both zones:
 
 #screen(```
-TUFS140   TYPE            = FUNCTION
-          DELBY           = TUFS150
+TUFS150   TYPE            = FUNCTION
+          DELBY           = TUFS151
 ```)
 
-A system that went from 1.2.x through 1.3.0 and 1.4.0 to 1.5.0 carries one
-such mark for every step. Deleting the id of the current release and of its
+A system that went from 1.2.x through 1.3.0, 1.4.0 and 1.5.0 to 1.5.1 carries
+one such mark for every step. Deleting the id of the current release and of its
 predecessor clears only the newest of them. Both ways below therefore name
 every id that UFSD has ever used (#cmd("TUFS110"), #cmd("TUFS120"),
-#cmd("TUFS130"), #cmd("TUFS140") and #cmd("TUFS150")), and you need not know
-which releases the system has seen. The jobs are written for releases up to
-1.5.0. A later release adds its own id to every list in this chapter.
+#cmd("TUFS130"), #cmd("TUFS140"), #cmd("TUFS150") and #cmd("TUFS151")), and you
+need not know which releases the system has seen. The jobs are written for
+releases up to 1.5.1. A later release adds its own id to every list in this chapter.
 
 == Step 1: Stop the Server <ug-remove-stop>
 
@@ -67,7 +67,7 @@ go on (@ug-recover-clnp).
 SMP deletes a function when a later function names it in a #cmd("DELETE")
 operand, and it removes the load modules of the deleted function from the
 libraries on the way. The job below receives, applies and accepts such a
-function. #cmd("TUFSDEL") has no elements. It deletes all UFSD ids up to 1.5.0
+function. #cmd("TUFSDEL") has no elements. It deletes all UFSD ids up to 1.5.1
 in one #cmd("DELETE") statement.
 
 *#cmd("TUFSDEL") is not a release FMID.* No release of UFSD ships it, the
@@ -101,7 +101,7 @@ Submit this job:
 //RECV    EXEC SMPREC
 //SMPPTFIN DD  *
 ++FUNCTION(TUFSDEL) .
-++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150) .
+++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150,TUFS151) .
 /*
 //SMPCNTL  DD  *
  RESETRC .
@@ -133,7 +133,7 @@ Read the three SMP steps one by one. The receive ends with return code 04:
 #screen(raw(read("../ex/ug-remove/dummy-recv.txt")))
 
 The apply deletes the four load modules from the target library. It also
-ends with return code 04, because SMP does not find #cmd("TUFS150") in the
+ends with return code 04, because SMP does not find #cmd("TUFS151") in the
 restore data set (#cmd("HMA2461")):
 
 #screen(raw(read("../ex/ug-remove/dummy-apply.txt")))
@@ -155,10 +155,11 @@ the output of the failed step; do not repeat the job before you know what it
 did.
 
 *What has been measured.* The job was run on a test system with a fresh
-installation of release 1.5.0 as the only SMP product with UFSD on it. A
-system with a history of upgrades, a system with more than one product in the
-same zones, and a dummy function with a #cmd("++MAC") element instead of none
-have not been measured. Whatever the system, the #cmd("LIST") in step 4 is
+installation of release 1.5.1 as the only SMP product with UFSD on it, and on
+one that went from 1.4.0 through 1.5.0 to 1.5.1 by the upgrade of the
+installation guide. A system with more than one product in the same zones, and
+a dummy function with a #cmd("++MAC") element instead of none have not been
+measured. Whatever the system, the #cmd("LIST") in step 4 is
 the proof.
 
 == Step 3: Free the Ids <ug-remove-free>
@@ -167,7 +168,7 @@ the proof.
 #idx("FMID", "removal")
 The dummy function has not made the ids free. It has left #cmd("TUFSDEL")
 itself in both zones, with the status #cmd("REC APP ACC"), and a mark
-#cmd("DELBY = TUFSDEL") on every id it deleted. This job removes the six
+#cmd("DELBY = TUFSDEL") on every id it deleted. This job removes the seven
 entries from the CDS (what is applied) and the ACDS (what is accepted). It
 changes the two SMP data bases and no library:
 
@@ -179,6 +180,7 @@ changes the two SMP data bases and no library:
 //SMPCNTL  DD  *
  UCLIN CDS .
   DEL SYSMOD(TUFSDEL) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -190,6 +192,7 @@ changes the two SMP data bases and no library:
 //SMPCNTL  DD  *
  UCLIN ACDS .
   DEL SYSMOD(TUFSDEL) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -202,6 +205,8 @@ changes the two SMP data bases and no library:
  RESETRC .
  LIST CDS  SYSMOD(TUFSDEL) .
  LIST ACDS SYSMOD(TUFSDEL) .
+ LIST CDS  SYSMOD(TUFS151) .
+ LIST ACDS SYSMOD(TUFS151) .
  LIST CDS  SYSMOD(TUFS150) .
  LIST ACDS SYSMOD(TUFS150) .
  LIST CDS  SYSMOD(TUFS140) .
@@ -229,7 +234,7 @@ The step #cmd("UCLACDS") gives the same. Any other message is not expected.
 == Step 4: Read the LIST <ug-remove-list>
 
 The last step of the job is the result. For every id, in both zones, it must
-answer that the entry was not found. These are the first two of the twelve
+answer that the entry was not found. These are the first two of the fourteen
 statements, as the step printed them:
 
 #screen(raw(read("../ex/ug-remove/list-gone.txt")))
@@ -240,11 +245,11 @@ Both zones count: an id gone from one and still in the other is not free.
 
 *Read the stanzas, not the return code of the step.* A mark that is still
 there answers with return code 00, so it does not raise the return code of
-the step above the 04 that you expect. The job has twelve #cmd("LIST")
-statements, and all twelve must show the id as not found. A stanza that names
+the step above the 04 that you expect. The job has fourteen #cmd("LIST")
+statements, and all fourteen must show the id as not found. A stanza that names
 #cmd("TYPE = FUNCTION") is an entry that is still there, whether it shows the
 status #cmd("REC APP ACC") or only a #cmd("DELBY") of its successor. This is
-what the statements #cmd("LIST CDS SYSMOD(TUFS150)") and
+what the statements #cmd("LIST CDS SYSMOD(TUFS151)") and
 #cmd("LIST CDS SYSMOD(TUFSDEL)") print after step 2, before step 3 has run:
 
 #screen(raw(read("../ex/ug-remove/list-present.txt")))
@@ -279,10 +284,10 @@ library:
 //UCLCDS  EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN CDS .
-  DEL SYSMOD(TUFS150) MOD(UFSD) .
-  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) MOD(UFSD) .
+  DEL SYSMOD(TUFS151) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS151) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS151) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
@@ -291,6 +296,7 @@ library:
   DEL LMOD(UFSDSSIR) .
   DEL LMOD(UFSDCLNP) .
   DEL LMOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -301,14 +307,15 @@ library:
 //UCLACDS EXEC SMPAPP
 //SMPCNTL  DD  *
  UCLIN ACDS .
-  DEL SYSMOD(TUFS150) MOD(UFSD) .
-  DEL SYSMOD(TUFS150) MOD(UFSDSSIR) .
-  DEL SYSMOD(TUFS150) MOD(UFSDCLNP) .
-  DEL SYSMOD(TUFS150) MOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) MOD(UFSD) .
+  DEL SYSMOD(TUFS151) MOD(UFSDSSIR) .
+  DEL SYSMOD(TUFS151) MOD(UFSDCLNP) .
+  DEL SYSMOD(TUFS151) MOD(UFSFMT) .
   DEL MOD(UFSD) .
   DEL MOD(UFSDSSIR) .
   DEL MOD(UFSDCLNP) .
   DEL MOD(UFSFMT) .
+  DEL SYSMOD(TUFS151) .
   DEL SYSMOD(TUFS150) .
   DEL SYSMOD(TUFS140) .
   DEL SYSMOD(TUFS130) .
@@ -319,6 +326,8 @@ library:
 //LIST    EXEC SMPAPP
 //SMPCNTL  DD  *
  RESETRC .
+ LIST CDS  SYSMOD(TUFS151) .
+ LIST ACDS SYSMOD(TUFS151) .
  LIST CDS  SYSMOD(TUFS150) .
  LIST ACDS SYSMOD(TUFS150) .
  LIST CDS  SYSMOD(TUFS140) .
@@ -340,8 +349,8 @@ the ids your system never had; the statements after it are still processed. It
 is no sign that a line did what you wanted, and a step that ends with return
 code 08 can also hide a statement that failed for another reason. Read every
 message, and take the #cmd("LIST") of step 4 as the only proof. This is the
-output of the step #cmd("UCLCDS") on a system that had installed 1.5.0 new, so
-that #cmd("TUFS130") and the older ids were never in its zone:
+output of the step #cmd("UCLCDS") on a system that had installed 1.5.1 new, so
+that #cmd("TUFS140") and the older ids were never in its zone:
 
 #screen(raw(read("../ex/ug-remove/uclcds.txt")))
 
@@ -354,7 +363,7 @@ step: it answers #cmd("HMA2293 ** CONTROL STATEMENT IGNORED DUE TO PREVIOUS
 ERROR") and does nothing. With both blocks in one step, the ids that the
 system never had would leave the ACDS untouched.
 
-Then read the #cmd("LIST") as in step 4, here ten statements without
+Then read the #cmd("LIST") as in step 4, here twelve statements without
 #cmd("TUFSDEL"), and, if you remove UFSD for good, scratch the libraries as in
 step 5. #cmd("UCLIN") changes only the inventory: until you scratch them, the
 load modules are still in the target library, and the copies that SMP accepted

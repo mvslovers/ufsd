@@ -16,9 +16,12 @@ A release of fixes. Nothing is added to the interface.
   common-storage control block of the server (the anchor) has a new layout
   in this release, so the server `UFSD`, the router `UFSDSSIR` and the utility
   `UFSDCLNP` must all come from 1.5.1. The install job replaces all three; do
-  not copy single modules between releases. If a 1.5.0 server ended
-  abnormally and left its storage behind, the 1.5.1 start reclaims it, as the
-  1.5.0 start would. Details: `docs/installation.md`, section 10.
+  not copy single modules between releases. If an earlier server ended
+  abnormally and left its storage behind, the 1.5.1 start reclaims it; this
+  was tried with the storage left by a cancelled 1.4.0 server, whose anchor
+  has the layout of 1.5.0. Coming from 1.4.0 (or an earlier release), the SMP install
+  does not replace the modules by itself; `docs/installation.md` says what to do.
+  Details: `docs/installation.md`, section 10.
 - **`libufs` refuses long paths.** `ufs_chgdir`, `ufs_mkdir`, `ufs_rmdir` and
   `ufs_remove` now return `UFSD_RC_INVALID` for a path of 256 characters or
   more and send nothing. Release 1.5.0 and earlier cut such a path to 255
@@ -51,6 +54,8 @@ A release of fixes. Nothing is added to the interface.
 
 - The `LICENSE` file (MIT License). The README linked to it before the file
   existed.
-- The manuals _UFSD User's Guide_ (ML05-0001) and _UFSD Reference_ (ML05-0002),
-  as Draft editions. Their sources are in `docs/books`; the PDFs are attached
-  to the release.
+- The manuals _UFSD User's Guide_ (ML05-0001) and _UFSD Reference_ (ML05-0002)
+  are brought up to this release: the upgrade from 1.5.0 and from 1.4.0, the
+  removal, the start and recovery screens, the limits and the library
+  chapters. They are still Draft editions. Their sources are in `docs/books`;
+  the PDFs are attached to the release.

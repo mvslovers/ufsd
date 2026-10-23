@@ -3,13 +3,13 @@
 = Limits and Disk Format <ref-lim>
 
 #idx("limits")
-This chapter collects the fixed limits of UFSD (ufsd) 1.5.0, describes the
+This chapter collects the fixed limits of UFSD (ufsd) 1.5.1, describes the
 layout of a disk as far as an operator needs it, and lists the return codes
 that UFSD gives to its clients. Where a limit is checked, the message is named.
 
 == Limits <ref-lim-limits>
 
-#tab(caption: [The limits of UFSD 1.5.0])[
+#tab(caption: [The limits of UFSD 1.5.1])[
   #table(columns: (2.3in, 0.9in, 1fr),
     [Item], [Limit], [Notes],
     [File systems mounted], [16], [Including the root. At most 15 further
@@ -179,12 +179,12 @@ see @ref-fmt-geometry.
     [000], [4], [The first data block.],
     [004], [4], [The number of blocks of the disk.],
     [008], [1], [The lock byte of the free blocks. #cmd("UFSFMT") writes 0;
-      UFSD 1.5.0 neither sets nor reads it.],
+      UFSD 1.5.1 neither sets nor reads it.],
     [009], [1], [The lock byte of the free inodes. The same.],
     [00A], [1], [The flag: modified.],
     [00B], [1], [The flag: read only.],
     [00C], [4], [The time of the last update. #cmd("UFSFMT") writes 0;
-      UFSD 1.5.0 neither sets nor reads it.],
+      UFSD 1.5.1 neither sets nor reads it.],
     [010], [4], [The total number of free blocks.],
     [014], [4], [The total number of free inodes.],
     [018], [4], [The time of the creation. The same as 00C.],
@@ -197,7 +197,7 @@ see @ref-fmt-geometry.
     [1F8], [4], [The block where the inode list begins.],
     [1FC], [4], [The block where the last scan for free blocks stopped. UFSD
       sets it during the scan and writes it with the rest of the superblock,
-      so the value reaches the disk; UFSD 1.5.0 never reads it, and
+      so the value reaches the disk; UFSD 1.5.1 never reads it, and
       #cmd("UFSFMT") writes 0.],
   )
 ]

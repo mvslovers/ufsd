@@ -75,7 +75,7 @@ for each mounted file system.
   #table(columns: (1.2in, 1fr),
     [Line], [Value],
     [#cmd("UFSD010I")], [#cmd("ACTIVE") while UFSD accepts requests, #cmd("INACTIVE") after a stop was asked for.],
-    [#cmd("UFSD011I")], [Free request blocks and all request blocks (32 in release 1.5.0). Equal when no request is under way.],
+    [#cmd("UFSD011I")], [Free request blocks and all request blocks (32 in release 1.5.1). Equal when no request is under way.],
     [#cmd("UFSD012I")], [Free 4096-byte data buffers and all of them (16).],
     [#cmd("UFSD013I")], [The number of entries of the trace table (256).],
     [#cmd("UFSD014I")], [Requests handled since the start, not counting those that ended in a hard error; #cmd("UFSD015I") counts these.],

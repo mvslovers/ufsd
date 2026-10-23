@@ -19,9 +19,12 @@ The programs in this chapter are real. They were built on a host with CC/370
 (cc370), LIBC/370 (libc370) 2.25.1 and MBT (mbt) 3, with the library of the
 release 1.5.0, and they ran as batch jobs on TK5 in a test system. The server
 there was the one of the TK5 image, whose banner is #cmd("UFSD001I UFSD 1.4.0
-READY"). So the book covers the functions that were measured, not the release
-1.5.0 of the server. The output shown is what the programs printed. Nothing else
-was tried: where the text says that something was not run, it was not run.
+READY"). So the book covers the functions that were measured, not the server of
+release 1.5.1, and the library of release 1.5.1 differs from the one measured in
+two places (a path of 256 characters or more, and a read answered inline in
+#cmd("ufs_fread")); those two were checked against the source and not run. The
+output shown is what the programs printed. Nothing else was tried: where the
+text says that something was not run, it was not run.
 
 == What You Need <ug-libufs-need>
 
@@ -39,19 +42,19 @@ was tried: where the text says that something was not run, it was not run.
 == Getting the Library <ug-libufs-get>
 
 #idx("libufs", "package")
-#idx("ufsd-1.5.0-lib.tar.gz")
+#idx("ufsd-1.5.1-lib.tar.gz")
 The library is not part of the installation package. It is the file
-#cmd("ufsd-1.5.0-lib.tar.gz") of the release (@ug-intro-package). Its
+#cmd("ufsd-1.5.1-lib.tar.gz") of the release (@ug-intro-package). Its
 checksum is in the #cmd("SHA256SUMS") of the release. It holds three files:
 
-#tab(caption: [The contents of ufsd-1.5.0-lib.tar.gz])[
+#tab(caption: [The contents of ufsd-1.5.1-lib.tar.gz])[
   #table(columns: (2.2in, 1fr),
     [File], [What it is],
-    [#cmd("ufsd-1.5.0/include/libufs.h")], [The declarations of all functions and
+    [#cmd("ufsd-1.5.1/include/libufs.h")], [The declarations of all functions and
       the structures that your program receives.],
-    [#cmd("ufsd-1.5.0/include/ufsdrc.h")], [The return codes, as
+    [#cmd("ufsd-1.5.1/include/ufsdrc.h")], [The return codes, as
       #cmd("UFSD_RC_*"). #cmd("libufs.h") includes it.],
-    [#cmd("ufsd-1.5.0/lib/libufs.a")], [The library, an archive for the
+    [#cmd("ufsd-1.5.1/lib/libufs.a")], [The library, an archive for the
       linkage editor of CC/370.],
   )
 ]
