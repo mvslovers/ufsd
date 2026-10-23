@@ -197,14 +197,13 @@ rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs its own ufsd_pool_cds
 sources = ["test/host/tstufspl.c", "src/ufsd#pol.c"]
 
-# TSTUFSRQ — the request queue loses no request when a client appends while the
-# server takes the last one (#159). Links src/ufsd#rq.c with stand-ins for the
-# machine-dependent steps (src/ufsd#rqc.c on the target) that run a second
-# "CPU" at the points where a real one can. Host-only (mvs = false): the
-# stand-ins are the test's own.
+# TSTUFSRQ — the request queue loses no request when a client pushes while the
+# server takes the last one (#159). Links src/ufsd#rq.c with a stand-in for the
+# CS (src/ufsd#rqc.c on the target) that runs a second "CPU" between a read and
+# its swap. Host-only (mvs = false): the stand-in is the test's own.
 [test.TSTUFSRQ]
 rent = false          # mbtcheck.h keeps file-static counters
-mvs = false           # needs its own ufsd_rq_lock/unlock/window
+mvs = false           # needs its own ufsd_rq_cs
 sources = ["test/host/tstufsrq.c", "src/ufsd#rq.c"]
 
 # TSTUFSIO — the ferror() guards behind UFSD106E and UFSFMT17E (#69): a read

@@ -71,7 +71,7 @@ UFSD solves this by running the filesystem as a Subsystem Started Task (STC) wit
 │    ▼                  │     │  MODIFY commands         │
 │  ┌─────── CSA ────────────────────────────────┐       │
 │  │  UFSD_ANCHOR                               │       │
-│  │  ├─ HEAD/TAIL (CS lock-free queue)         │       │
+│  │  ├─ req_head / req_ready (request queue)   │       │
 │  │  ├─ server_ecb / server_ascb               │       │
 │  │  ├─ Request Pool (32 × ~304B, CDS pop/push)│       │
 │  │  ├─ 4K Buffer Pool (16 × 4K, CDS pop/push)│       │
@@ -108,7 +108,7 @@ Runs in the **client address space**. Contains **zero business logic**.
    this counter to zero before freeing the router module + pools)
 5. Copy parameters + ACEE userid/group into request
 6. FWRITE 4K: copy client buffer into CSA pool buffer
-7. CS lock-free enqueue (queue_append → returns was_empty)
+7. CS-push onto the request queue (`ufsd_rq_push` → returns was_empty)
 8. Conditional `__xmpost` (only if queue was previously empty)
 9. Switch to problem state, timed WAIT on stack ECB (key-8); on each timeout
    revalidate the anchor eye catcher + `UFSD_ANCHOR_ACTIVE`, and bail
@@ -122,6 +122,39 @@ Runs in the **client address space**. Contains **zero business logic**.
 5. `__udec(anchor->inflight)` — decrement LAST, after every other CSA write,
    so a shutdown drain observes this client gone only once it is done with CSA
 6. Switch to problem state
+
+### 4.0 Request queue (UFSD#RQ)
+
+Many clients, one server, no lock. A client pushes its request onto
+`req_head`, a LIFO chain, with one CS (`ufsd_rq_push`). The server swaps the
+whole chain out of `req_head` with one CS (`head -> NULL`), reverses it into
+FIFO order and keeps it in `req_ready`, which only the server touches
+(`ufsd_rq_pop`, called from `ufsd_dequeue`). The server never writes a word a
+client can write, except by that one swap.
+
+- **Why not head and tail.** The queue used to be a head/tail pair. Clients
+  appended under `req_lock`, the server dequeued without it. A request
+  appended while the server took the last one was linked behind a block the
+  server already had, with the head left empty: the server never found it and
+  the client waited for ever (#159, seen with two CPUs and two clients).
+- **Why not a lock in the dequeue.** `req_lock` is a spin lock. A client
+  interrupted while it holds it, and the server dispatched in its place on one
+  CPU, leaves the server spinning on a lock that cannot be released.
+- **ABA.** A push stores only what it read into its own request and the CS
+  fails unless the head is still that; the take stores NULL, not a successor
+  read earlier. Neither can install a stale pointer, so the queue needs no
+  tag (the pools do, #142).
+- **Wake-up.** `ufsd_rq_push` returns 1 when it found the chain empty; that
+  client posts the server. The server resets its ECB and looks at `req_head`
+  once more before it waits (`ufsd.c`), so a push that found the chain in use
+  is picked up by that look or by the take under way. A client that pushes
+  while the server serves a batch finds the chain empty and posts needlessly;
+  that costs one extra loop.
+- **Layout.** `req_tail` became `req_ready` and `req_lock` is the unused
+  `rsv_req_lock`; no offset moved. All three load modules are rebuilt and
+  deployed together, as before.
+- **Test.** `TSTUFSRQ` (host) drives `ufsd_rq_push`/`ufsd_rq_pop` with a CS
+  stand-in that runs another CPU between a read and its swap.
 
 ### 4.1 FREAD reply contract
 
@@ -455,7 +488,8 @@ a clean `/P` with no clients in flight completes in a fraction of a second.
 | UFSD#CDS | `src/ufsd#cds.c` | 40 | CDS step under the pool core |
 | UFSD#SCT | `src/ufsd#sct.c` | 159 | SSCT/SSVT registration |
 | UFSD#SSI | `src/ufsd#ssi.c` | 436 | SSI thin router |
-| UFSD#QUE | `src/ufsd#que.c` | 274 | Lock-free queue, dispatch routing |
+| UFSD#RQ | `src/ufsd#rq.c`, `src/ufsd#rqc.c` | 109 | Request queue: client push, server pop, the CS (portable, host-tested) |
+| UFSD#QUE | `src/ufsd#que.c` | 274 | Dequeue, dispatch routing |
 | UFSD#SES | `src/ufsd#ses.c` | 434 | Session management |
 | UFSD#INI | `src/ufsd#ini.c` | 747 | Disk init (DYNALLOC, BDAM open, mount) |
 | UFSD#BLK | `src/ufsd#blk.c` | 80 | BDAM block read/write |

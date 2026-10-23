@@ -281,9 +281,12 @@ struct ufsd_anchor {
 
     ECB             server_ecb;     /* master ECB: STC WAIT target */
 
-    /* Request Queue (CS lock-free, single producer / single consumer) */
-    UFSREQ         *req_head;       /* dequeue from head           */
-    UFSREQ         *req_tail;       /* enqueue to tail (CS)        */
+    /* Request Queue (lock-free, many clients / one server, UFSD#RQ).
+    ** Clients push onto req_head (LIFO, one CS).  The server swaps the
+    ** whole chain out of req_head, turns it into FIFO order and keeps it
+    ** in req_ready, which only the server touches. */
+    UFSREQ         *req_head;       /* newest first; clients CS-push */
+    UFSREQ         *req_ready;      /* oldest first; server only     */
 
     /* Free Request Pool.  The head is req_pool at the end of the
     ** anchor since version 2; this word is unused but keeps the
@@ -329,8 +332,9 @@ struct ufsd_anchor {
     void           *ssir_lpa;       /* UFSDSSIR load module base (freemain) */
     unsigned        ssir_size;      /* UFSDSSIR module size in bytes         */
 
-    /* AP-1c: CS mutex serialising concurrent enqueue producers */
-    unsigned        req_lock;       /* 0=unlocked, 1=locked (CS spin)        */
+    /* AP-1c: was the CS mutex serialising the enqueue (#159: the queue
+    ** is lock-free now).  Unused; keeps the offsets of what follows. */
+    unsigned        rsv_req_lock;
 
     /* AP-1c: STC ASCB pointer (for __xmpost from client address space) */
     void           *server_ascb;    /* STC ASCB, set at startup              */
@@ -687,15 +691,17 @@ void ufsd_trace(UFSD_ANCHOR *anchor, unsigned short func,
 /* ufsd#trc.c (AP-1f) */
 void ufsd_trace_dump(UFSD_ANCHOR *anchor)                            asm("UFSD@TRD");
 
-/* ufsd#rq.c -- the request queue (portable, host-tested).  Key-0 callers.
-** push returns 1 if the queue was empty. */
+/* ufsd#rq.c -- the request queue (portable, host-tested).  Key-0 callers:
+** the queue words and the requests are CSA.  push returns 1 if the chain
+** was empty (the caller then posts the server); pop returns the oldest
+** request or NULL, and only the server may call it. */
 int     ufsd_rq_push(UFSD_ANCHOR *anchor, UFSREQ *req)               asm("UFSD@RQU");
 UFSREQ *ufsd_rq_pop(UFSD_ANCHOR *anchor)                             asm("UFSD@RQO");
 
-/* ufsd#rqc.c -- the machine-dependent steps under it */
-void    ufsd_rq_lock(UFSD_ANCHOR *anchor)                            asm("UFSD@RQL");
-void    ufsd_rq_unlock(UFSD_ANCHOR *anchor)                          asm("UFSD@RQK");
-void    ufsd_rq_window(void)                                         asm("UFSD@RQW");
+/* ufsd#rqc.c -- the one machine-dependent step.  Stores new_val into *word
+** only if *word still equals *expect.  Returns 0 when it did; 1 when it did
+** not, and then *expect is what *word held. */
+int     ufsd_rq_cs(UFSREQ **word, UFSREQ **expect, UFSREQ *new_val)  asm("UFSD@RQC");
 
 /* ufsd#que.c (AP-1c) */
 UFSREQ *ufsd_dequeue(UFSD_ANCHOR *anchor)                            asm("UFSD@DEQ");

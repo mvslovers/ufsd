@@ -80,7 +80,8 @@ in `test/host/include/`.
 | UFSD#CDS | `src/ufsd#cds.c` | The CDS instruction under the pool core |
 | UFSD#SCT | `src/ufsd#sct.c` | SSCT registration |
 | UFSDSSIR | `src/ufsd#ssi.c` | SSI thin router |
-| UFSD#QUE | `src/ufsd#que.c` | Lock-free queue + dispatch |
+| UFSD#RQ | `src/ufsd#rq.c`, `src/ufsd#rqc.c` | Request queue: CS push / server take (portable, host-tested; `rqc` is the CS) |
+| UFSD#QUE | `src/ufsd#que.c` | Dequeue + dispatch |
 | UFSD#SES | `src/ufsd#ses.c` | Session management |
 | UFSD#INI | `src/ufsd#ini.c` | Disk init (TIOT, BDAM) |
 | UFSD#BLK | `src/ufsd#blk.c` | BDAM block I/O |
