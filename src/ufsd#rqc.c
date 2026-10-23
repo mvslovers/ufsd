@@ -6,27 +6,36 @@
 ** into memory (CC 0, R1 unchanged); if unequal, load memory into R1 (CC 1,
 ** memory unchanged).
 **
-** No writable static: UFSD and UFSDSSIR are AC(1) (CLAUDE.md, 7).
+** No writable static: UFSD and UFSDSSIR are AC(1) (constraint 7).
 */
 
 #include "ufsd.h"
 
+union rq_word {
+    UFSREQ   *ptr;
+    unsigned  bits;
+};
+
 int
 ufsd_rq_cs(UFSREQ **word, UFSREQ **expect, UFSREQ *new_val)
 {
-    unsigned old = (unsigned)*expect;
+    union rq_word old;
+    union rq_word nw;
+
+    old.ptr = *expect;
+    nw.ptr  = new_val;
 
     /* "memory": keep the chain-word accesses of the caller on their side
     ** of the swap, in the asm itself and not only at the call boundary. */
     __asm__ __volatile__(
         "CS %0,%2,%1"
-        : "+r"(old), "+m"(*word)
-        : "r"((unsigned)new_val)
+        : "+r"(old.bits), "+m"(*word)
+        : "r"(nw.bits)
         : "cc", "memory");
 
-    if (old == (unsigned)*expect)
+    if (old.ptr == *expect)
         return 0;                       /* swapped */
 
-    *expect = (UFSREQ *)old;
+    *expect = old.ptr;
     return 1;
 }

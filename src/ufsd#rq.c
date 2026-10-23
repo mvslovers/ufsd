@@ -71,6 +71,7 @@ ufsd_rq_pop(UFSD_ANCHOR *anchor)
         }
         req = fifo;
     }
+    if (req == NULL) return NULL;
     anchor->req_ready = req->next;
     req->next         = NULL;
     return req;
