@@ -76,6 +76,7 @@ typedef struct ufsd_config     UFSD_CONFIG;
 #define UFSD_NAME_MAX           59U  /* max filename chars (excl. NUL)         */
 #define UFSD_NADDR              19U  /* total address slots in inode           */
 #define UFSD_NADDR_DIRECT       16U  /* direct data block slots (addr[0..15])  */
+#define UFSD_NADDR_SINDIRECT    16U  /* index of the single indirect pointer   */
 
 #define UFSD_SB_MAX_FREEBLOCK   51U  /* free block cache size in superblock    */
 #define UFSD_SB_MAX_FREEINODE   64U  /* free inode cache size in superblock    */
@@ -741,6 +742,8 @@ int  ufsd_blk_write(UFSD_DISK *disk, unsigned sector, void *buf)     asm("UFSD@B
 int  ufsd_sb_read(UFSD_DISK *disk)                                   asm("UFSD@SBR");
 int  ufsd_sb_write(UFSD_DISK *disk)                                  asm("UFSD@SBW");
 int  ufsd_sb_alloc_block(UFSD_DISK *disk, unsigned *out_sector)      asm("UFSD@SAB");
+int  ufsd_sb_alloc_block_for(UFSD_DISK *disk, const UFSD_DINODE *inflight,
+                            unsigned *out_sector)                      asm("UFSD@SAF");
 void ufsd_sb_free_block(UFSD_DISK *disk, unsigned sector)            asm("UFSD@SFB");
 int  ufsd_sb_alloc_inode(UFSD_DISK *disk, unsigned *out_ino)         asm("UFSD@SAI");
 void ufsd_sb_free_inode(UFSD_DISK *disk, unsigned ino)               asm("UFSD@SFI");

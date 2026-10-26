@@ -2,7 +2,7 @@ schema = 3
 
 [project]
 name = "ufsd"
-version = "1.5.1"
+version = "1.5.2"
 kind = "application"
 
 [toolchain]
@@ -170,6 +170,18 @@ rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs the stand-in headers and its own stubs
 sources = ["test/host/tstufsin.c", "src/ufsd#sbl.c", "src/ufsd#ino.c"]
 
+# TSTUFSBA — no block is handed out twice (#169). libufs writes files through
+# the real file, directory, inode and allocator layers (src/ufsd#fil.c, #dir.c,
+# #sbl.c, #ino.c) over a RAM volume formatted from ufsfmt_geometry(); only
+# iefssreq() and the block device are stand-ins. Host-only (mvs = false): needs
+# the stand-in headers and its own stubs.
+[test.TSTUFSBA]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs the stand-in headers and its own stubs
+sources = ["test/host/tstufsba.c", "client/libufs.c", "src/ufsd#fil.c",
+           "src/ufsd#dir.c", "src/ufsd#sbl.c", "src/ufsd#ino.c",
+           "src/ufsfmtg.c"]
+
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
 [test.TSTUFSRC]
@@ -281,7 +293,7 @@ readme = "docs/installation.md"
 # so every 1.5.x is TUFS150. Each id is spent exactly once, and each release
 # deletes the one before it -- that is what `prefix` below derives. A patch is
 # meant to become a PTF against its minor's FMID once mbt builds PTFs; until
-# then a patch release needs an explicit `fmid` of its own (1.5.1 as TUFS151),
+# then a patch release needs an explicit `fmid` of its own (1.5.2 as TUFS152),
 # and the next minor an explicit `delete` naming that id. No version component
 # may ever exceed 9: a 7-character id has no room for a second digit, so at
 # patch 9 the next release is a new minor. ufsd 1.3.10 cannot be expressed and
@@ -307,8 +319,8 @@ readme = "docs/installation.md"
 # install needs a throwaway id *and* throwaway module names -- a throwaway id
 # alone just measures the ownership wall above.
 prefix = "TUFS"  # FMID and delete follow from the version
-fmid = "TUFS151"                # 1.5.1 is a patch: its own id until mbt builds PTFs
-delete = ["TUFS150"]            # the level this one replaces
+fmid = "TUFS152"                # 1.5.2 is a patch: its own id until mbt builds PTFs
+delete = ["TUFS151"]            # the level this one replaces
 prereq = []                     # no [dependencies]; RAKF is a *runtime* one
 accept_fmid = true              # accept the FMID once so a PTF can be RESTOREd
 lklib = "UFSD.UFSDLOAD"         # staging: what the load XMIT is received into
