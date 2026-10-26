@@ -79,6 +79,13 @@ ufsd_sb_alloc_block(UFSD_DISK *d, unsigned *s)
     return UFSD_RC_OK;
 }
 
+int
+ufsd_sb_alloc_block_for(UFSD_DISK *d, const UFSD_DINODE *inflight, unsigned *s)
+{
+    (void)inflight;
+    return ufsd_sb_alloc_block(d, s);
+}
+
 unsigned
 ufsd_path_lookup(UFSD_DISK *d, unsigned s, const char *p,
                  unsigned *pi, char *o)

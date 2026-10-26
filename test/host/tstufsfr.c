@@ -123,6 +123,8 @@ unsigned ufsd_path_lookup(UFSD_DISK *d, unsigned s, const char *p,
 { (void)d; (void)s; (void)p; (void)pi; (void)o; return 0; }
 int  ufsd_sb_alloc_block(UFSD_DISK *d, unsigned *s)
 { (void)d; (void)s; return UFSD_RC_IO; }
+int  ufsd_sb_alloc_block_for(UFSD_DISK *d, const UFSD_DINODE *f, unsigned *s)
+{ (void)d; (void)f; (void)s; return UFSD_RC_IO; }
 int  ufsd_sb_alloc_inode(UFSD_DISK *d, unsigned *i)
 { (void)d; (void)i; return UFSD_RC_IO; }
 void ufsd_sb_free_block(UFSD_DISK *d, unsigned s) { (void)d; (void)s; }

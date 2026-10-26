@@ -31,7 +31,8 @@
 #include <mvs/wto.h>
 
 /* Forward declaration */
-static int sb_scan_refill(UFSD_DISK *disk);
+static int sb_scan_refill(UFSD_DISK *disk, const UFSD_DINODE *inflight,
+                          unsigned keep);
 
 /* ============================================================
 ** ufsd_sb_read
@@ -158,7 +159,7 @@ chain_refill(UFSD_DISK *disk, unsigned chain_blk)
 }
 
 /* ============================================================
-** ufsd_sb_alloc_block
+** ufsd_sb_alloc_block_for
 **
 ** Pop the last entry from the free block cache (disk->sb.freeblock[]).
 ** Decrements nfreeblock and total_freeblock in the in-memory sb.
@@ -168,17 +169,32 @@ chain_refill(UFSD_DISK *disk, unsigned chain_blk)
 **   1. V7 chain block (from the just-popped block)
 **   2. Inode-table scan (sb_scan_refill) as fallback
 **
+** The scan believes only what the inode list on disk says, and a block
+** that is handed out is on disk in no inode until the caller has written
+** one.  So the scan must be told about every block that is allocated but
+** not yet on disk:
+**   - the block popped by this very call, when the pop empties the cache
+**     (the scan then runs with it as 'keep'), and
+**   - the blocks the caller assigned earlier in the same operation, which
+**     sit in its in-memory copy of the inode: 'inflight'.  A write of
+**     several blocks, or a write that starts with an empty cache, has
+**     such blocks.  The data blocks behind inflight->addr[16] are read
+**     from the indirect block on disk, so the caller writes a new indirect
+**     block before it allocates the first block it points to.
+** inflight may be NULL when the caller has nothing pending.
+**
 ** Returns UFSD_RC_OK and stores the sector number in *out_sector,
 ** or UFSD_RC_NOSPACE if the cache is empty and cannot be refilled.
 ** ============================================================ */
 int
-ufsd_sb_alloc_block(UFSD_DISK *disk, unsigned *out_sector)
+ufsd_sb_alloc_block_for(UFSD_DISK *disk, const UFSD_DINODE *inflight,
+                        unsigned *out_sector)
 {
     if (!disk || !out_sector) return UFSD_RC_IO;
 
     /* Cache empty on entry: try inode-table scan to recover */
     if (disk->sb.nfreeblock == 0) {
-        if (sb_scan_refill(disk) != UFSD_RC_OK)
+        if (sb_scan_refill(disk, inflight, 0U) != UFSD_RC_OK)
             return UFSD_RC_NOSPACE;
     }
 
@@ -193,11 +209,19 @@ ufsd_sb_alloc_block(UFSD_DISK *disk, unsigned *out_sector)
     ** fall back to scan if the chain is broken. */
     if (disk->sb.nfreeblock == 0 && *out_sector != 0) {
         if (!chain_refill(disk, *out_sector)) {
-            sb_scan_refill(disk);  /* best effort */
+            sb_scan_refill(disk, inflight, *out_sector);  /* best effort */
         }
     }
 
     return UFSD_RC_OK;
+}
+
+/* The same for a caller with nothing pending: the one block it gets is in
+** an inode on disk before it allocates the next. */
+int
+ufsd_sb_alloc_block(UFSD_DISK *disk, unsigned *out_sector)
+{
+    return ufsd_sb_alloc_block_for(disk, NULL, out_sector);
 }
 
 /* ============================================================
@@ -337,6 +361,54 @@ ufsd_sb_free_inode(UFSD_DISK *disk, unsigned ino)
 }
 
 /* ============================================================
+** mark_inode_blocks  (static)
+**
+** Mark the blocks of one inode in the scan's bitmap: the direct blocks,
+** the single-indirect block and the blocks listed in it.  The indirect
+** block is read from disk into ibuf.
+**
+** No WTO on a read failure: alloc_block runs the scan on every write once
+** the cache is empty, and the cache stays empty after a failure -- a
+** message would repeat per request.  The operator path reports it once
+** (UFSD075E from MODIFY REBUILD).  A scan that cannot read an indirect
+** block must give up: the blocks behind it stay unmarked and would be
+** handed out as free.
+**
+** Returns UFSD_RC_OK or UFSD_RC_IO.
+** ============================================================ */
+static int
+mark_inode_blocks(UFSD_DISK *disk, const UFSD_DINODE *dino,
+                  unsigned char *used, char *ibuf)
+{
+    unsigned  vol = disk->sb.volume_size;
+    unsigned *ind;
+    unsigned  blk;
+    unsigned  i;
+
+    for (i = 0; i < UFSD_NADDR_DIRECT; i++) {
+        blk = dino->addr[i];
+        if (blk != 0 && blk < vol)
+            used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
+    }
+
+    blk = dino->addr[UFSD_NADDR_DIRECT];
+    if (blk != 0 && blk < vol) {
+        used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
+
+        if (ufsd_blk_read(disk, blk, ibuf) != UFSD_RC_OK)
+            return UFSD_RC_IO;
+
+        ind = (unsigned *)ibuf;
+        for (i = 0; i < (unsigned)disk->blksize / 4U; i++) {
+            if (ind[i] != 0 && ind[i] < vol)
+                used[ind[i] / 8U] |=
+                    (unsigned char)(1U << (ind[i] % 8U));
+        }
+    }
+    return UFSD_RC_OK;
+}
+
+/* ============================================================
 ** sb_scan_refill  (static)
 **
 ** Emergency free block cache refill by scanning the inode table.
@@ -347,17 +419,19 @@ ufsd_sb_free_inode(UFSD_DISK *disk, unsigned ino)
 ** running a UFSD version that did not implement chain refill).
 **
 ** The scan covers all inodes (ilist_sector to datablock_start)
-** and marks direct + single-indirect blocks as used.
+** and marks direct + single-indirect blocks as used.  Blocks that are
+** handed out but not in an inode on disk yet are marked as well: 'keep'
+** (one block) and the blocks of 'inflight' (an in-memory inode); see
+** ufsd_sb_alloc_block_for.  Both may be 0/NULL.
 **
 ** Returns UFSD_RC_OK if at least one free block was found,
 ** UFSD_RC_NOSPACE if the disk is genuinely full.
 ** ============================================================ */
 static int
-sb_scan_refill(UFSD_DISK *disk)
+sb_scan_refill(UFSD_DISK *disk, const UFSD_DINODE *inflight, unsigned keep)
 {
     unsigned char *used;
     char          *ibuf;
-    unsigned      *ind;
     unsigned       bitmap_bytes;
     unsigned       vol;
     unsigned       ipb;
@@ -403,6 +477,16 @@ sb_scan_refill(UFSD_DISK *disk)
             used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
     }
 
+    /* Blocks handed out but not in an inode on disk yet */
+    if (keep != 0 && keep < vol)
+        used[keep / 8U] |= (unsigned char)(1U << (keep % 8U));
+    if (inflight != NULL
+        && mark_inode_blocks(disk, inflight, used, ibuf) != UFSD_RC_OK) {
+        free(ibuf);
+        free(used);
+        return UFSD_RC_IO;
+    }
+
     /* Scan all inodes: mark their data blocks as used */
     for (ino = 1; ino <= max_ino; ino++) {
         if (ufsd_ino_read(disk, ino, &dino) != UFSD_RC_OK)
@@ -410,35 +494,10 @@ sb_scan_refill(UFSD_DISK *disk)
         if (dino.nlink == 0 && dino.mode == 0)
             continue;  /* free inode */
 
-        /* Direct blocks */
-        for (i = 0; i < UFSD_NADDR_DIRECT; i++) {
-            blk = dino.addr[i];
-            if (blk != 0 && blk < vol)
-                used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
-        }
-
-        /* Single indirect block + its entries */
-        if (dino.addr[UFSD_NADDR_DIRECT] != 0
-            && dino.addr[UFSD_NADDR_DIRECT] < vol) {
-            blk = dino.addr[UFSD_NADDR_DIRECT];
-            used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
-
-            /* No WTO here: alloc_block runs this scan on every write once
-            ** the cache is empty, and the cache stays empty after a
-            ** failure — a message would repeat per request.  The operator
-            ** path reports it once (UFSD075E from MODIFY REBUILD). */
-            if (ufsd_blk_read(disk, blk, ibuf) != UFSD_RC_OK) {
-                free(ibuf);
-                free(used);
-                return UFSD_RC_IO;
-            }
-
-            ind = (unsigned *)ibuf;
-            for (i = 0; i < (unsigned)disk->blksize / 4U; i++) {
-                if (ind[i] != 0 && ind[i] < vol)
-                    used[ind[i] / 8U] |=
-                        (unsigned char)(1U << (ind[i] % 8U));
-            }
+        if (mark_inode_blocks(disk, &dino, used, ibuf) != UFSD_RC_OK) {
+            free(ibuf);
+            free(used);
+            return UFSD_RC_IO;
         }
     }
 
@@ -497,7 +556,7 @@ ufsd_sb_rebuild_free(UFSD_DISK *disk)
     ** than persisting a map built from a partial scan. */
     disk->sb.nfreeblock = 0;
     disk->sb.unused3    = 0;  /* reset scan position */
-    rc = sb_scan_refill(disk);
+    rc = sb_scan_refill(disk, NULL, 0U);
 
     /* Rebuild free inode cache */
     disk->sb.nfreeinode = 0;
