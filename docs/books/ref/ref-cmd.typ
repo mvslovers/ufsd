@@ -249,8 +249,10 @@ The table is meant for the support of the product, not for the operator.
 *Syntax:* #cmd("F UFSD,REBUILD")
 
 REBUILD scans the inodes of every read/write file system and rebuilds the lists
-of free blocks and free inodes in memory. It is the cure when the chain of
-free blocks on a disk is broken. For each file system it answers:
+of free blocks and free inodes in memory from the blocks and inodes that the
+files use. It does not repair files that were stored wrongly before, and it
+makes no promise about the state of the free lists afterwards. For each file
+system it answers:
 
 #screen(```
 UFSD073I REBUILD: SCANNING ddname ...
