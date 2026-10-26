@@ -214,7 +214,13 @@ blk_resolve(UFSD_DISK *disk, UFSD_DINODE *dino, unsigned blk_idx)
 ** Handles indirect block allocation if needed.
 ** On success, stores the physical block number in *out_sector,
 ** sets *sb_dirty = 1, and returns UFSD_RC_OK.
-** The caller must zero the data block if it is new. */
+** The caller must zero the data block if it is new.
+**
+** The blocks assigned here live in *dino, which the caller writes only when
+** its loop ends, so *dino is handed to the allocator: its free block scan
+** must not give them out again.  A new indirect block is zeroed on disk
+** before the first block it points to is allocated, because the scan reads
+** the entries of an indirect block from disk. */
 static int
 blk_alloc_at(UFSD_DISK *disk, UFSD_DINODE *dino,
              unsigned blk_idx, unsigned *out_sector, int *sb_dirty)
@@ -228,7 +234,7 @@ blk_alloc_at(UFSD_DISK *disk, UFSD_DINODE *dino,
 
     if (blk_idx < UFSD_NADDR_DIRECT) {
         /* Direct block */
-        if (ufsd_sb_alloc_block(disk, &new_blk) != UFSD_RC_OK)
+        if (ufsd_sb_alloc_block_for(disk, dino, &new_blk) != UFSD_RC_OK)
             return UFSD_RC_NOSPACE;
         dino->addr[blk_idx] = new_blk;
         *out_sector = new_blk;
@@ -245,13 +251,18 @@ blk_alloc_at(UFSD_DISK *disk, UFSD_DINODE *dino,
     ibuf = (char *)malloc(disk->blksize);
     if (!ibuf) return UFSD_RC_IO;
 
-    /* Allocate indirect block itself if it does not exist yet */
+    /* Allocate the indirect block itself if it does not exist yet */
     if (dino->addr[UFSD_NADDR_SINDIRECT] == 0) {
-        if (ufsd_sb_alloc_block(disk, &ind_blk) != UFSD_RC_OK) {
+        if (ufsd_sb_alloc_block_for(disk, dino, &ind_blk) != UFSD_RC_OK) {
             free(ibuf);
             return UFSD_RC_NOSPACE;
         }
         memset(ibuf, 0, disk->blksize);
+        if (ufsd_blk_write(disk, ind_blk, ibuf) != UFSD_RC_OK) {
+            ufsd_sb_free_block(disk, ind_blk);
+            free(ibuf);
+            return UFSD_RC_IO;
+        }
         dino->addr[UFSD_NADDR_SINDIRECT] = ind_blk;
         *sb_dirty = 1;
     } else {
@@ -263,7 +274,7 @@ blk_alloc_at(UFSD_DISK *disk, UFSD_DINODE *dino,
     }
 
     /* Allocate the data block */
-    if (ufsd_sb_alloc_block(disk, &new_blk) != UFSD_RC_OK) {
+    if (ufsd_sb_alloc_block_for(disk, dino, &new_blk) != UFSD_RC_OK) {
         free(ibuf);
         return UFSD_RC_NOSPACE;
     }
