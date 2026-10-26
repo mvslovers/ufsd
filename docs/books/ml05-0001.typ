@@ -12,10 +12,10 @@
     #text(font: head-font, weight: "bold", size: 11pt)[First Edition (October 2026)]
 
     This edition applies to Version 1 Release 5 of UFSD, the virtual
-    filesystem server for MVS 3.8j (ufsd 1.5.1), and to all subsequent
+    filesystem server for MVS 3.8j (ufsd 1.5.2), and to all subsequent
     releases and modifications until otherwise indicated in new editions.
 
-    *Draft.* This book describes UFSD 1.5.1 as released. It is written after
+    *Draft.* This book describes UFSD 1.5.2 as released. It is written after
     the release and has not yet been read by a second person against the
     code.
 
@@ -42,7 +42,7 @@ UFSD through its client library. Every operator command, configuration parameter
 and message in full is the subject of the companion volume, the _UFSD
 Reference_.
 
-The book describes UFSD 1.5.1, as released. The functions of the client
+The book describes UFSD 1.5.2, as released. The functions of the client
 library `libufs` are described in full in the _UFSD Reference_.
 
 == How This Book Is Organized

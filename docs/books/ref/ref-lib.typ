@@ -4,16 +4,17 @@
 
 #idx("libufs")
 #idx("client library")
-This chapter describes the client library #cmd("libufs") of UFSD (ufsd) 1.5.1
+This chapter describes the client library #cmd("libufs") of UFSD (ufsd) 1.5.2
 function by function: the prototype, the parameters, the value returned and the
 return codes that the function can give. How to build and run a program with it
 is the subject of the _UFSD User's Guide_. The statements about behaviour in
 this chapter were checked against the source of the library, and those marked
 as measured were run on TK5 with the library of release 1.5.0 against the
 server of the TK5 image, which is UFSD 1.4.0. The functions that were measured
-are the same in all three releases except where the text names a difference
+are the same in the releases 1.5.1 and 1.5.2 (the library did not change
+between them) except where the text names a difference
 (a path of 256 characters or more, and a read answered inline in #cmd("ufs_fread"));
-the server of release 1.5.1 was not run with this library.
+the server of release 1.5.2 was not run with this library.
 
 == Conventions <ref-lib-conv>
 
@@ -241,7 +242,7 @@ empty (@ref-lim-limits).
       #cmd("ufs_remove")], [255], [Return #cmd("UFSD_RC_INVALID") before a
       request is sent; the code is stored for #cmd("ufs_last_rc"). UFSD 1.5.0
       cut a path of 256 characters or more to 255 and sent it with its 256th
-      character in place of the terminating null\; UFSD 1.5.1 refuses it.],
+      character in place of the terminating null\; UFSD 1.5.1 and later refuse it.],
     [#cmd("ufs_diropen")], [255], [Returns NULL; #cmd("ufs_last_rc") is not set.],
     [#cmd("ufs_stat")], [255], [Returns #cmd("UFSD_RC_INVALID"); the code is not
       stored for #cmd("ufs_last_rc").],
@@ -437,7 +438,7 @@ to 4096 bytes. If the common storage has no free buffer for such a piece, UFSD
 answers with at most 252 bytes inline and the library asks for the rest in the
 next piece. The library of release 1.5.0 took that short answer for the end of
 the file: it returned a short count and set the end-of-file flag although the
-file went on. Release 1.5.1 does not. This was checked against the source of
+file went on. Releases 1.5.1 and 1.5.2 do not. This was checked against the source of
 the library, not run.
 
 *Return value:* the number of whole items, which is smaller than #cmd("nitems")
