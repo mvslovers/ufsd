@@ -243,7 +243,8 @@ file system gets #cmd("UFSD073I REBUILD: SCANNING ...") and then
 #cmd("UFSD074I REBUILD: ... DONE, FREEBLK=n FREEINODE=n") or
 #cmd("UFSD075E ... FAILED"). Because UFSD does one thing at a time, clients wait
 until the scan is over. On a large disk that can take some time, so choose a
-quiet moment.
+quiet moment. #cmd("REBUILD") does not repair files that were stored wrongly
+before, and it makes no promise about the state of the free lists afterwards.
 
 In the example, a further file system was mounted with #cmd("MODE=RO"). The
 names #cmd("UFD00001") and so on are the DD names that UFSD gave the data sets

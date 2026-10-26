@@ -3,7 +3,7 @@
 = Installing UFSD <ug-install>
 
 #idx("installation")
-This chapter installs UFSD 1.5.1 on an MVS 3.8j system (TK4-, TK5, MVS/CE or
+This chapter installs UFSD 1.5.2 on an MVS 3.8j system (TK4-, TK5, MVS/CE or
 a Hercules build of your own) from the release package. The installation is
 done by SMP Release 4, the SMP that comes with MVS 3.8j, not SMP/E. SMP keeps
 a record of what was installed, and so there is a defined way to remove it
@@ -26,20 +26,20 @@ the new level, and SMP refuses a #cmd("RESTORE") of an accepted function
 == What Is in the Package <ug-install-files>
 
 #idx("package", "contents")
-The package #cmd("ufsd-1.5.1-dist.zip") (or #cmd("ufsd-1.5.1-dist.tar.gz")) has
-five files. In their names, 1.5.1 is the release.
+The package #cmd("ufsd-1.5.2-dist.zip") (or #cmd("ufsd-1.5.2-dist.tar.gz")) has
+five files. In their names, 1.5.2 is the release.
 
 #tab(caption: [The files of the installation package])[
   #table(columns: (2.7in, 1fr),
     [File], [What it is],
     [#cmd("README.md")], [The installation guide as a text file.],
-    [#cmd("ufsd-1.5.1-load.xmit")], [The four load modules, in a form that
+    [#cmd("ufsd-1.5.2-load.xmit")], [The four load modules, in a form that
       TSO RECEIVE reads.],
-    [#cmd("ufsd-1.5.1-samplib.xmit")], [The sample library: two
+    [#cmd("ufsd-1.5.2-samplib.xmit")], [The sample library: two
       procedures, a configuration pattern and a format job.],
-    [#cmd("ufsd-1.5.1-alloc.jcl")], [Allocates the data sets SMP installs
+    [#cmd("ufsd-1.5.2-alloc.jcl")], [Allocates the data sets SMP installs
       into. Run once.],
-    [#cmd("ufsd-1.5.1-inst.jcl")], [Receives both XMIT files and installs
+    [#cmd("ufsd-1.5.2-inst.jcl")], [Receives both XMIT files and installs
       them. Can be repeated.],
   )
 ]
@@ -55,7 +55,7 @@ The load modules are #cmd("UFSD"), #cmd("UFSDSSIR"), #cmd("UFSDCLNP") and
     previous release (@ug-remove-why).],
 )
 
-The fourth file of the release, #cmd("ufsd-1.5.1-lib.tar.gz"), is not part of
+The fourth file of the release, #cmd("ufsd-1.5.2-lib.tar.gz"), is not part of
 the package and is not needed to install UFSD. It holds #cmd("libufs") and
 its headers for programs that want to use UFSD (@ug-libufs-get).
 
@@ -139,8 +139,8 @@ An example with the FTPD of the project:
 #screen(```
 ftp -P 2121 your-mvs-host
 > binary
-> put ufsd-1.5.1-load.xmit    'IBMUSER.UFSD.LOAD.XMIT'
-> put ufsd-1.5.1-samplib.xmit 'IBMUSER.UFSD.SAMP.XMIT'
+> put ufsd-1.5.2-load.xmit    'IBMUSER.UFSD.LOAD.XMIT'
+> put ufsd-1.5.2-samplib.xmit 'IBMUSER.UFSD.SAMP.XMIT'
 > quit
 ```)
 
@@ -150,7 +150,7 @@ S106 abend (@ug-install-trouble).
 == Allocating the Product Data Sets <ug-install-alloc>
 
 #idx("alloc.jcl")
-Submit #cmd("ufsd-1.5.1-alloc.jcl") as it is. The only things worth a change
+Submit #cmd("ufsd-1.5.2-alloc.jcl") as it is. The only things worth a change
 are the #cmd("UNIT=SYSDA") and the space on each DD statement.
 
 The job creates #cmd("UFSD.LINKLIB") and #cmd("UFSD.AUFSDLOD") and nothing
@@ -169,7 +169,7 @@ there. To start over, remove the SYSMOD first (@ug-remove).]
 == Running the Install Job <ug-install-job>
 
 #idx("inst.jcl")
-Open #cmd("ufsd-1.5.1-inst.jcl") and replace the two placeholder data set
+Open #cmd("ufsd-1.5.2-inst.jcl") and replace the two placeholder data set
 names with the names you sent in @ug-install-upload:
 
 #screen(```
@@ -221,14 +221,14 @@ and the step ends with return code 0:
 #screen(raw(read("../ex/ug-install/apply-new.txt")))
 
 The step then prints more reports; the screen shows the first. The status
-#cmd("TUFS150 DELETED") also appears on a new installation, because the SYSMOD
-names TUFS150 in its #cmd("DELETE") operand. The
+#cmd("TUFS151 DELETED") also appears on a new installation, because the SYSMOD
+names TUFS151 in its #cmd("DELETE") operand. The
 #cmd("ACCEPT") step has the same messages for the library #cmd("AUFSDLOD").
 
 In an upgrade, the element reports that follow can show #cmd("NOT SEL") next
-to #cmd("TUFS150 DELETED"). That is normal. What shows that the upgrade
+to #cmd("TUFS151 DELETED"). That is normal. What shows that the upgrade
 happened is the pair #cmd("HMA2240") and #cmd("HMA2380") for each module (see
-@ug-install-from15). A #cmd("NOT SEL") in place of #cmd("HMA2380") is the
+@ug-install-from151). A #cmd("NOT SEL") in place of #cmd("HMA2380") is the
 failure described in @ug-install-verify.
 
 SMP copies the modules and does not link them again, so the link attributes
@@ -397,10 +397,12 @@ the one just before it. Run this under the SMP procedure:
 #tab(caption: [What the owner of MOD(UFSD) tells you])[
   #table(columns: (1in, 1fr),
     [Owner], [What to do],
-    [#cmd("TUFS150")], [An upgrade from 1.5.0. Stop UFSD, run the install
+    [#cmd("TUFS151")], [An upgrade from 1.5.1. Stop UFSD, run the install
       job, start UFSD.],
-    [#cmd("TUFS140")], [From 1.4.0. This release deletes only 1.5.0, so read
-      the part for 1.4.0 below.],
+    [#cmd("TUFS150")], [From 1.5.0. This release deletes only 1.5.1, so read
+      the part for 1.5.0 below.],
+    [#cmd("TUFS140")], [From 1.4.0. This release does not delete 1.4.0, so
+      read the part for 1.4.0 below.],
     [#cmd("TUFS130")], [From 1.3.0. This release does not delete 1.3.0, so
       read the part for 1.3.0 below.],
     [#cmd("TUFS120")], [From 1.2.x. Read the part for 1.2.x below.],
@@ -411,11 +413,11 @@ the one just before it. Run this under the SMP procedure:
 ]
 
 Every release has an FMID of its own and deletes only that of its
-predecessor. #cmd("TUFS150") is 1.5.0, and #cmd("TUFS151"), the FMID of this
-release, deletes #cmd("TUFS150"). An older owner of #cmd("MOD(UFSD)") stays,
+predecessor. #cmd("TUFS151") is 1.5.1, and #cmd("TUFS152"), the FMID of this
+release, deletes #cmd("TUFS151"). An older owner of #cmd("MOD(UFSD)") stays,
 and then SMP installs nothing.
 
-=== From 1.5.0 <ug-install-from15>
+=== From 1.5.1 <ug-install-from151>
 
 An upgrade from the release just before is the steps in @ug-install-upload
 and @ug-install-job and nothing else. The names of the data sets do not
@@ -430,10 +432,11 @@ change, and the SYSMOD removes its predecessor itself.
 - *Install the three modules together.* Since 1.5.1 the free request and
   buffer pools of the server are changed with a double-word compare-and-swap,
   and the anchor in common storage is 152 bytes long instead of 132 (anchor
-  version 2). #cmd("UFSDSSIR") and #cmd("UFSDCLNP") use that layout, so
-  #cmd("UFSD"), #cmd("UFSDSSIR") and #cmd("UFSDCLNP") must come from the same
-  release. A router of 1.5.0 would work on a pool head word that the 1.5.1
-  server no longer maintains. The request queue is also shared by a new rule:
+  version 2). Release 1.5.2 leaves that layout as it is and changes the
+  server only; the rule stays all the same. #cmd("UFSDSSIR") and
+  #cmd("UFSDCLNP") use that layout, so #cmd("UFSD"), #cmd("UFSDSSIR") and
+  #cmd("UFSDCLNP") must come from the same release. A router of 1.5.0 would
+  work on a pool head word that the 1.5.1 server no longer maintains. The request queue is also shared by a new rule:
   the router adds a request to one chain with a compare-and-swap, and the
   server takes the whole chain and keeps the requests in a list of its own. The
   anchor word that a 1.5.0 router uses as the tail of the queue is that list in
@@ -465,12 +468,60 @@ Read #cmd("UFSD000I") after the restart as the last word: it names the
 version and the commit of the running module. (#cmd("UFSD005I") names the
 LIBC/370 it was linked with and does not tell you whether the upgrade took.)
 
+=== From 1.5.0 <ug-install-from15>
+
+1.5.0 (#cmd("TUFS150")) installs into #cmd("UFSD.*") like this release, so
+there is nothing to allocate and no #cmd("STEPLIB") to change. But this
+release deletes only #cmd("TUFS151"), and a system that went from 1.5.0
+straight to 1.5.2 never had it. #cmd("TUFS150") still owns #cmd("MOD(UFSD)"):
+
+#screen(```
+ LIST CDS  MOD(UFSD) .
+SMPCDS  MODULE ENTRIES
+  NAME
+UFSD      LASTUPD         = TUFS150  TYPE=ADD
+          LIBRARIES       = DISTLIB=AUFSDLOD
+          FMID            = TUFS150
+          RMID            = TUFS150
+          LMOD            = UFSD
+```)
+
+A plain install then changes nothing, and says so only where it is easy to
+overlook. This is the #cmd("APPLY") step of the install job on such a system.
+It ends with RC 00, there is no #cmd("HMA2380") and no #cmd("HMA2240"), and
+every module reads #cmd("NOT SEL"):
+
+#screen(raw(read("../ex/ug-install/apply-wall.txt")))
+
+The server that is started afterwards is still 1.5.0: #cmd("UFSD000I") names
+that version. Either install 1.5.1 first and this release after it (two
+ordinary upgrades), or release the inventory by hand:
+
++ Stop UFSD with #cmd("/P UFSD").
++ Run the UCLIN job of the fallback in the removal chapter
+  (@ug-remove-uclin) and nothing else. Do not run the dummy function
+  (@ug-remove-dummy) and do not scratch the libraries (@ug-remove-scratch). If
+  you have already run the plain install once, as above, the fallback also
+  removes the #cmd("TUFS152") entries that run left behind.
++ Run the steps in @ug-install-upload and @ug-install-job. Start UFSD and read
+  #cmd("UFSD000I"): it must name the version and the commit you just
+  installed.
+
+This route was run once, on a throwaway system that had 1.5.0 installed under
+SMP and its server running, after the plain install above had failed in the way
+shown. The fallback ended with RC 08 because of the ids that the system never
+had (see the removal chapter), the install job then ended with RC 00 and copied
+the four modules (#cmd("HMA2380"), once for each module and library), and the
+server came up as 1.5.2. The 1.5.0 server was cancelled, not stopped with
+#cmd("/P UFSD") as step 1 says; the start of 1.5.2 then reclaimed the anchor
+that it had left (@ug-recover-auto). A stop is what you should do.
+
 === From 1.4.0 <ug-install-from14>
 
 1.4.0 (#cmd("TUFS140")) installs into #cmd("UFSD.*") like this release, so
 there is nothing to allocate and no #cmd("STEPLIB") to change. But this
-release deletes only #cmd("TUFS150"), and a system that went from 1.4.0
-straight to 1.5.1 never had it. #cmd("TUFS140") still owns #cmd("MOD(UFSD)"):
+release deletes only #cmd("TUFS151"), and a system that went from 1.4.0
+straight to 1.5.2 never had it. #cmd("TUFS140") still owns #cmd("MOD(UFSD)"):
 
 #screen(```
  LIST CDS  MOD(UFSD) .
@@ -491,15 +542,15 @@ every module reads #cmd("NOT SEL"):
 #screen(raw(read("../ex/ug-install/apply-wall.txt")))
 
 The server that is started afterwards is still 1.4.0: #cmd("UFSD000I") names
-that version. Either install 1.5.0 first and this release after it (two
-ordinary upgrades), or release the inventory by hand:
+that version. Either install 1.5.0 and 1.5.1 first and this release after
+them (three ordinary upgrades), or release the inventory by hand:
 
 + Stop UFSD with #cmd("/P UFSD").
 + Run the UCLIN job of the fallback in the removal chapter
   (@ug-remove-uclin) and nothing else. Do not run the dummy function
   (@ug-remove-dummy) and do not scratch the libraries (@ug-remove-scratch). If
   you have already run the plain install once, as above, the fallback also
-  removes the #cmd("TUFS151") entries that run left behind.
+  removes the #cmd("TUFS152") entries that run left behind.
 + Run the steps in @ug-install-upload and @ug-install-job. Start UFSD and read
   #cmd("UFSD000I"): it must name the version and the commit you just
   installed.
@@ -509,20 +560,17 @@ SMP, after the plain install above had failed in the way shown. The fallback
 ended with RC 08 because of the ids that the system never had (see the removal
 chapter), the install job then ended with RC 00 and copied the four modules
 (#cmd("HMA2380"), once for each module and library), and the server came up as
-1.5.1. The old server was not stopped with #cmd("/P UFSD") before the second
-install, as step 1 says; a stop is what you should do. It was cancelled
-afterwards, and the start of 1.5.1 reclaimed the anchor that the 1.4.0 server
-had left (@ug-recover-auto).
+1.5.2.
 
 === From 1.3.0 <ug-install-from13>
 
 1.3.0 (#cmd("TUFS130")) installs into #cmd("UFSD.*") already, so no name
 changes, and there is nothing to allocate and no #cmd("STEPLIB") to change.
-But this release deletes only #cmd("TUFS150"), so #cmd("TUFS130") still owns
+But this release deletes only #cmd("TUFS151"), so #cmd("TUFS130") still owns
 #cmd("MOD(UFSD)"), and a plain install prints #cmd("NOT SEL") and ends with
 RC 00 with nothing copied.
 
-Either install 1.4.0 and 1.5.0 first and this release after them (three
+Either install 1.4.0, 1.5.0 and 1.5.1 first and this release after them (four
 ordinary upgrades), or release the inventory by hand:
 
 + Stop UFSD with #cmd("/P UFSD").
@@ -534,7 +582,7 @@ ordinary upgrades), or release the inventory by hand:
   #cmd("UFSD000I"): it must name the version and the commit you just
   installed.
 
-The hand route has not been run from 1.3.0 to 1.5.1. The UCLIN it relies on
+The hand route has not been run from 1.3.0 to 1.5.2. The UCLIN it relies on
 has been measured on its own.
 
 === From 1.2.x <ug-install-from12>
@@ -587,8 +635,8 @@ edit of the procedure away from being undone. See that as a window that you
 chose and then close.
 
 Each step of this route was measured on its own. The sequence as a whole has
-not been run from 1.2.x to 1.5.1. The alternative is to walk through the
-releases in order, 1.3.0, 1.4.0, 1.5.0 and then this one, each an ordinary
+not been run from 1.2.x to 1.5.2. The alternative is to walk through the
+releases in order, 1.3.0, 1.4.0, 1.5.0, 1.5.1 and then this one, each an ordinary
 upgrade after the first.
 
 === From a System Without SMP <ug-install-fromnosmp>
