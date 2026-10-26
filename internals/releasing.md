@@ -18,10 +18,10 @@ prefix = "TUFS"     # 1.5.0 -> FMID TUFS150, DELETE(TUFS140)
 a second digit. At patch 9 cut the next minor, at minor 9 the next major;
 ufsd 1.3.10 cannot be expressed and must not be released.
 
-Current: **`TUFS151`** for 1.5.1, deleting `TUFS150`. 1.5.1 is a patch, so
-its `mbt.toml` sets both explicitly (`fmid = "TUFS151"`, `delete =
-["TUFS150"]`); it was cut on the branch `release-1.5.x`, which carries those
-two lines and `version = "1.5.1"`. `main` stays on `1.6.0-dev` and has neither
+Current: **`TUFS152`** for 1.5.2, deleting `TUFS151`. 1.5.2 is a patch, so
+its `mbt.toml` sets both explicitly (`fmid = "TUFS152"`, `delete =
+["TUFS151"]`); it was cut on the branch `release-1.5.x`, which carries those
+two lines and `version = "1.5.2"`. `main` stays on `1.6.0-dev` and has neither
 line. The derivation from `[project] version` and `[smp] prefix` (1.5.0 gave
 `TUFS150`, deleting `TUFS140`) covers an `x.y.0` release only (measured with
 mbt 3.0.0-dev 6db906e):
@@ -33,8 +33,8 @@ mbt 3.0.0-dev 6db906e):
   set `fmid = "TUFS141"` and `delete = ["TUFS140"]`.
 - **The minor after a patch needs `delete` by hand too.** An `x.y.0` derives
   `DELETE` of the previous minor's id whatever was released in between, so
-  1.6.0 would delete `TUFS150`, while `TUFS151` is the installed owner. Cut
-  1.6.0 with `delete = ["TUFS151"]` beside the derived `fmid`. A successor
+  1.6.0 would delete `TUFS150`, while `TUFS152` is the installed owner. Cut
+  1.6.0 with `delete = ["TUFS152"]` beside the derived `fmid`. A successor
   that does not delete the installed owner of `MOD(UFSD)` should install
   nothing at RC 00 -- the element-ownership wall in
   `~/repos/mvs/.workspace/context/smp.md`, inferred for this case, not
@@ -45,14 +45,18 @@ mbt 3.0.0-dev 6db906e):
   package README still described 1.3.0's path from 1.2.x (fixed after the
   release; the release page carries the correction). `docs/installation.md`
   section 10 opens with the `LIST CDS/ACDS MOD(UFSD)` check -- keep it, and
-  update its "direct upgrade" owner with every release (it names `TUFS150`
-  while 1.5.1 is the current release; 1.6.0 makes it `TUFS151`).
+  update its "direct upgrade" owner with every release: with 1.5.2 it is
+  `TUFS151`, and a system on `TUFS150` (1.5.0) has its own subsection there
+  (1.6.0 makes the direct owner `TUFS152`). The ids of every release go into
+  the `++VER` of the dummy function `TUFSDEL` and the lists of
+  `docs/uninstall.md`, so add the new id there with each release.
 
 Burned here: `TUFS110` (1.1.x, never released but accepted on a test system),
 `TUFS120` (1.2.0-1.2.2, `REC APP ACC` on mvsdev), `TUFS130` (1.3.0,
 released 2026-09-14), `TUFS140` (1.4.0, released 2026-10-13), `TUFS150` (1.5.0,
-released 2026-10-20) and `TUFS151` (1.5.1, released 2026-10-26). `TUFS121`
-and `TUFS122` are never assigned -- those releases shipped under `TUFS120` when the rule was one id per *minor*, so the
+released 2026-10-20), `TUFS151` (1.5.1, released 2026-10-26 from
+`release-1.5.x`) and `TUFS152` (assigned to 1.5.2; spent once it is released).
+`TUFS121` and `TUFS122` are never assigned -- those releases shipped under `TUFS120` when the rule was one id per *minor*, so the
 id space skips. `TUFS131` was assigned to 1.3.1, which was never cut -- the
 libc370 2.0 port made the next release 1.4.0 -- so it is unspent and stays
 unassigned. The gaps are deliberate.

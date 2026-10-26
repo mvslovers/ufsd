@@ -1,0 +1,13 @@
+ LIST CDS  SYSMOD(TUFS152) .
+SMPCDS   SYSMOD ENTRIES
+  NAME
+TUFS152   TYPE            = FUNCTION
+          STATUS          = REC  APP  ACC
+          FMID            = TUFS152
+          JCLIN           = YES
+          DATE/TIME REC   = 26.299  22:19:11
+                    APP   = 26.299  22:19:39
+                    ACC   = 26.299  22:19:55
+          DELETE VER(001) = TUFS151
+          MOD             = UFSD      UFSDCLNP  UFSDSSIR  UFSFMT
+HMA2050    LIST PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00

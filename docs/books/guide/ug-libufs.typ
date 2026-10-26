@@ -20,9 +20,10 @@ The programs in this chapter are real. They were built on a host with CC/370
 release 1.5.0, and they ran as batch jobs on TK5 in a test system. The server
 there was the one of the TK5 image, whose banner is #cmd("UFSD001I UFSD 1.4.0
 READY"). So the book covers the functions that were measured, not the server of
-release 1.5.1, and the library of release 1.5.1 differs from the one measured in
-two places (a path of 256 characters or more, and a read answered inline in
-#cmd("ufs_fread")); those two were checked against the source and not run. The
+release 1.5.2, and the library of release 1.5.2 (which is the library of
+release 1.5.1) differs from the one measured in two places (a path of 256
+characters or more, and a read answered inline in #cmd("ufs_fread")); those
+two were checked against the source and not run. The
 output shown is what the programs printed. Nothing else was tried: where the
 text says that something was not run, it was not run.
 
@@ -42,19 +43,19 @@ text says that something was not run, it was not run.
 == Getting the Library <ug-libufs-get>
 
 #idx("libufs", "package")
-#idx("ufsd-1.5.1-lib.tar.gz")
+#idx("ufsd-1.5.2-lib.tar.gz")
 The library is not part of the installation package. It is the file
-#cmd("ufsd-1.5.1-lib.tar.gz") of the release (@ug-intro-package). Its
+#cmd("ufsd-1.5.2-lib.tar.gz") of the release (@ug-intro-package). Its
 checksum is in the #cmd("SHA256SUMS") of the release. It holds three files:
 
-#tab(caption: [The contents of ufsd-1.5.1-lib.tar.gz])[
+#tab(caption: [The contents of ufsd-1.5.2-lib.tar.gz])[
   #table(columns: (2.2in, 1fr),
     [File], [What it is],
-    [#cmd("ufsd-1.5.1/include/libufs.h")], [The declarations of all functions and
+    [#cmd("ufsd-1.5.2/include/libufs.h")], [The declarations of all functions and
       the structures that your program receives.],
-    [#cmd("ufsd-1.5.1/include/ufsdrc.h")], [The return codes, as
+    [#cmd("ufsd-1.5.2/include/ufsdrc.h")], [The return codes, as
       #cmd("UFSD_RC_*"). #cmd("libufs.h") includes it.],
-    [#cmd("ufsd-1.5.1/lib/libufs.a")], [The library, an archive for the
+    [#cmd("ufsd-1.5.2/lib/libufs.a")], [The library, an archive for the
       linkage editor of CC/370.],
   )
 ]
@@ -410,7 +411,7 @@ ones that were measured in the output of @ug-libufs-errors (the program
       neither sets #cmd("ufs_last_rc"). UFSD 1.5.0 cut a path of 256
       characters or more to 255 in #cmd("ufs_chgdir"), #cmd("ufs_mkdir"),
       #cmd("ufs_rmdir") and #cmd("ufs_remove") and sent it with its 256th
-      character in place of the terminating null\; UFSD 1.5.1 refuses it.],
+      character in place of the terminating null\; UFSD 1.5.1 and later refuse it.],
   )
 ]
 
@@ -462,7 +463,7 @@ lost for good. On the test system, which ran UFSD 1.4.0, after a program had
 created 125 files in an empty directory and removed all of them, #cmd("STATS")
 showed 64 of 126 inodes free, and the next run of the program created only 63
 files. After #cmd("F UFSD,REBUILD") the count was 0 of 126, and every later
-create failed with 48. UFSD 1.5.1 does not repair a disk that has lost inodes
+create failed with 48. UFSD 1.5.1 and 1.5.2 do not repair a disk that has lost inodes
 under an earlier release: such an inode still has its mode on the disk and has
 no directory entry, so #cmd("F UFSD,REBUILD") does not find it. Only a new
 format with #cmd("FORCE") gives these inodes back.]
