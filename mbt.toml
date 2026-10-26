@@ -170,6 +170,18 @@ rent = false          # mbtcheck.h keeps file-static counters
 mvs = false           # needs the stand-in headers and its own stubs
 sources = ["test/host/tstufsin.c", "src/ufsd#sbl.c", "src/ufsd#ino.c"]
 
+# TSTUFSBA — no block is handed out twice (#169). libufs writes files through
+# the real file, directory, inode and allocator layers (src/ufsd#fil.c, #dir.c,
+# #sbl.c, #ino.c) over a RAM volume formatted from ufsfmt_geometry(); only
+# iefssreq() and the block device are stand-ins. Host-only (mvs = false): needs
+# the stand-in headers and its own stubs.
+[test.TSTUFSBA]
+rent = false          # mbtcheck.h keeps file-static counters
+mvs = false           # needs the stand-in headers and its own stubs
+sources = ["test/host/tstufsba.c", "client/libufs.c", "src/ufsd#fil.c",
+           "src/ufsd#dir.c", "src/ufsd#sbl.c", "src/ufsd#ino.c",
+           "src/ufsfmtg.c"]
+
 # TSTUFSRC — the same guard on real control blocks (CVT/ASVT/PSA), which
 # only the target has. Reads storage; registers nothing.
 [test.TSTUFSRC]
