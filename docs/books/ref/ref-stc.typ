@@ -14,7 +14,7 @@ of its own (@ref-fmt).
 #idx("load modules")
 The install job puts four load modules into #cmd("UFSD.LINKLIB"):
 
-#tab(caption: [The load modules of UFSD 1.5.1])[
+#tab(caption: [The load modules of UFSD 1.5.2])[
   #table(columns: (1.1in, 0.7in, 1fr),
     [Module], [AC], [Use],
     [#cmd("UFSD")], [1], [The server. It runs as the started task #cmd("UFSD").],
@@ -65,8 +65,8 @@ must run authorised. There are two ways:
 Without either, the start fails with #cmd("UFSD091E APF SETUP FAILED RC=n
 (STEPLIB NOT APF AUTHORIZED?)") and return code 8. UFSDCLNP fails the same way
 with #cmd("UFSD141E"). The key in the message is inferred from the way, not
-measured. Release 1.5.0 was tested on the RAKF route only. Release 1.5.1 was tested on
-neither route again.
+measured. Release 1.5.0 was tested on the RAKF route only. Releases 1.5.1 and 1.5.2 were
+tested on neither route again.
 
 == The Procedure <ref-stc-proc>
 
