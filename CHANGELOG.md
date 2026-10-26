@@ -12,17 +12,19 @@ A release of one fix. Nothing is added to the interface.
 
 ### Read this first
 
-- **Run `F UFSD,REBUILD` once after the upgrade.** Earlier releases could give
-  one block of the disk to two files, or twice to the same file (see the table
-  below). This release stops that, but it does not undo it: a file system that
-  has such a block still has it. When a file that owns a shared block is
-  deleted, the block goes back to the free list although another file still
-  uses it, and deleting the other file frees it a second time. The free list
-  then holds a block that is in use, or the same block twice, and a later
-  write overwrites a live file. `F UFSD,REBUILD` builds the free list again
-  from the blocks that the files really use, so a block in use is not handed
-  out. It scans every read/write file system and holds up all clients while it
-  runs, so choose a quiet moment.
+- **This release stops the damage; it does not undo it.** Earlier releases
+  could give one block of the disk to two files, or twice to the same file (see
+  the table below). A file system that already has such a block still has it.
+  When a file that owns a shared block is deleted, the block goes back to the
+  free list although another file still uses it, and deleting the other file
+  frees it a second time. The free list can then hold a block that is in use,
+  or the same block twice, and a later write overwrites a live file.
+- **`F UFSD,REBUILD` is not a repair.** It scans the inodes and builds the
+  server's cache of free blocks, and of free inodes, again from the blocks that
+  the files use. It does not repair files that were stored wrongly before, and
+  this release does not promise that the free list is free of blocks in use
+  afterwards. It scans every read/write file system and holds up all clients
+  while it runs, so choose a quiet moment if you run it.
 - **Files that already share a block stay damaged.** The second writer
   overwrote the block, so one of the two files holds the other one's data in
   that block (4096 bytes on a disk with 4096-byte blocks). UFSD cannot tell
@@ -41,7 +43,7 @@ every block back, on disks with 4096-byte and with 512-byte blocks (a call of
 4096 bytes then takes eight blocks), with calls that start in the middle of a
 block, and with and without the chain of free blocks. Before the fix up to
 2,108 of 12,800 blocks came back wrong and up to 32 blocks were used by two
-inodes; with the fix none, and the free list never holds a block in use.
+inodes; with the fix none, and no block in the free cache was in use.
 
 ## 1.5.1 (not yet released)
 
