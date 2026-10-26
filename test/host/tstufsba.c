@@ -308,6 +308,22 @@ fill(unsigned char *p, unsigned len, int file, int salt)
     }
 }
 
+/* Counts, in refs[], every block the inode points to: direct, indirect, and
+** the entries of the indirect block. */
+static void
+count_refs(unsigned char *refs, const UFSD_DINODE *d)
+{
+    unsigned ind[MAXBLK / 4U];
+    unsigned i;
+
+    for (i = 0; i < 17U; i++)               /* 16 direct + the indirect */
+        if (d->addr[i] != 0 && d->addr[i] < g_nblk) refs[d->addr[i]]++;
+    if (d->addr[16] == 0 || d->addr[16] >= g_nblk) return;
+    memcpy(ind, sector(d->addr[16]), g_blk);
+    for (i = 0; i < g_blk / 4U; i++)
+        if (ind[i] != 0 && ind[i] < g_nblk) refs[ind[i]]++;
+}
+
 typedef struct audit {
     unsigned shared;        /* blocks referenced by more than one inode slot */
     unsigned cache_used;    /* cache entries an inode references            */
@@ -324,19 +340,11 @@ audit(AUDIT *a)
                             - g_disk.sb.ilist_sector) * ipb;
     unsigned       ino, i, b;
     UFSD_DINODE    d;
-    unsigned       ind[MAXBLK / 4U];
 
     memset(a, 0, sizeof *a);
     for (ino = 2; ino <= nino; ino++) {
         if (ufsd_ino_read(&g_disk, ino, &d) != UFSD_RC_OK) continue;
-        if (d.mode == 0) continue;
-        for (i = 0; i < 17U; i++)               /* 16 direct + the indirect */
-            if (d.addr[i] != 0 && d.addr[i] < g_nblk) refs[d.addr[i]]++;
-        if (d.addr[16] != 0 && d.addr[16] < g_nblk) {
-            memcpy(ind, sector(d.addr[16]), g_blk);
-            for (i = 0; i < g_blk / 4U; i++)
-                if (ind[i] != 0 && ind[i] < g_nblk) refs[ind[i]]++;
-        }
+        if (d.mode != 0) count_refs(refs, &d);
     }
     for (b = 0; b < g_nblk; b++)
         if (refs[b] > 1) a->shared++;
@@ -374,6 +382,57 @@ note_worst(AUDIT *worst, const AUDIT *a)
     if (a->cache_twice > worst->cache_twice) worst->cache_twice = a->cache_twice;
 }
 
+static void
+write_file(UFS *ufs, const RUN *r, int i, unsigned char *want,
+           unsigned *errors)
+{
+    UFSFILE *fp;
+    char     path[32];
+    unsigned off = 0, n;
+
+    fill(want, r->fbytes, i, 1);
+    snprintf(path, sizeof path, "/w/t%d", i);
+    fp = ufs_fopen(ufs, path, "w");
+    if (!fp) { (*errors)++; return; }
+    while (off < r->fbytes) {
+        n = off == 0 && r->skew != 0 ? r->skew : r->chunk;
+        if (n > r->fbytes - off) n = r->fbytes - off;
+        if (ufs_fwrite(want + off, 1, n, fp) < n) {
+            (*errors)++;
+            break;
+        }
+        off += n;
+    }
+    ufs_fclose(&fp);
+}
+
+/* Reads file i back and returns the number of blocks that differ. */
+static unsigned
+verify_file(UFS *ufs, const RUN *r, int i, unsigned char *buf,
+            unsigned char *want, unsigned *errors)
+{
+    UFSFILE *fp;
+    char     path[32];
+    unsigned got = 0, n, b, bad = 0;
+
+    fill(want, r->fbytes, i, 1);
+    snprintf(path, sizeof path, "/w/t%d", i);
+    fp = ufs_fopen(ufs, path, "r");
+    if (!fp) { (*errors)++; return 0; }
+    while (got < r->fbytes) {
+        n = ufs_fread(buf + got, 1, r->fbytes - got, fp);
+        if (n == 0) break;
+        got += n;
+    }
+    ufs_fclose(&fp);
+    if (got != r->fbytes) (*errors)++;
+    for (b = 0; b * g_blk < r->fbytes; b++)
+        if (memcmp(buf + (size_t)b * g_blk, want + (size_t)b * g_blk,
+                   g_blk) != 0)
+            bad++;
+    return bad;
+}
+
 /* Writes the files in batches; each batch is audited, read back block by
 ** block and removed.  Returns the number of blocks that read back wrong. */
 static unsigned
@@ -382,57 +441,24 @@ run_files(UFS *ufs, const RUN *r, AUDIT *worst, unsigned *errors)
     unsigned char *buf  = (unsigned char *)malloc(r->fbytes);
     unsigned char *want = (unsigned char *)malloc(r->fbytes);
     unsigned       bad = 0;
-    int            b0, i;
-    unsigned       b;
+    int            b0, i, end;
     char           path[32];
     AUDIT          a;
 
     memset(worst, 0, sizeof *worst);
     for (b0 = 0; b0 < r->nfiles; b0 += 20) {
-        for (i = b0; i < b0 + 20 && i < r->nfiles; i++) {
-            UFSFILE *fp;
-            unsigned off = 0, n;
-
-            fill(want, r->fbytes, i, 1);
-            sprintf(path, "/tmp/t%d", i);
-            fp = ufs_fopen(ufs, path, "w");
-            if (!fp) { (*errors)++; continue; }
-            while (off < r->fbytes) {
-                n = off == 0 && r->skew != 0 ? r->skew : r->chunk;
-                if (n > r->fbytes - off) n = r->fbytes - off;
-                if (ufs_fwrite(want + off, 1, n, fp) < n) {
-                    (*errors)++;
-                    break;
-                }
-                off += n;
-            }
-            ufs_fclose(&fp);
-        }
+        end = b0 + 20 < r->nfiles ? b0 + 20 : r->nfiles;
+        for (i = b0; i < end; i++)
+            write_file(ufs, r, i, want, errors);
 
         audit(&a);
         note_worst(worst, &a);
 
-        for (i = b0; i < b0 + 20 && i < r->nfiles; i++) {
-            UFSFILE *fp;
-            unsigned got = 0, n;
+        for (i = b0; i < end; i++)
+            bad += verify_file(ufs, r, i, buf, want, errors);
 
-            fill(want, r->fbytes, i, 1);
-            sprintf(path, "/tmp/t%d", i);
-            fp = ufs_fopen(ufs, path, "r");
-            if (!fp) { (*errors)++; continue; }
-            while (got < r->fbytes
-                   && (n = ufs_fread(buf + got, 1, r->fbytes - got, fp)) > 0)
-                got += n;
-            ufs_fclose(&fp);
-            if (got != r->fbytes) (*errors)++;
-            for (b = 0; b * g_blk < r->fbytes; b++)
-                if (memcmp(buf + (size_t)b * g_blk, want + (size_t)b * g_blk,
-                           g_blk) != 0)
-                    bad++;
-        }
-
-        for (i = b0; i < b0 + 20 && i < r->nfiles; i++) {
-            sprintf(path, "/tmp/t%d", i);
+        for (i = b0; i < end; i++) {
+            snprintf(path, sizeof path, "/w/t%d", i);
             if (ufs_remove(ufs, path) != UFSD_RC_OK) (*errors)++;
         }
     }
@@ -449,7 +475,7 @@ start(unsigned blksize, unsigned nblk, int chain)
     format(blksize, nblk, chain);
     ufs = ufsnew();
     if (ufs == NULL) return NULL;
-    if (ufs_mkdir(ufs, "/tmp") != UFSD_RC_OK) {
+    if (ufs_mkdir(ufs, "/w") != UFSD_RC_OK) {
         ufsfree(&ufs);
         return NULL;
     }
@@ -464,7 +490,7 @@ scenario(const RUN *r)
     AUDIT    a;
     unsigned errors = 0, bad;
 
-    CHECK(ufs != NULL, "session and /tmp");
+    CHECK(ufs != NULL, "session and /w");
     if (ufs == NULL) return;
 
     bad = run_files(ufs, r, &a, &errors);
@@ -473,18 +499,18 @@ scenario(const RUN *r)
            r->label, g_scans, bad, a.shared, a.cache_used, a.cache_twice,
            errors);
 
-    sprintf(msg, "%s: no request failed", r->label);
+    snprintf(msg, sizeof msg, "%s: no request failed", r->label);
     CHECK_EQ(errors, 0, msg);
-    sprintf(msg, "%s: every block reads back as written", r->label);
+    snprintf(msg, sizeof msg, "%s: every block reads back as written", r->label);
     CHECK_EQ(bad, 0, msg);
-    sprintf(msg, "%s: no block referenced twice", r->label);
+    snprintf(msg, sizeof msg, "%s: no block referenced twice", r->label);
     CHECK_EQ(a.shared, 0, msg);
-    sprintf(msg, "%s: no free-cache block is in use", r->label);
+    snprintf(msg, sizeof msg, "%s: no free-cache block is in use", r->label);
     CHECK_EQ(a.cache_used, 0, msg);
-    sprintf(msg, "%s: no block in the free cache twice", r->label);
+    snprintf(msg, sizeof msg, "%s: no block in the free cache twice", r->label);
     CHECK_EQ(a.cache_twice, 0, msg);
     if (!r->chain) {
-        sprintf(msg, "%s: the scan path ran", r->label);
+        snprintf(msg, sizeof msg, "%s: the scan path ran", r->label);
         CHECK(g_scans > 0, msg);
     }
     ufsfree(&ufs);
@@ -560,14 +586,14 @@ srv_close(int fd)
     serve(&u);
 }
 
-/* One FWRITE of `count` bytes in a request buffer of `bufsize` bytes.
-** Returns the rc; *written is the byte count the server answers. */
+/* One FWRITE of `count` bytes; the request buffer holds 4096.  Returns the
+** rc; *written is the byte count the server answers. */
 static int
 srv_write(int fd, const unsigned char *data, unsigned count,
-          unsigned bufsize, unsigned *written)
+          unsigned *written)
 {
     UFSREQ  *req = (UFSREQ *)calloc(1, sizeof *req);
-    UFSBUF  *buf = (UFSBUF *)calloc(1, offsetof(UFSBUF, data) + bufsize);
+    UFSBUF  *buf = (UFSBUF *)calloc(1, sizeof *buf);
     char     resp[UFSREQ_MAX_INLINE];
     unsigned rlen = 0;
     int      rc;
@@ -578,7 +604,8 @@ srv_write(int fd, const unsigned char *data, unsigned count,
     req->data_len      = 8U;
     *(unsigned *)req->data       = (unsigned)fd;
     *(unsigned *)(req->data + 4) = count;
-    memcpy(buf->data, data, count < bufsize ? count : bufsize);
+    memcpy(buf->data, data,
+           count < sizeof buf->data ? count : sizeof buf->data);
     req->buf = buf;
 
     memset(resp, 0, sizeof resp);
@@ -598,21 +625,14 @@ unreferenced_blocks(void)
     unsigned       ipb  = g_disk.sb.inodes_per_block;
     unsigned       nino = (g_disk.sb.datablock_start
                            - g_disk.sb.ilist_sector) * ipb;
-    unsigned       ino, i, b, n = 0;
+    unsigned       ino, b, n = 0;
     UFSD_DINODE    d;
-    unsigned       ind[MAXBLK / 4U];
 
     for (b = 0; b < g_disk.sb.datablock_start; b++) refs[b] = 1;
     for (ino = 2; ino <= nino; ino++) {
         if (ufsd_ino_read(&g_disk, ino, &d) != UFSD_RC_OK || d.mode == 0)
             continue;
-        for (i = 0; i < 17U; i++)
-            if (d.addr[i] != 0 && d.addr[i] < g_nblk) refs[d.addr[i]] = 1;
-        if (d.addr[16] != 0 && d.addr[16] < g_nblk) {
-            memcpy(ind, sector(d.addr[16]), g_blk);
-            for (i = 0; i < g_blk / 4U; i++)
-                if (ind[i] != 0 && ind[i] < g_nblk) refs[ind[i]] = 1;
-        }
+        count_refs(refs, &d);
     }
     for (b = 0; b < g_nblk; b++)
         if (!refs[b]) n++;
@@ -627,16 +647,17 @@ static void
 test_oversize_refused(void)
 {
     UFS           *ufs = start(4096U, 1400U, 0);
-    unsigned char *data = (unsigned char *)calloc(1, 8192U);
+    unsigned char *data;
     unsigned       before, w = 99;
     int            fd, rc;
 
-    CHECK(ufs != NULL, "oversize: session and /tmp");
+    CHECK(ufs != NULL, "oversize: session and /w");
     if (!ufs) return;
+    data = (unsigned char *)calloc(1, 8192U);
 
     before = unreferenced_blocks();
-    fd = srv_open("/tmp/big");
-    rc = srv_write(fd, data, 8192U, 8192U, &w);
+    fd = srv_open("/w/big");
+    rc = srv_write(fd, data, 8192U, &w);
     srv_close(fd);
     CHECK_EQ(rc, UFSD_RC_INVALID, "oversize: a count above 4096 is refused");
     CHECK_EQ(w, 0, "oversize: nothing is reported written");
@@ -650,25 +671,25 @@ test_oversize_refused(void)
 static void
 test_full_volume(void)
 {
-    UFS            *ufs;
-    unsigned char  *data = (unsigned char *)malloc(4096U);
+    UFS            *ufs = start(512U, 400U, 0);
+    unsigned char  *data;
     unsigned        w = 0, n = 0, nfile = 0;
     int             fd, rc;
     AUDIT           a;
     char            path[32];
 
-    ufs = start(512U, 400U, 0);
-    CHECK(ufs != NULL, "full volume: session and /tmp");
+    CHECK(ufs != NULL, "full volume: session and /w");
     if (!ufs) return;
+    data = (unsigned char *)malloc(4096U);
     fill(data, 4096U, 1, 1);
 
     /* Leave exactly 5 blocks.  Files of 8 blocks stay direct-only; the
     ** blocks go one at a time so the count lands on 5. */
     while (unreferenced_blocks() > 5U && nfile < 100U) {
-        sprintf(path, "/tmp/f%u", nfile++);
+        snprintf(path, sizeof path, "/w/f%u", nfile++);
         fd = srv_open(path);
         for (n = 0; n < 8U && unreferenced_blocks() > 5U; n++) {
-            rc = srv_write(fd, data, 512U, 4096U, &w);
+            rc = srv_write(fd, data, 512U, &w);
             if (rc != UFSD_RC_OK) break;
         }
         srv_close(fd);
@@ -676,8 +697,8 @@ test_full_volume(void)
     g_disk.sb.nfreeblock = 0;                   /* the next alloc scans */
     CHECK_EQ(unreferenced_blocks(), 5, "full volume: 5 blocks left");
 
-    fd = srv_open("/tmp/over");
-    rc = srv_write(fd, data, 4096U, 4096U, &w);
+    fd = srv_open("/w/over");
+    rc = srv_write(fd, data, 4096U, &w);
     srv_close(fd);
     printf("  full volume: 8 blocks asked, 5 left: rc %d, %u bytes written\n",
            rc, w);

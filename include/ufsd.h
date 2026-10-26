@@ -76,6 +76,7 @@ typedef struct ufsd_config     UFSD_CONFIG;
 #define UFSD_NAME_MAX           59U  /* max filename chars (excl. NUL)         */
 #define UFSD_NADDR              19U  /* total address slots in inode           */
 #define UFSD_NADDR_DIRECT       16U  /* direct data block slots (addr[0..15])  */
+#define UFSD_NADDR_SINDIRECT    16U  /* index of the single indirect pointer   */
 
 #define UFSD_SB_MAX_FREEBLOCK   51U  /* free block cache size in superblock    */
 #define UFSD_SB_MAX_FREEINODE   64U  /* free inode cache size in superblock    */

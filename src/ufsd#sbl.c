@@ -193,10 +193,9 @@ ufsd_sb_alloc_block_for(UFSD_DISK *disk, const UFSD_DINODE *inflight,
     if (!disk || !out_sector) return UFSD_RC_IO;
 
     /* Cache empty on entry: try inode-table scan to recover */
-    if (disk->sb.nfreeblock == 0) {
-        if (sb_scan_refill(disk, inflight, 0U) != UFSD_RC_OK)
-            return UFSD_RC_NOSPACE;
-    }
+    if (disk->sb.nfreeblock == 0 &&
+        sb_scan_refill(disk, inflight, 0U) != UFSD_RC_OK)
+        return UFSD_RC_NOSPACE;
 
     disk->sb.nfreeblock--;
     *out_sector = disk->sb.freeblock[disk->sb.nfreeblock];
@@ -391,7 +390,7 @@ mark_inode_blocks(UFSD_DISK *disk, const UFSD_DINODE *dino,
             used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
     }
 
-    blk = dino->addr[UFSD_NADDR_DIRECT];
+    blk = dino->addr[UFSD_NADDR_SINDIRECT];
     if (blk != 0 && blk < vol) {
         used[blk / 8U] |= (unsigned char)(1U << (blk % 8U));
 

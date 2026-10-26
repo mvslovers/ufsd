@@ -174,7 +174,6 @@ dir_is_empty(UFSD_DISK *disk, unsigned dir_ino)
 ** Max file size with single indirect: 16*4K + 1024*4K = 4.06 MB.
 ** ============================================================ */
 
-#define UFSD_NADDR_SINDIRECT  16U  /* index of single indirect pointer */
 
 /* Resolve logical block index to physical block number.
 ** Returns physical block number, or 0 if not allocated. */
