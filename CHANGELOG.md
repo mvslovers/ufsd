@@ -6,6 +6,43 @@ address spaces through the `libufs` client library.
 
 Earlier releases are described on their GitHub release pages.
 
+## 1.5.2 (not yet released)
+
+A release of one fix. Nothing is added to the interface.
+
+### Read this first
+
+- **Run `F UFSD,REBUILD` once after the upgrade.** Earlier releases could give
+  one block of the disk to two files, or twice to the same file (see the table
+  below). This release stops that, but it does not undo it: a file system that
+  has such a block still has it. When a file that owns a shared block is
+  deleted, the block goes back to the free list although another file still
+  uses it, and deleting the other file frees it a second time. The free list
+  then holds a block that is in use, or the same block twice, and a later
+  write overwrites a live file. `F UFSD,REBUILD` builds the free list again
+  from the blocks that the files really use, so a block in use is not handed
+  out. It scans every read/write file system and holds up all clients while it
+  runs, so choose a quiet moment.
+- **Files that already share a block stay damaged.** The second writer
+  overwrote the block, so one of the two files holds the other one's data in
+  that block (4096 bytes on a disk with 4096-byte blocks). UFSD cannot tell
+  which files are affected: compare the files with a copy, or write them again
+  after the upgrade.
+
+### Fixed
+
+| Before | Now |
+|---|---|
+| When the server wrote a file and its list of free blocks ran out, it rebuilt the list by scanning the inodes on the disk. The scan counted only the blocks that an inode on the disk points to. But a file being written keeps its new blocks in memory until the write call ends, and the block just taken is in no inode at all. The scan listed those blocks as free, and a block taken soon after was one of them: two files, or two blocks of one file, shared a block, and nothing reported an error. In a test with 4096-byte blocks, about one file in twenty of 32 KB came back with one wrong block. The scan runs when the list cannot be refilled from the chain of free blocks on the disk: when that chain is missing or broken, for instance after earlier releases ran on the disk, and after blocks have been freed. | The scan is told which blocks are taken but not yet in an inode on the disk: the block just taken, and the blocks that the write has assigned so far. This holds when the write starts with an empty list and for any number of blocks in one call. A new indirect block is written to the disk, zeroed, before the first block that it lists is taken, because the scan reads an indirect block from the disk. |
+| A write that needed more blocks than were free could report success after writing over blocks that it had taken itself. | It stops with return code 44 (no space) after writing exactly the blocks that were free. |
+
+The fix was tested by writing 200 files of 32 KB through `libufs` and reading
+every block back, on disks with 4096-byte and with 512-byte blocks (a call of
+4096 bytes then takes eight blocks), with calls that start in the middle of a
+block, and with and without the chain of free blocks. Before the fix up to
+2,108 of 12,800 blocks came back wrong and up to 32 blocks were used by two
+inodes; with the fix none, and the free list never holds a block in use.
+
 ## 1.5.1 (not yet released)
 
 A release of fixes. Nothing is added to the interface.
