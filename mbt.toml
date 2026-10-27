@@ -61,10 +61,14 @@ kind = "application"
 # 2.24.1 change (select()/socket() errno, #161) is in code no ufsd module
 # links; the changed @@FPOPN, @@STDLZ and @@ENVLZ add no file-scope data
 # (constraint 7).
+# 2.25.1 / cc370 1.6.3: the toolchain the release candidate was built and
+# checked with (its startup banner reads "UFSD005I LIBC370 2.25.1 (FCDE4E8)"),
+# so the tagged build uses the same one. 2.24.1 stays the documented floor:
+# it needs no warm-up fopen either.
 # cc370: libc370 2.8.0 and later need cc370 >= 1.6.0 (every header
-# #errors below it); 1.6.1 satisfies 2.24.1.
-cc370 = "1.6.1"
-libc370 = "2.24.1"
+# #errors below it); 1.6.3 satisfies 2.25.1.
+cc370 = "1.6.3"
+libc370 = "2.25.1"
 mbt = "3.0"
 
 # ── Load modules ─────────────────────────────────────────
