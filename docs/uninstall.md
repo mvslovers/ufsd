@@ -14,6 +14,11 @@ upgrade routes use it too.
 > refused once the FMID has been accepted, which the install job does in the
 > same run as the APPLY. Every archive from 1.2.1 on points here instead.
 
+> **Did you install a development build of `main`?** Its FMID is `TUFS160`, which
+> none of the jobs below names. Go to
+> [the section on development builds](#you-installed-a-development-build-with-a-later-fmid)
+> first.
+
 > **If you are upgrading rather than removing, you are in the wrong document.**
 > A release deletes its predecessor as part of its own install, and the
 > scratch step below would delete the libraries the new release installs into.
@@ -518,11 +523,317 @@ only the inventory: until you scratch them, the load modules are still in the
 target library, and the copies that SMP accepted are in the distribution
 library.
 
+## You installed a development build with a later FMID
+
+A development build of `main` is packaged under the FMID of the release that
+`main` is heading for. A build of 1.6.0-dev carries `TUFS160`, although 1.6.0 is
+not released. If you installed such a package by SMP, the system holds an id
+that no release of this document knows. Neither the dummy function of step 2 nor
+the lists of step 3 name it, so it stays in both zones, and it still owns the
+load modules. Install a release only after you have cleaned it up as described
+here.
+
+A package that was built with a throwaway id of its own (`[smp] fmid` in
+`mbt.toml`) is the same case with another name. Wherever this section says
+`TUFS160`, read your id, and name it in the same places. A current `mbt`
+refuses to package a pre-release without such an id, so a package of the first
+kind comes from an older `mbt`.
+
+Ask SMP which id owns the load module. This job lists the module in both zones:
+
+```
+//UFSDLST  JOB (SYS),'UFSD LIST',
+//             CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1),
+//             REGION=4096K
+//LIST    EXEC SMPAPP
+//SMPCNTL  DD  *
+ LIST CDS  MOD(UFSD) .
+ LIST ACDS MOD(UFSD) .
+/*
+//
+```
+
+Read the `FMID` line of the stanza (the stanzas are shown in
+[step 6](#6-check-the-result)). UFSD has used these ids, and no others: `TUFS110`, `TUFS120`, `TUFS130`, `TUFS140`, `TUFS150`, `TUFS151` and
+`TUFS152`. If the `FMID` is one of them, the system belongs to the main way
+above and this section is not for you. If it is any other id, such as
+`TUFS160`, you are in the right section.
+
+The steps are those of the main way, with two differences. `TUFS160` is named in
+every list, and the libraries stay.
+
+### 1. Stop the server
+
+```
+/P UFSD
+```
+
+If common storage is still held afterwards, run `/S UFSDCLNP` before you go on,
+as in step 1 above.
+
+### 2. Delete the development build with the dummy function
+
+Submit the job of [step 2](#2-delete-the-release-with-the-dummy-function) with
+one change: `TUFS160` is added to the `DELETE` operand, as the last id on the
+second line of the `++VER` card. Everything else, the `HMASMP.LINKLIB` and
+`HMASMP.AUFSDLOD` statements, the `COND` on the later steps and the member list
+at the end, stays as it is there.
+
+Keep the card on two lines. With the eight ids on one line it is 85 characters
+long, and SMP reads columns 1 to 72 and nothing after them (see the third point
+of step 2). The job of step 2 breaks the card after `TUFS150,`; the second line,
+with `TUFS160` on it, is 29 characters long.
+
+```
+//UFSDDEL  JOB (SYS),'UFSD DELETE',
+//             CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1),
+//             REGION=4096K
+//RECV    EXEC SMPREC
+//SMPPTFIN DD  *
+++FUNCTION(TUFSDEL) .
+++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150,
+   TUFS151,TUFS152,TUFS160) .
+/*
+//SMPCNTL  DD  *
+ RESETRC .
+ RECEIVE SELECT(TUFSDEL) .
+/*
+//APPLY   EXEC SMPAPP,COND=(4,LT,RECV.HMASMP)
+//HMASMP.LINKLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
+//HMASMP.AUFSDLOD DD  DISP=SHR,DSN=UFSD.AUFSDLOD
+//SMPCNTL  DD  *
+ APPLY S(TUFSDEL) DIS(WRITE) .
+/*
+//ACCEPT  EXEC SMPAPP,COND=(4,LT,APPLY.HMASMP)
+//HMASMP.LINKLIB  DD  DISP=SHR,DSN=UFSD.LINKLIB
+//HMASMP.AUFSDLOD DD  DISP=SHR,DSN=UFSD.AUFSDLOD
+//SMPCNTL  DD  *
+ ACCEPT S(TUFSDEL) DIS(WRITE) .
+/*
+//MEMBERS EXEC PGM=IKJEFT01
+//SYSTSPRT DD  SYSOUT=*
+//SYSTSIN  DD  *
+ LISTDS 'UFSD.LINKLIB' MEMBERS
+ LISTDS 'UFSD.AUFSDLOD' MEMBERS
+/*
+//
+```
+
+Read the three SMP steps as in step 2. The receive ends with return code 04 and
+echoes the card with `TUFS160` on its second line:
+
+```
+ RECEIVE SELECT(TUFSDEL) .
+----------++FUNCTION(TUFSDEL) .
+----------++VER(Z038) DELETE(TUFS110,TUFS120,TUFS130,TUFS140,TUFS150,
+----------   TUFS151,TUFS152,TUFS160) .
+HMA3971    SYSMOD TUFSDEL HAS NO ELEMENTS
+HMA3930    SYSMOD TUFSDEL SUCCESSFULLY RECEIVED
+HMA2050    RECEIVE PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
+```
+
+The apply deletes the four load modules and ends with return code 04. The
+`HMA2461` line names `TUFS160`, the id that the system had applied, and not
+`TUFS152` as in step 2:
+
+```
+ APPLY S(TUFSDEL) DIS(WRITE) .
+HMA2240    SUCCESSFULLY DELETED LMOD UFSD ON LINKLIB LIBRARY
+HMA2240    SUCCESSFULLY DELETED LMOD UFSDCLNP ON LINKLIB LIBRARY
+HMA2240    SUCCESSFULLY DELETED LMOD UFSDSSIR ON LINKLIB LIBRARY
+HMA2240    SUCCESSFULLY DELETED LMOD UFSFMT ON LINKLIB LIBRARY
+HMA2270    APPLY PROCESSING SUCCESSFULLY COMPLETED FOR SYSMOD TUFSDEL
+HMA2461    SYSMOD TUFS160 NOT FOUND ON SMPSCDS LIBRARY
+HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
+```
+
+The accept prints the four `HMA2240` lines for `AUFSDLOD` as in step 2 and ends
+with return code 00. Both member lists must be empty:
+
+```
+ LISTDS 'UFSD.LINKLIB' MEMBERS
+UFSD.LINKLIB
+--RECFM-LRECL-BLKSIZE-DSORG
+  U     **    15040   PO
+--VOLUMES--
+  TSO001
+--MEMBERS--
+ LISTDS 'UFSD.AUFSDLOD' MEMBERS
+UFSD.AUFSDLOD
+--RECFM-LRECL-BLKSIZE-DSORG
+  U     **    15040   PO
+--VOLUMES--
+  TSO001
+--MEMBERS--
+```
+
+**Check this step before you go on.** If the `RECEIVE` ended with 08, the job
+removed nothing: the member lists of its last step still name the four load
+modules in both libraries. Do not run step 3 then, because `UCLIN` changes only
+the inventory and leaves the load modules where they are. Fix the card and run
+this step again. Go on when the `APPLY` and the `ACCEPT` have printed their
+`HMA2240` lines and both member lists are empty.
+
+### 3. Free the ids, with `TUFS160` in the lists
+
+Submit the job of [step 3](#3-free-the-ids) with `TUFS160` added to the `DEL`
+statements of both `UCLIN` blocks and to the `LIST` statements. In the job that
+was run, `TUFS160` is the second `DEL` statement of each block, right after
+`TUFSDEL` and ahead of `TUFS152`. In the `LIST` step it follows `TUFSDEL` in the
+same way (`LIST CDS` for `TUFSDEL` and `TUFS160`, then `LIST ACDS` for both),
+and the seven pairs for `TUFS152` down to `TUFS110` come after. Each zone now
+takes nine `DEL` statements, `TUFSDEL` and the eight ids, and the `LIST` step
+has eighteen statements.
+
+Both `UCLIN` steps end with return code 00, and all nine `DEL` statements of
+each report `HMA2550 UPDATE COMPLETE`. The second zone needs no statement
+beyond these. The step `UCLCDS` begins like this:
+
+```
+ UCLIN CDS .
+  DEL SYSMOD(TUFSDEL) .
+HMA2550    UPDATE COMPLETE FOR TUFSDEL
+  DEL SYSMOD(TUFS160) .
+HMA2550    UPDATE COMPLETE FOR TUFS160
+  DEL SYSMOD(TUFS152) .
+HMA2550    UPDATE COMPLETE FOR TUFS152
+```
+
+Step `UCLACDS` gives the same. Any other message is not expected.
+
+Read the `LIST` as in [step 4](#4-read-the-list--this-is-the-actual-result):
+all eighteen statements must show their id as not found, and the step ends with
+return code 04. A stanza with `TYPE = FUNCTION` for `TUFS160` is an entry that
+is still there, in whichever zone it shows.
+
+### 4. Do not scratch the libraries
+
+Leave out step 5. The release installs into `UFSD.LINKLIB` and
+`UFSD.AUFSDLOD`, which are empty now.
+
+### 5. Install the release
+
+Run step 5 of [installation.md](installation.md) with the install job of the
+release package, which you upload as in step 3 there. **Do not run the
+allocation job of step 4.** It allocates both libraries `NEW`, and they exist.
+That the job fails on them has not been measured: the test runs skipped it.
+
+The `RECEIVE`, the `APPLY CHECK`, the `APPLY` and the `ACCEPT` end with return
+code 00. The `APPLY` copies each of the four modules into `UFSD.LINKLIB`, and
+the `ACCEPT` into `UFSD.AUFSDLOD`. There is no `HMA2461` line. These are the
+lines of the `APPLY`:
+
+```
+HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=LINKLIB - SYSMOD=TUFS152 - RETURN CODE=00
+HMA2380    COPY SUCCESSFUL - MOD=UFSDCLNP - LMOD=UFSDCLNP - LIBRARY=LINKLIB - SYSMOD=TUFS152 - RETURN CODE=00
+HMA2380    COPY SUCCESSFUL - MOD=UFSDSSIR - LMOD=UFSDSSIR - LIBRARY=LINKLIB - SYSMOD=TUFS152 - RETURN CODE=00
+HMA2380    COPY SUCCESSFUL - MOD=UFSFMT - LMOD=UFSFMT - LIBRARY=LINKLIB - SYSMOD=TUFS152 - RETURN CODE=00
+```
+
+The `ACCEPT` prints the same four lines with `LIBRARY=AUFSDLOD`.
+
+### 6. Check the result
+
+List the members of `UFSD.LINKLIB` and `UFSD.AUFSDLOD`: the four load modules
+must be in both. Then `LIST CDS MOD(UFSD) .` must show the `FMID` of the
+release you installed, and not `TUFS160`. Start UFSD and read the banner; it
+must name the release, and must not end in `-DEV`:
+
+```
+UFSD000I UFSD 1.5.2 (xxxxxxx) STARTING
+```
+
+A banner with `-DEV` after a clean install means that the server was loaded from
+another library. A development build is deployed to `UFSD.DEV.LINKLIB`. If the
+`STEPLIB` of your procedure names that library ahead of `UFSD.LINKLIB` (the
+sample procedure of the release names `UFSD.LINKLIB` alone, so this is a change
+you made), the server loads the copy there. The SMP steps above act on
+`UFSD.LINKLIB` alone, so they leave that copy where it is. Delete the library,
+or take it out of the `STEPLIB`, and start the server again. This has not been
+measured for UFSD; it was measured on another product built the same way.
+
+Both libraries list `UFSD`, `UFSDCLNP`, `UFSDSSIR` and `UFSFMT`. The two `LIST`
+statements show the release, in both zones, as the owner of the module:
+
+```
+ LIST CDS MOD(UFSD) .
+SMPCDS  MODULE ENTRIES
+  NAME
+UFSD      LASTUPD         = TUFS152  TYPE=ADD
+          LIBRARIES       = DISTLIB=AUFSDLOD
+          FMID            = TUFS152
+          RMID            = TUFS152
+          LMOD            = UFSD
+ LIST ACDS MOD(UFSD) .
+SMPACDS MODULE ENTRIES
+  NAME
+UFSD      LASTUPD         = TUFS152  TYPE=ADD
+          LIBRARIES       = DISTLIB=AUFSDLOD
+          FMID            = TUFS152
+          RMID            = TUFS152
+```
+
+`TUFS160` is not found in either zone, and neither are `TUFS150`, `TUFS140` and
+`TUFSDEL`. `TUFS151` is there with `DELBY = TUFS152`: that is the mark which the
+release leaves for its predecessor, as described at the top of this document,
+and not a rest of the development build. The banner of the started server names the release:
+
+```
+UFSD000I UFSD 1.5.2 (xxxxxxx) STARTING
+```
+
+**What happens without this section.** The 1.5.2 install job ends with return
+code 00 in all its steps, and prints no warning. In the `APPLY CHECK`, the
+`APPLY` and the `ACCEPT`, each of the four modules is `NOT SEL`: `TUFS160` still
+owns it, and `TUFS152` is installed but owns nothing. Both libraries are
+unchanged, `LIST CDS MOD(UFSD)` and `LIST ACDS MOD(UFSD)` still show `TUFS160`
+as `FMID` and `RMID`, and the server starts as the development build:
+
+```
+UFSD000I UFSD 1.6.0-DEV (xxxxxxx) STARTING
+```
+
+The return codes do not tell you this. The banner and the `FMID` do.
+
+**What has been measured.** The section was followed on two test systems, an
+MVS/CE and a TK5, each with a development build of release 1.6.0 installed
+under `TUFS160` by SMP, and the release 1.5.2 (the released one, not a
+candidate) installed afterwards as above. The control run, without the section,
+was made on both as well. The two systems did not start from the same state:
+
+- On the MVS/CE system the `APPLY` of the development build ended without
+  `HMA2461`. A `LIST` before the install found none of the ids and no UFSD
+  module in either zone. The system image ran a UFSD of its own outside SMP,
+  which was stopped first.
+- On the TK5 system the development build was installed over release 1.4.0. Its
+  `APPLY` ended with return code 04 and `HMA2461 SYSMOD TUFS140 NOT FOUND ON
+  SMPSCDS LIBRARY`, so `TUFS140` was in the history there and went with the
+  lists.
+
+Both runs gave the results shown above.
+
+**What has not been measured.** A system that really went through the earlier
+releases, a second development build installed over the first (`TUFS160`, then
+a later id), a throwaway id of your own instead of `TUFS160`, a development
+build installed over a system that already holds release 1.5.2, the removal
+without a release afterwards (see below), and a copy in `UFSD.DEV.LINKLIB`.
+
+### If you want to remove UFSD and not install a release
+
+Steps 1 to 3 above clear the development build from both zones and both
+libraries. UFSD is then gone from SMP, apart from the two empty libraries, which
+step 5 of the main way [scratches](#5-scratch-the-libraries). That combination,
+steps 1 to 3 of this section followed by step 5 of the main way, has not been
+run. Check it as you check the main way: the libraries are gone, and `LIST CDS
+MOD(UFSD)` and `LIST ACDS MOD(UFSD)` find nothing.
+
 ## What is not removed, because SMP never owned it
 
 - The procedures and the member of the configuration that you copied into the
   procedure library and the parameter library of the system.
 - The entry for `UFSD.LINKLIB` in the APF list, if you made one.
+- **`UFSD.DEV.LINKLIB`**, if you deployed a development build there. SMP never
+  wrote it, and neither the steps above nor the install of a release clear it.
 - **Your file systems.** The data sets that `ROOT` and `MOUNT` name in the
   member hold your files. None of the steps above touches them.
 

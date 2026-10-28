@@ -1,0 +1,15 @@
+ LIST CDS MOD(UFSD) .
+SMPCDS  MODULE ENTRIES
+  NAME
+UFSD      LASTUPD         = TUFS152  TYPE=ADD
+          LIBRARIES       = DISTLIB=AUFSDLOD
+          FMID            = TUFS152
+          RMID            = TUFS152
+          LMOD            = UFSD
+ LIST ACDS MOD(UFSD) .
+SMPACDS MODULE ENTRIES
+  NAME
+UFSD      LASTUPD         = TUFS152  TYPE=ADD
+          LIBRARIES       = DISTLIB=AUFSDLOD
+          FMID            = TUFS152
+          RMID            = TUFS152

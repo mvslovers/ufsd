@@ -13,6 +13,10 @@ too. If you want to move to a newer release, you are in the wrong chapter: a
 release deletes its predecessor when it is installed, and the last step below
 would scratch the libraries that the new release installs into.
 
+#note[If you installed a development build of the main branch, its FMID is
+#cmd("TUFS160"), which none of the jobs below names. Go to
+@ug-remove-dev first.]
+
 == What UFSD Put on the System <ug-remove-what>
 
 #tab(caption: [What release 1.5.2 installed])[
@@ -388,6 +392,177 @@ step 5. #cmd("UCLIN") changes only the inventory: until you scratch them, the
 load modules are still in the target library, and the copies that SMP accepted
 are in the distribution library.
 
+== You Installed a Development Build with a Later FMID <ug-remove-dev>
+
+#idx("development build")
+#idx("TUFS160")
+A development build of the main branch is packaged under the FMID of the
+release that the branch is heading for. A build of 1.6.0-dev carries
+#cmd("TUFS160"), although 1.6.0 is not released. If you installed such a package
+by SMP, the system holds an id that no release of this book knows. Neither the
+dummy function of step 2 nor the lists of step 3 name it, so it stays in both
+zones, and it still owns the load modules. Install a release only after you have
+cleaned it up as described here.
+
+A package that was built with a throwaway id of its own is the same case with
+another name. Wherever this section says #cmd("TUFS160"), read your id, and name
+it in the same places. A current #cmd("mbt") refuses to package a pre-release
+without such an id, so a package of the first kind comes from an older
+#cmd("mbt").
+
+Ask SMP which id owns the load module. This job lists the module in both zones:
+
+#screen(```
+//UFSDLST  JOB (SYS),'UFSD LIST',
+//             CLASS=A,MSGCLASS=H,MSGLEVEL=(1,1),
+//             REGION=4096K
+//LIST    EXEC SMPAPP
+//SMPCNTL  DD  *
+ LIST CDS  MOD(UFSD) .
+ LIST ACDS MOD(UFSD) .
+/*
+//
+```)
+
+Read the #cmd("FMID") line of the stanza (the stanzas are shown in step 6 below).
+UFSD has used these ids, and no others: #cmd("TUFS110"),
+#cmd("TUFS120"), #cmd("TUFS130"), #cmd("TUFS140"), #cmd("TUFS150"),
+#cmd("TUFS151") and #cmd("TUFS152"). If the #cmd("FMID") is one of them, the
+system belongs to the main way and this section is not for you. If it is any
+other id, such as #cmd("TUFS160"), you are in the right section.
+
+The steps are those of the main way, with two differences. #cmd("TUFS160") is
+named in every list, and the libraries stay.
+
+*Step 1.* Stop the server as in @ug-remove-stop.
+
+*Step 2.* Submit the job of @ug-remove-dummy with one change: #cmd("TUFS160") is
+added to the #cmd("DELETE") operand, as the last id on the second line of the
+#cmd("++VER") card. Everything else stays as it is there. Keep the card on two
+lines. With the eight ids on one line it is 85 characters long, and SMP reads
+columns 1 to 72 and nothing after them. The second line, with #cmd("TUFS160") on
+it, is 29 characters long. The receive ends with return code 04 and echoes the
+card:
+
+#screen(raw(read("../ex/ug-remove/dev-recv.txt")))
+
+The apply deletes the four load modules and ends with return code 04. The
+#cmd("HMA2461") line names #cmd("TUFS160"), the id that the system had applied,
+and not #cmd("TUFS152") as in step 2:
+
+#screen(raw(read("../ex/ug-remove/dev-apply.txt")))
+
+The accept prints the four #cmd("HMA2240") lines for #cmd("AUFSDLOD") as in
+step 2 and ends with return code 00. Both member lists must be empty, as in
+step 2. If the receive ended with 08, the job removed nothing: do not run
+step 3 then, because UCLIN changes only the inventory and leaves the load
+modules where they are.
+
+*Step 3.* Submit the job of @ug-remove-free with #cmd("TUFS160") added to the
+#cmd("DEL") statements of both UCLIN blocks and to the #cmd("LIST") statements.
+In the job that was run, #cmd("TUFS160") is the second #cmd("DEL") statement of
+each block, right after #cmd("TUFSDEL") and ahead of #cmd("TUFS152"). In the
+#cmd("LIST") step it follows #cmd("TUFSDEL") in the same way (#cmd("LIST CDS")
+for #cmd("TUFSDEL") and #cmd("TUFS160"), then #cmd("LIST ACDS") for both), and
+the seven pairs for #cmd("TUFS152") down to #cmd("TUFS110") come after. Each zone
+now takes nine #cmd("DEL") statements, #cmd("TUFSDEL") and the eight ids, and the
+#cmd("LIST") step has eighteen statements. Both UCLIN steps end with return code 00, and all
+nine #cmd("DEL") statements of each report #cmd("HMA2550"). The second zone
+needs no statement beyond these. The step #cmd("UCLCDS") begins like this:
+
+#screen(raw(read("../ex/ug-remove/dev-uclcds.txt")))
+
+Step #cmd("UCLACDS") gives the same. Read the #cmd("LIST") as in
+@ug-remove-list: all eighteen statements must show their id as not found, and
+the step ends with return code 04. A stanza with #cmd("TYPE = FUNCTION") for
+#cmd("TUFS160") is an entry that is still there, in whichever zone it shows.
+
+*Step 4.* Do not scratch the libraries. Leave out @ug-remove-scratch. The
+release installs into #cmd("UFSD.LINKLIB") and #cmd("UFSD.AUFSDLOD"), which are
+empty now.
+
+*Step 5.* Install the release as in @ug-install-job, with the install job of
+the release package. *Do not run the allocation job.* It allocates both
+libraries #cmd("NEW"), and they exist. That the job fails on them has not been
+measured: the test runs skipped it. The receive, the apply
+check, the apply and the accept end with return code 00. The apply copies each
+of the four modules into #cmd("UFSD.LINKLIB"), and the accept into
+#cmd("UFSD.AUFSDLOD"). There is no #cmd("HMA2461") line. These are the lines of
+the apply:
+
+#screen(raw(read("../ex/ug-remove/dev-install-apply.txt")))
+
+The accept prints the same four lines with #cmd("LIBRARY=AUFSDLOD").
+
+*Step 6.* List the members of both libraries: #cmd("UFSD"), #cmd("UFSDCLNP"),
+#cmd("UFSDSSIR") and #cmd("UFSFMT") must be in both. The two #cmd("LIST")
+statements must show the release, in both zones, as the owner of the module,
+and not #cmd("TUFS160"):
+
+#screen(raw(read("../ex/ug-remove/dev-owner.txt")))
+
+#cmd("TUFS160") is not found in either zone, and neither are #cmd("TUFS150"),
+#cmd("TUFS140") and #cmd("TUFSDEL"). #cmd("TUFS151") is there with
+#cmd("DELBY = TUFS152"): that is the mark which the release leaves for its
+predecessor, as described in @ug-remove-what, and not a rest of the development
+build. Start UFSD and read the banner; it must name the release, and must not
+end in #cmd("-DEV"):
+
+#screen(raw(read("../ex/ug-remove/dev-banner.txt")))
+
+A banner with #cmd("-DEV") after a clean install means that the server was
+loaded from another library. A development build is deployed to
+#cmd("UFSD.DEV.LINKLIB"). If the #cmd("STEPLIB") of your procedure names that
+library ahead of #cmd("UFSD.LINKLIB") (the sample procedure of the release names
+#cmd("UFSD.LINKLIB") alone, so this is a change you made), the server loads the
+copy there. The SMP steps above act on #cmd("UFSD.LINKLIB") alone, so they leave
+that copy where it is. Delete the library, or take it out of the #cmd("STEPLIB"),
+and start the server again. This has not been measured for UFSD; it was measured on
+another product built the same way.
+
+*What happens without this section.* The 1.5.2 install job ends with return code
+00 in all its steps, and prints no warning. In the apply check, the apply and
+the accept, each of the four modules is #cmd("NOT SEL"): #cmd("TUFS160") still
+owns it, and #cmd("TUFS152") is installed but owns nothing. Both libraries are
+unchanged, the #cmd("LIST") statements still show #cmd("TUFS160") as
+#cmd("FMID") and #cmd("RMID"), and the server starts as the development build:
+
+#screen(raw(read("../ex/ug-remove/dev-banner-control.txt")))
+
+The return codes do not tell you this. The banner and the #cmd("FMID") do.
+
+*What has been measured.* The section was followed on two test systems, an
+MVS/CE and a TK5, each with a development build of release 1.6.0 installed under
+#cmd("TUFS160") by SMP, and the release 1.5.2 (the released one, not a
+candidate) installed afterwards as above. The control run, without the section,
+was made on both as well. The two systems did not start from the same state:
+
+- On the MVS/CE system the apply of the development build ended without
+  #cmd("HMA2461"). A #cmd("LIST") before the install found none of the ids and no
+  UFSD module in either zone. The system image ran a UFSD of its own outside SMP,
+  which was stopped first.
+- On the TK5 system the development build was installed over release 1.4.0. Its
+  apply ended with return code 04 and #cmd("HMA2461 SYSMOD TUFS140 NOT FOUND ON
+  SMPSCDS LIBRARY"), so #cmd("TUFS140") was in the history there and went with
+  the lists.
+
+Both runs gave the results shown above.
+
+*What has not been measured.* A system that really went through the earlier
+releases, a second development build installed over the first (#cmd("TUFS160"),
+then a later id), a throwaway id of your own instead of #cmd("TUFS160"), a
+development build installed over a system that already holds release 1.5.2, the
+removal without a release afterwards (see below), and a copy in
+#cmd("UFSD.DEV.LINKLIB").
+
+*If you want to remove UFSD and not install a release.* Steps 1 to 3 above clear
+the development build from both zones and both libraries. UFSD is then gone from
+SMP, apart from the two empty libraries, which @ug-remove-scratch scratches.
+That combination, steps 1 to 3 of this section followed by the scratch step of
+the main way, has not been run. Check it as you check the main way: the
+libraries are gone, and #cmd("LIST CDS MOD(UFSD)") and #cmd("LIST ACDS
+MOD(UFSD)") find nothing.
+
 == What Is Not Removed <ug-remove-left>
 
 SMP never owned these, so you have to take care of them:
@@ -395,6 +570,8 @@ SMP never owned these, so you have to take care of them:
 - the procedures and the member of the configuration that you copied into the
   procedure library and the parameter library of the system;
 - the entry for #cmd("UFSD.LINKLIB") in the APF list, if you made one;
+- #cmd("UFSD.DEV.LINKLIB"), if you deployed a development build there. SMP never
+  wrote it, and neither the steps above nor the install of a release clear it;
 - *your file systems.* The data sets that #cmd("ROOT") and #cmd("MOUNT") name in
   the member hold your files. None of the steps above touches them.
 
