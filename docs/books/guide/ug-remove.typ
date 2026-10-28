@@ -425,7 +425,7 @@ Ask SMP which id owns the load module. This job lists the module in both zones:
 ```)
 
 Read the #cmd("FMID") line of the stanza (the stanzas are shown in step 6 below).
-The releases of UFSD have used these ids, and no others: #cmd("TUFS110"),
+UFSD has used these ids, and no others: #cmd("TUFS110"),
 #cmd("TUFS120"), #cmd("TUFS130"), #cmd("TUFS140"), #cmd("TUFS150"),
 #cmd("TUFS151") and #cmd("TUFS152"). If the #cmd("FMID") is one of them, the
 system belongs to the main way and this section is not for you. If it is any
@@ -464,9 +464,9 @@ In the job that was run, #cmd("TUFS160") is the second #cmd("DEL") statement of
 each block, right after #cmd("TUFSDEL") and ahead of #cmd("TUFS152"). In the
 #cmd("LIST") step it follows #cmd("TUFSDEL") in the same way (#cmd("LIST CDS")
 for #cmd("TUFSDEL") and #cmd("TUFS160"), then #cmd("LIST ACDS") for both), and
-the eight pairs of the main way come after. Each zone now takes nine #cmd("DEL")
-statements, #cmd("TUFSDEL") and the eight ids, and the #cmd("LIST") step has
-eighteen statements. Both UCLIN steps end with return code 00, and all
+the seven pairs for #cmd("TUFS152") down to #cmd("TUFS110") come after. Each zone
+now takes nine #cmd("DEL") statements, #cmd("TUFSDEL") and the eight ids, and the
+#cmd("LIST") step has eighteen statements. Both UCLIN steps end with return code 00, and all
 nine #cmd("DEL") statements of each report #cmd("HMA2550"). The second zone
 needs no statement beyond these. The step #cmd("UCLCDS") begins like this:
 
@@ -512,11 +512,12 @@ end in #cmd("-DEV"):
 
 A banner with #cmd("-DEV") after a clean install means that the server was
 loaded from another library. A development build is deployed to
-#cmd("UFSD.DEV.LINKLIB"), and the #cmd("STEPLIB") of the procedure names that
-library ahead of #cmd("UFSD.LINKLIB"). The SMP steps above act on
-#cmd("UFSD.LINKLIB") alone, so they leave a copy in #cmd("UFSD.DEV.LINKLIB")
-where it is. Delete the library, or take it out of the #cmd("STEPLIB"), and
-start the server again. This has not been measured for UFSD; it was measured on
+#cmd("UFSD.DEV.LINKLIB"). If the #cmd("STEPLIB") of your procedure names that
+library ahead of #cmd("UFSD.LINKLIB") (the sample procedure of the release names
+#cmd("UFSD.LINKLIB") alone, so this is a change you made), the server loads the
+copy there. The SMP steps above act on #cmd("UFSD.LINKLIB") alone, so they leave
+that copy where it is. Delete the library, or take it out of the #cmd("STEPLIB"),
+and start the server again. This has not been measured for UFSD; it was measured on
 another product built the same way.
 
 *What happens without this section.* The 1.5.2 install job ends with return code
@@ -537,7 +538,9 @@ candidate) installed afterwards as above. The control run, without the section,
 was made on both as well. The two systems did not start from the same state:
 
 - On the MVS/CE system the apply of the development build ended without
-  #cmd("HMA2461"). Nothing was recorded about an earlier UFSD there.
+  #cmd("HMA2461"). A #cmd("LIST") before the install found none of the ids and no
+  UFSD module in either zone. The system image ran a UFSD of its own outside SMP,
+  which was stopped first.
 - On the TK5 system the development build was installed over release 1.4.0. Its
   apply ended with return code 04 and #cmd("HMA2461 SYSMOD TUFS140 NOT FOUND ON
   SMPSCDS LIBRARY"), so #cmd("TUFS140") was in the history there and went with
