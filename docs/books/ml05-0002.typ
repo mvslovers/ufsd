@@ -5,7 +5,7 @@
   subtitle: "Reference",
   short-title: "UFSD Reference",
   product: "UFSD",
-  number: "ML05-0002-0",
+  number: "ML05-0002-1",
   date: "October 2026",
   authors: ("Mike Großmann",),
   edition: [
@@ -14,10 +14,6 @@
     This edition applies to Version 1 Release 5 of UFSD, the virtual
     filesystem server for MVS 3.8j (ufsd 1.5.2), and to all subsequent
     releases and modifications until otherwise indicated in new editions.
-
-    *Draft.* This book describes UFSD 1.5.2 as released. It is written after
-    the release and has not yet been read by a second person against the
-    code.
 
     Comments on this book may be addressed to the issue tracker of the
     mvslovers/ufsd repository on GitHub.

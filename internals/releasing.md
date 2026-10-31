@@ -77,7 +77,11 @@ afterwards and attached to the existing release.
 
 1. The edition notice of both books (`ml05-0001.typ`, `ml05-0002.typ`, "This
    edition applies to ...") names the release whose behaviour the text
-   describes.
+   describes. The edition digit is the last one of the number in both
+   files (`ML05-0001-1` is the first edition) and appears again in
+   `docs/books/Makefile`, `docs/books/web/build.sh` and
+   `docs/books/web/index.html` (the PDF names). A new edition changes all
+   five together.
 2. Messages, commands, configuration parameters and limits are written from
    the source (`apx-messages`, `ref-cmd`, `ref-cfg`, `ref-lim`). A PR that
    changed one of them has updated the book in the same PR or named the stale
@@ -103,7 +107,10 @@ with `sha256sum -c` on the downloaded assets, as for the other assets.
 **A release that exists already** (1.5.0 was the first): build the PDFs from
 the tag in a clean checkout with `SOURCE_DATE_EPOCH=0 make -C docs/books`,
 then `gh release upload vX.Y.Z --clobber <the two PDFs> SHA256SUMS`. A release
-page is final, so this needs the maintainer's approval first.
+page is final, so this needs the maintainer's approval first. When the
+upload replaces an earlier edition (`-0` by `-1`), delete the old PDFs with
+`gh release delete-asset`, drop their lines from `SHA256SUMS` and change the
+file names on the release page; the approval names all of it.
 
 **Read the Docs** builds the web form from the default branch
 (`.readthedocs.yaml`, the same sources). The project is registered by the
