@@ -6,7 +6,7 @@ address spaces through the `libufs` client library.
 
 Earlier releases are described on their GitHub release pages.
 
-## 1.5.2 (not yet released)
+## 1.5.2 (2026-10-27)
 
 A release of one fix. Nothing is added to the interface.
 
@@ -45,7 +45,7 @@ block, and with and without the chain of free blocks. Before the fix up to
 2,108 of 12,800 blocks came back wrong and up to 32 blocks were used by two
 inodes; with the fix none, and no block in the free cache was in use.
 
-## 1.5.1 (not yet released)
+## 1.5.1 (2026-10-26)
 
 A release of fixes. Nothing is added to the interface.
 
