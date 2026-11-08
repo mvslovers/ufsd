@@ -37,7 +37,10 @@ data sets of this kind, add the qualifier to every name below, and the FMID
 is the one of that release.
 
 The staging library #cmd("UFSD.UFSDLOAD") is not on the list, because the
-cleanup step of the install job scratched it.
+accept job (#cmd("ufsd-1.5.2-accept.jcl")) scratches it in its last step. If
+the accept job never ran (you installed, tried the product, and want it gone),
+the library is still there, and the last step below scratches it with the
+others.
 
 *Earlier releases left their FMIDs behind.* Each upgrade deletes the release
 before it and leaves its id in the inventory as a mark, in both zones:
@@ -284,9 +287,22 @@ fail against either of them. Delete them in a job of your own:
   DELETE UFSD.AUFSDLOD NONVSAM SCRATCH PURGE
 ```)
 
+*If the accept job never ran,* the staging library #cmd("UFSD.UFSDLOAD") is
+still on the system (the accept job scratches it in its last step). Add a third
+statement for it:
+
+#screen(```
+  DELETE UFSD.UFSDLOAD NONVSAM SCRATCH PURGE
+```)
+
+Leave that line out when the accept job did run: #cmd("IDCAMS") ends with return
+code 8 on a data set that is not there. Whether the library exists, you see in
+ISPF 3.4 or in the job log of the accept job.
+
 Do this only when you remove UFSD for good. After an upgrade, these are the
 data sets that the next release installs into; leave them. #cmd("UFSD.SAMPLIB")
-may stay. The install job scratches it itself the next time.
+may stay. The install job scratches it itself the next time, as it does the
+staging library.
 
 == The Fallback: UCLIN Alone <ug-remove-uclin>
 
@@ -577,27 +593,72 @@ SMP never owned these, so you have to take care of them:
 
 == Why RESTORE and REJECT Do Not Work <ug-remove-why>
 
-The install job accepts the FMID in the same run in which it applies it. That
-closes both of the usual ways back:
+Since 1.6.0 the install job ends after the #cmd("APPLY"), and the #cmd("ACCEPT")
+is the step of the accept job. So the answer depends on which of the two jobs
+has run.
+
+*After the accept job* neither way back is open. #cmd("RESTORE") refuses a
+SYSMOD that has been accepted. On a first install, where the function deletes
+nothing, the messages are:
 
 #screen(raw(read("../ex/ug-remove/restore-reject.txt")))
 
-#cmd("RESTORE") refuses a SYSMOD that has been accepted
-(#cmd("HMA2452"), return code 12). #cmd("REJECT") then fails for a reason that
-looks unrelated: #cmd("HMA2462") says that the SYSMOD is not on the
-#cmd("SMPPTS") data set, although the job received it from there.
+#cmd("HMA2452") is the #cmd("RESTORE") (return code 12). The #cmd("REJECT") that
+follows fails for a reason that looks unrelated: #cmd("HMA2462") says that the
+SYSMOD is not on the #cmd("SMPPTS") data set, although the job received it from
+there. After an upgrade the #cmd("RESTORE") is refused with
+#cmd("DELETES SYSMODS") instead, see below.
 
-The cause, on the system where this was measured, is the option #cmd("PURGE=YES")
-in the system entry of the #cmd("SMPPTS"). With it, SMP deletes a SYSMOD from
-the PTS as soon as it has accepted it. The entry shows with #cmd("LIST PTS ."):
+The cause of the #cmd("HMA2462"), on the system where this was measured, is the
+option #cmd("PURGE=YES") in the system entry of the #cmd("SMPPTS"). With it, SMP
+deletes a SYSMOD from the PTS as soon as it has accepted it. The entry shows
+with #cmd("LIST PTS ."):
 
 #screen(raw(read("../ex/ug-remove/pts-system.txt")))
+
+*Before the accept job*, after the install job alone, the function is applied
+and not accepted. What #cmd("RESTORE") does then depends on what the function
+replaced:
+
+- *First install.* #cmd("RESTORE") works. It deletes the four load modules from
+  #cmd("UFSD.LINKLIB") and takes the function out of the target zone, and ends
+  with RC 0:
+
+  #screen(raw(read("../ex/ug-remove/restore-early.txt")))
+
+  It also takes the function out of the #cmd("SMPPTS"), so a #cmd("REJECT")
+  after it finds nothing (#cmd("HMA2462")). Run the install job again to start
+  over. The accept job does not run after a #cmd("RESTORE"): its #cmd("GUARD")
+  step ends with RC 4, because the function is no longer in the target zone, and
+  the #cmd("ACCEPT") step ends with RC 8 (#cmd("NOTAPPL")).
+- *Upgrade.* #cmd("RESTORE") is refused, before the accept job just as after it,
+  because the function deletes the entry of its predecessor:
+
+  #screen(raw(read("../ex/ug-remove/restore-upgrade.txt")))
+
+  #cmd("REJECT") is no way back either: on an applied function it printed
+  #cmd("HMA4081 ... NOT APPLIED OR NOT ACCEPTED") and ended with RC 4. What it
+  left in the zones was not checked.
+
+So the one case that the separate accept step opens is the first install that
+you want to take back before you accept it. Everything else ends in the dummy
+function #cmd("TUFSDEL") and the #cmd("UCLIN") of this chapter. They work in both
+states, applied and accepted. Before the accept job the distribution library is
+still empty (first install), and the #cmd("ACCEPT") of #cmd("TUFSDEL") has
+nothing to delete there and ends with RC 0. The staging library stays, which is
+why the last step has a statement for it.
 
 Two things have not been measured: a system with #cmd("PURGE=NO"), and a
 #cmd("REJECT") after the #cmd("ACCEPT") there. No #cmd("UCLIN") statement was
 found that changes the system entry, so this book does not change it. It
 removes the FMID in ways that do not need the PTS.
 
-The price of the accept is that a later #cmd("RESTORE") of a PTF can return to
-the distribution library, and without the accept it would delete the module
-instead of reverting it.
+*What this was measured with.* The statements about the two states and the
+three screens of the #cmd("RESTORE") were measured on a TK5 test container (HMASMP LVL 04.48) with a package of 1.6.0 built locally with mbt
+3.0.1 (FMID #cmd("TUFS160"), #cmd("DELETE(TUFS140)")) and a second local package
+whose function deletes #cmd("TUFS160").
+
+The accept is worth its price: it fills the distribution library, which is the
+base that a later #cmd("RESTORE") of a PTF returns to, and without it the
+#cmd("RESTORE") would delete the module instead of reverting it. Since 1.6.0 you
+take that step yourself, with the accept job, after you have tried the product.
