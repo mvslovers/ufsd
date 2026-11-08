@@ -380,8 +380,7 @@ members, `UFSD.UFSDLOAD` is gone, and `LIST CDS SYSMOD(<fmid>)` and
 `LIST ACDS SYSMOD(<fmid>)` show the function as `REC APP ACC` (the ACDS adds
 `RGN`).
 
-**What has been measured, and with what.** There is no CI-built package of this
-release yet; the release run builds it. These statements, and the two tables
+**What has been measured, and with what.** These statements, and the two tables
 above, were measured on a TK5 test container with a package of 1.6.0 that was
 built locally with mbt 3.0.1 (`FMID TUFS160`, `DELETE(TUFS140)`): a first
 install, an upgrade from 1.4.0, the accept job after both, a second submit,
@@ -391,8 +390,7 @@ measured with a second local package (a function that deletes `TUFS160`)
 applied over an accepted 1.6.0. The UFSD server of the container was running
 during every job (the jobs do not touch it; the new modules are used from the
 next start). Not measured: the accept job on MVS/CE, and on a system with more
-than one SMP product in the zones. All of it is to be checked again on the
-package the release run builds.
+than one SMP product in the zones.
 
 ---
 

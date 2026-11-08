@@ -46,7 +46,7 @@ the one of that release (`TUFS120` for 1.2.x).
 The staging library `UFSD.UFSDLOAD` is not on the list, because the accept job
 (`ufsd-<version>-accept.jcl`) scratches it in its last step. **If the accept
 job never ran** (you installed, tried the product, and want it gone), the
-library is still there, and you scratch it in step 5 with the others.
+library is still there, and step 5 scratches it with the others.
 
 **Earlier releases left their FMIDs behind.** Each upgrade deletes the release
 before it and leaves its id in the inventory as a mark, in both zones:
@@ -373,9 +373,22 @@ against either of them. Delete them in a job of your own:
   DELETE UFSD.AUFSDLOD NONVSAM SCRATCH PURGE
 ```
 
+**If the accept job never ran,** the staging library `UFSD.UFSDLOAD` is still on
+the system (the accept job scratches it in its last step). Add a third
+statement for it:
+
+```
+  DELETE UFSD.UFSDLOAD NONVSAM SCRATCH PURGE
+```
+
+Leave that line out when the accept job did run: `IDCAMS` ends with return code
+8 on a data set that is not there. Whether the library exists, you see in
+ISPF 3.4 or in the job log of the accept job.
+
 **Do this only when you remove UFSD for good.** After an upgrade, these are the
 data sets that the next release installs into; leave them. `UFSD.SAMPLIB` may
-stay. The install job scratches it itself the next time.
+stay. The install job scratches it itself the next time, as it does the staging
+library.
 
 ## The fallback: UCLIN alone
 
@@ -906,20 +919,18 @@ dummy function `TUFSDEL` and the `UCLIN` of step 3, as described above. They
 work in both states: the function is applied, accepted or not. Before the accept
 job the distribution library is still empty (first install), and the `ACCEPT`
 of `TUFSDEL` has nothing to delete there and ends RC 00. The staging library
-stays, which is why step 5 scratches it.
+stays, which is why step 5 has a statement for it.
 
 Two things have not been measured: a system with `PURGE=NO`, and a `REJECT`
 after the `ACCEPT` there. No `UCLIN` statement was found that changes the system
 entry, so this document does not change it. It removes the FMID in ways that do
 not need the PTS.
 
-**What this was measured with.** There is no CI-built package of 1.6.0 yet.
-The statements about the two states were measured on a TK5 test container
+**What this was measured with.** The statements about the two states were measured on a TK5 test container
 (HMASMP LVL 04.48) with a package of 1.6.0 built locally with mbt 3.0.1
 (`FMID TUFS160`, `DELETE(TUFS140)`) and a second local package whose function
 deletes `TUFS160`. The `HMA2452` and `HMA2462` lines above and the
-`PURGE=YES` entry are from this system. Check them again on the package the
-release run builds.
+`PURGE=YES` entry are from this system.
 
 ## Why the accept job exists
 

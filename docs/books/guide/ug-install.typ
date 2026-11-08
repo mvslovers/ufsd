@@ -466,15 +466,14 @@ Check, after the accept job, that #cmd("UFSD.AUFSDLOD") lists the four members
 (as in @ug-install-verify), that #cmd("UFSD.UFSDLOAD") is gone, and that the
 #cmd("LIST") of the FMID shows #cmd("REC APP ACC").
 
-*What was measured, and with what.* There is no CI-built package of this release
-yet. The screens and the statements of this section were measured on a TK5 test
+*What was measured, and with what.* The screens and the statements of this
+section were measured on a TK5 test
 container with a package of 1.6.0 built locally with mbt 3.0.1 (FMID
 #cmd("TUFS160"), #cmd("DELETE(TUFS140)")): a first install, an upgrade from
 1.4.0, the accept job after both, a second run, a #cmd("RESTORE") before the
 accept on a first install, and the accept job after it. The refusal of
 #cmd("RESTORE") on an upgrade was measured with a second local package, whose
-function deletes #cmd("TUFS160"). Not measured: the accept job on MVS/CE. Check
-the screens again on the package that the release run builds.
+function deletes #cmd("TUFS160"). Not measured: the accept job on MVS/CE.
 
 == Upgrading from an Earlier Release <ug-install-upgrade>
 
