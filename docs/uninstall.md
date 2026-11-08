@@ -11,8 +11,10 @@ upgrade routes use it too.
 
 > **If you are holding a 1.2.0 archive, its removal instructions are wrong.**
 > Its `docs/installation.md` says to run `RESTORE` and then `REJECT`. Both are
-> refused once the FMID has been accepted, which the install job does in the
-> same run as the APPLY. Every archive from 1.2.1 on points here instead.
+> refused once the FMID has been accepted, which the install job of that archive
+> does in the same run as the APPLY. Every archive from 1.2.1 on points here
+> instead. From 1.6.0 on the accept is a job of its own, and what that changes
+> is described [at the end of this document](#why-restore-and-reject-do-not-work).
 
 > **Did you install a development build of `main`?** Its FMID is `TUFS160`, which
 > none of the jobs below names. Go to
@@ -41,8 +43,10 @@ put the version into the names (`UFSD.V1R2M2.LINKLIB` and so on). If you find
 data sets of this kind, add the qualifier to every name below, and the FMID is
 the one of that release (`TUFS120` for 1.2.x).
 
-The staging library `UFSD.UFSDLOAD` is not on the list, because the cleanup
-step of the install job scratched it.
+The staging library `UFSD.UFSDLOAD` is not on the list, because the accept job
+(`ufsd-<version>-accept.jcl`) scratches it in its last step. **If the accept
+job never ran** (you installed, tried the product, and want it gone), the
+library is still there, and you scratch it in step 5 with the others.
 
 **Earlier releases left their FMIDs behind.** Each upgrade deletes the release
 before it and leaves its id in the inventory as a mark, in both zones:
@@ -843,22 +847,27 @@ Those are yours to delete.
 
 ## Why `RESTORE` and `REJECT` do not work
 
-Worth knowing, because the messages point away from the cause. The install job
-accepts the FMID in the same run in which it applies it. That closes both of the
-usual ways back:
+Worth knowing, because the messages point away from the cause. Since 1.6.0 the
+install job ends after the `APPLY`, and the `ACCEPT` is the accept job's step.
+So the answer depends on which of the two jobs has run.
+
+**After the accept job** neither way back is open. `RESTORE` refuses a SYSMOD
+that has been accepted. On a first install, where the function deletes nothing,
+the messages are:
 
 ```
-HMA2452 ** SYSMOD TUFS152 SELECTED FOR RESTORE HAS BEEN ACCEPTED
-HMA2462 ** SYSMOD TUFS152 NOT FOUND ON SMPPTS LIBRARY
+HMA2452 ** SYSMOD TUFS160 SELECTED FOR RESTORE HAS BEEN ACCEPTED
+HMA2462 ** SYSMOD TUFS160 NOT FOUND ON SMPPTS LIBRARY
 ```
 
-`RESTORE` refuses a SYSMOD that has been accepted (`HMA2452`, return code 12).
-`REJECT` then fails for a reason that looks unrelated: `HMA2462` says that the
-SYSMOD is not on the `SMPPTS` data set, although the job received it from there.
+`HMA2452` is the `RESTORE` (return code 12). The `REJECT` that follows fails for
+a reason that looks unrelated: `HMA2462` says that the SYSMOD is not on the
+`SMPPTS` data set, although the job received it from there. After an upgrade the
+`RESTORE` is refused with `HMA2452 … DELETES SYSMODS` instead, see below.
 
-The cause, on the system where this was measured, is the option `PURGE=YES` in
-the system entry of the `SMPPTS`. With it, SMP deletes a SYSMOD from the PTS as
-soon as it has accepted it. The entry shows with `LIST PTS .`:
+The cause of the `HMA2462`, on the system where this was measured, is the option
+`PURGE=YES` in the system entry of the `SMPPTS`. With it, SMP deletes a SYSMOD
+from the PTS as soon as it has accepted it. The entry shows with `LIST PTS .`:
 
 ```
 SMPPTS  SYSTEM ENTRY
@@ -866,17 +875,59 @@ SMPPTS  SYSTEM ENTRY
 SYSTEM    OPTIONS         = PAGELEN=0061  PEMAX=9999  PURGE=YES  REJECT=YES
 ```
 
+**Before the accept job**, after the install job alone, the function is applied
+and not accepted. What `RESTORE` does then depends on what the function
+replaced:
+
+- **First install.** `RESTORE` works. It deletes the four load modules from
+  `UFSD.LINKLIB` and takes the function out of the target zone, and it ends RC
+  00. It also takes the function out of the `SMPPTS`, so a `REJECT` after it
+  finds nothing (`HMA2462`). Run the install job again to start over. The accept
+  job does not run after a `RESTORE`: its `GUARD` step ends RC 04, because the
+  function is no longer in the target zone, and the `ACCEPT` ends RC 08
+  (`NOTAPPL`).
+- **Upgrade.** `RESTORE` is refused, before the accept job just as after it,
+  because the function deletes the entry of its predecessor:
+
+  ```
+   RESTORE S(TUFS160) .
+  HMA2452 ** SYSMOD TUFS160 SELECTED FOR RESTORE DELETES SYSMODS
+  HMA3703 ** RESTORE PROCESSING TERMINATED BECAUSE FUNCTION SYSMOD TUFS160 FAILED
+  HMA2050    RESTORE PROCESSING COMPLETED - HIGHEST RETURN CODE IS 12
+  ```
+
+  `REJECT` is no way back either: on an applied function it printed
+  `HMA4081 … NOT APPLIED OR NOT ACCEPTED` and ended RC 04. What it left in the
+  zones was not checked.
+
+So the one case that the accept job's separate step opens is the first install
+that you want to take back before you accept it. Everything else ends in the
+dummy function `TUFSDEL` and the `UCLIN` of step 3, as described above. They
+work in both states: the function is applied, accepted or not. Before the accept
+job the distribution library is still empty (first install), and the `ACCEPT`
+of `TUFSDEL` has nothing to delete there and ends RC 00. The staging library
+stays, which is why step 5 scratches it.
+
 Two things have not been measured: a system with `PURGE=NO`, and a `REJECT`
 after the `ACCEPT` there. No `UCLIN` statement was found that changes the system
 entry, so this document does not change it. It removes the FMID in ways that do
 not need the PTS.
 
-## Why the install job accepts at all
+**What this was measured with.** There is no CI-built package of 1.6.0 yet.
+The statements about the two states were measured on a TK5 test container
+(HMASMP LVL 04.48) with a package of 1.6.0 built locally with mbt 3.0.1
+(`FMID TUFS160`, `DELETE(TUFS140)`) and a second local package whose function
+deletes `TUFS160`. The `HMA2452` and `HMA2462` lines above and the
+`PURGE=YES` entry are from this system. Check them again on the package the
+release run builds.
+
+## Why the accept job exists
 
 The `ACCEPT` fills the distribution library, which is the base a later
 `RESTORE` of a **PTF** returns to. Without it, a `RESTORE` would delete the
 module rather than revert it, because there would be no previous level to go
 back to. The price is what this document is about: once the FMID has been
 accepted, `RESTORE` refuses it and `REJECT` fails (on the system where this was
-measured). The dummy function `TUFSDEL` and the `UCLIN` of step 3, as described
-above, are what take it out again.
+measured). Since 1.6.0 you take that step yourself, after you have tried the
+product, with the accept job. The dummy function `TUFSDEL` and the `UCLIN` of
+step 3, as described above, are what take it out again, accepted or not.

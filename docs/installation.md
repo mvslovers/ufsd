@@ -46,10 +46,12 @@ The **dataset names carry no version**. `UFSD.LINKLIB` is `UFSD.LINKLIB` in
 every release, so the `STEPLIB` in your procedure, any client JCL naming it,
 and an APF entry for it are written once and never again (issue #71). The
 trade is that there is no side-by-side install: an upgrade replaces what is
-there. There is no way back to the previous release: the install job accepts
-the new level, and SMP refuses a `RESTORE` of an accepted function (see
-[section 11](#11-removing-ufsd)). To take UFSD out of the system, follow
-section 11.
+there. There is no way back to the previous release: a release deletes its
+predecessor, and SMP refuses a `RESTORE` of a function that deletes another one,
+before the accept job has run and after it. Only a first install, which deletes
+nothing, can be taken out again with `RESTORE`, until you submit the accept job
+(see [step 5](#5-install) and [section 11](#11-removing-ufsd)). To take UFSD out
+of the system, follow section 11.
 
 ---
 
@@ -61,7 +63,8 @@ section 11.
 | `ufsd-<version>-load.xmit` | the four load modules, as a TSO RECEIVE-ready XMIT |
 | `ufsd-<version>-samplib.xmit` | the sample library: procedures, config pattern, format job |
 | `ufsd-<version>-alloc.jcl` | allocates the datasets SMP installs into — **run once** |
-| `ufsd-<version>-inst.jcl` | receives everything and installs it — repeatable |
+| `ufsd-<version>-inst.jcl` | receives everything and applies it; ends after the `APPLY` — repeatable |
+| `ufsd-<version>-accept.jcl` | accepts the function once you have tried it, and scratches the staging library — submit **after** the install job, once |
 
 The load modules are `UFSD` (the server), `UFSDSSIR` (the SSI router),
 `UFSDCLNP` (recovery utility) and `UFSFMT` (disk format utility).
@@ -205,8 +208,9 @@ Expect `COND CODE 0000`.
 > version, a later upgrade finds both datasets already there and must skip
 > this step; running it again fails on `DISP=(NEW,CATLG)` and changes nothing.
 >
-> There is no DELETE step in it, on purpose. After the install,
-> `UFSD.AUFSDLOD` holds SMP's accepted copy of every module; a re-run that
+> There is no DELETE step in it, on purpose. After the accept job,
+> `UFSD.AUFSDLOD` holds SMP's accepted copy of every module (and after an
+> upgrade it holds the previous release's copy until then); a re-run that
 > scratched it would leave the SMP inventory reporting an install that is no
 > longer on the system, and nothing would say so. To start over, remove the
 > SYSMOD first — see [Removing UFSD](#11-removing-ufsd).
@@ -236,8 +240,12 @@ or another volume of yours:
 
 Submit it.
 
-The job runs eight steps, each conditional on the one before, so it stops at
-the first failure rather than building on it:
+The job runs six steps, each conditional on the one before, so it stops at
+the first failure rather than building on it. **It ends after the `APPLY`**:
+the function is applied, not accepted. The accept is a job of its own,
+`ufsd-<version>-accept.jcl`, which you submit when you have tried the product
+(see [The accept job](#the-accept-job) below). A package before 1.6.0 had five
+files and one job with eight steps, whose last two were `ACCEPT` and `CLEANUP`.
 
 | Step | What it does |
 |------|--------------|
@@ -247,8 +255,6 @@ the first failure rather than building on it:
 | `RECV` | receives the SYSMOD into the SMP inventory |
 | `APPLYCHK` | dry run — `APPLY` only proceeds if this ends RC 0 |
 | `APPLY` | copies the load modules into `UFSD.LINKLIB` |
-| `ACCEPT` | makes this level the base that the `RESTORE` of a later PTF returns to; closes `RESTORE` for this release itself, and on the system measured `REJECT` too (section 11) |
-| `CLEANUP` | scratches the staging library, which is now spent |
 
 The SYSMOD travels inline in the job — there is no third file to upload.
 
@@ -272,7 +278,9 @@ TUFS152  APPLIED   FUNCTION  TUFS152
 ```
 
 An upgrade ends the `APPLY` with RC 04 (`HMA2461`) instead, and that is also
-correct — see [section 10](#10-upgrading-from-an-earlier-release).
+correct — see [section 10](#10-upgrading-from-an-earlier-release). The job
+ends with the `APPLY`: on a fresh install it ends `COND CODE 0000`, after an
+upgrade `COND CODE 0004`.
 
 **Then list the members, and treat that as the result.** SMP reports the
 library by **ddname**, and a ddname says nothing about which dataset was behind
@@ -309,6 +317,82 @@ removes it.
 
 SMP **copies** these modules rather than re-binding them, which is why the
 authorisation code and the link attributes are exactly what the build produced.
+
+### The accept job
+
+`ufsd-<version>-accept.jcl` (job `UFSDACC`) has three steps. Nothing in it needs
+editing, because it names the same data sets as the install job.
+
+| Step | What it does |
+|------|--------------|
+| `GUARD` | `LIST CDS SYSMOD(<fmid>)`: ends RC 00 when the function is applied, RC 04 when it is not. Only RC 00 goes on |
+| `ACCEPT` | copies the four modules into `UFSD.AUFSDLOD`, the distribution library, and makes this level the base that the `RESTORE` of a later PTF returns to |
+| `CLEANUP` | scratches the staging library `UFSD.UFSDLOAD`, only when `GUARD` and `ACCEPT` both ended RC 00 |
+
+**Why it is a job of its own.** `ACCEPT` is the point without a way back: SMP
+refuses `RESTORE` and `REJECT` for an accepted function. The install job does
+not make that decision for you. Start the server, try it (step 8), then submit
+the accept job. The header of the job says the same.
+
+What the two jobs leave behind:
+
+| | After `UFSDINS` | After `UFSDACC` |
+|---|---|---|
+| Job end | first install: CC 0000, every step RC 00. Upgrade: CC 0004, `APPLY` RC 04 (`HMA2461`) | CC 0000: `GUARD`, `ACCEPT`, `CLEANUP` RC 00 |
+| `<fmid>` in the target zone (CDS) | `REC APP` | `REC APP ACC` |
+| `<fmid>` in the distribution zone (ACDS) | not found | `REC APP ACC RGN` |
+| the previous release (upgrade) | CDS: mark only (`DELBY = <fmid>`). ACDS: still `REC APP ACC RGN` | mark only, in both zones |
+| `UFSD.LINKLIB` | the new modules | the new modules |
+| `UFSD.AUFSDLOD` | first install: empty. Upgrade: the previous release's modules | the new modules, the same as in `UFSD.LINKLIB` |
+| `UFSD.UFSDLOAD` (staging library) | present | scratched |
+
+Until the accept job has run, the function is `REC APP`, the staging library is
+there, and `RESTORE` works **on a first install**: it deletes the four modules
+from `UFSD.LINKLIB` and takes `<fmid>` out of the target zone. It does not work
+after an upgrade. A function that deletes another one is refused by `RESTORE`
+with `HMA2452 ** SYSMOD <fmid> SELECTED FOR RESTORE DELETES SYSMODS`, whether
+the accept job has run or not (see [section 11](#11-removing-ufsd)). After a
+`RESTORE` the accept job does not run: `GUARD` ends RC 04, the step `NOTAPPL`
+ends RC 08, and nothing is accepted or scratched. Run the install job again
+first.
+
+The gate is the entry of `<fmid>` in the target zone, not the return code of
+the install job: after an upgrade the install job ends CC 0004, and the accept
+job runs through all the same. Submit it after an install job whose
+`APPLYCHK` and `APPLY` ended RC 00, or RC 04 for `HMA2461` alone. Do not submit
+it after RC 08 or RC 12.
+
+The `ACCEPT` step prints one `HMA2380` for each module, this time for the
+library `AUFSDLOD`:
+
+```
+HMA2380    COPY SUCCESSFUL - MOD=UFSD - LMOD=UFSD - LIBRARY=AUFSDLOD
+           - SYSMOD=<fmid> - RETURN CODE=00          (and one per module)
+```
+
+**Submitting the accept job a second time** ends it with `JCL ERROR`: the first
+run scratched the staging library, and the `ACCEPT` step names it
+(`IEF212I UFSDACC HMASMP ACCEPT UFSDLOAD - DATA SET NOT FOUND`). `GUARD` ends
+RC 00 and no step after it runs, so the second run changes nothing.
+
+After the accept job, check three more things: `UFSD.AUFSDLOD` lists the four
+members, `UFSD.UFSDLOAD` is gone, and `LIST CDS SYSMOD(<fmid>)` and
+`LIST ACDS SYSMOD(<fmid>)` show the function as `REC APP ACC` (the ACDS adds
+`RGN`).
+
+**What has been measured, and with what.** There is no CI-built package of this
+release yet; the release run builds it. These statements, and the two tables
+above, were measured on a TK5 test container with a package of 1.6.0 that was
+built locally with mbt 3.0.1 (`FMID TUFS160`, `DELETE(TUFS140)`): a first
+install, an upgrade from 1.4.0, the accept job after both, a second submit,
+a `RESTORE` before the accept on a first install, and the accept job after
+that `RESTORE`. The refusal of `RESTORE` before the accept on an upgrade was
+measured with a second local package (a function that deletes `TUFS160`)
+applied over an accepted 1.6.0. The UFSD server of the container was running
+during every job (the jobs do not touch it; the new modules are used from the
+next start). Not measured: the accept job on MVS/CE, and on a system with more
+than one SMP product in the zones. All of it is to be checked again on the
+package the release run builds.
 
 ---
 
@@ -473,6 +557,10 @@ Operator commands:
 The commands are described in the _UFSD User's Guide_, chapter 5, "Running
 UFSD", and in full in the _UFSD Reference_, chapter 1, "Operator Commands".
 
+**When you have tried it, submit `ufsd-<version>-accept.jcl`.** Until then the
+function is only applied, and the staging library is still there (step 5,
+[The accept job](#the-accept-job)).
+
 ---
 
 ## 9. Recovery
@@ -535,7 +623,8 @@ Each release has an FMID of its own and deletes only its predecessor's:
 owner of `MOD(UFSD)` is left in place, and then SMP installs nothing.
 
 An upgrade from the immediately preceding release is **step 3 and step 5, and
-nothing else**. The dataset names do
+then the accept job** (step 5, [The accept job](#the-accept-job)), and nothing
+else. The dataset names do
 not change between releases, and the SYSMOD removes its predecessor on its own
 — there is no inventory work for you to do first.
 
@@ -590,8 +679,9 @@ HMA2461    SYSMOD TUFS151 NOT FOUND ON SMPSCDS LIBRARY
 HMA2050    APPLY PROCESSING COMPLETED - HIGHEST RETURN CODE IS 04
 ```
 
-That is the expected result of a replacement, and the job's `ACCEPT` step is
-conditioned to run through it.
+That is the expected result of a replacement. The install job ends `COND CODE
+0004`, and the accept job runs through it: its gate is the entry of the new FMID
+in the target zone, not the return code of the install job.
 
 **Check the members, not the condition codes.** The messages that prove the
 upgrade happened are, per module:
@@ -849,11 +939,23 @@ old library to another name. That case has not been run.
 
 Because the installation is SMP-managed, there is a defined way back — but it
 is **not** the `RESTORE` followed by `REJECT` that SMP documentation leads you
-to expect. The install job accepts the FMID in the same run as the APPLY, and
-an accepted function SYSMOD refuses both: `RESTORE` because it was accepted,
-and `REJECT` because the SYSMOD is no longer in the `SMPPTS` data set. On the
-system where this was measured, the cause is `PURGE=YES` in the system entry of
-the `SMPPTS`; a system with `PURGE=NO` has not been measured.
+to expect. Both are refused once the accept job has run: `RESTORE` because the
+function was accepted, and `REJECT` because the SYSMOD is no longer in the
+`SMPPTS` data set. On the system where this was measured, the cause is
+`PURGE=YES` in the system entry of the `SMPPTS`; a system with `PURGE=NO` has
+not been measured.
+
+Before the accept job the install job has only applied the function, and
+`RESTORE` works on a **first install**; it is refused after an upgrade, because
+SMP refuses to restore a function that deletes another one (`HMA2452 … DELETES
+SYSMODS`), accepted or not. A `RESTORE` also takes the function out of the
+`SMPPTS`, so a `REJECT` after it finds nothing (`HMA2462`), and a retry starts
+with the install job again. `REJECT` is no way back for a function that is
+applied: after an upgrade it printed `HMA4081 … NOT APPLIED OR NOT ACCEPTED`
+and ended RC 04, and what it left in the zones was not checked. The
+measurements are described, with the package they were made on, in
+[The accept job](#the-accept-job). The way back that holds in every case is the
+next one.
 
 The way back is a **dummy function**, `TUFSDEL`, that deletes every release of
 UFSD up to 1.5.2 and takes the load modules out of both libraries. It carries

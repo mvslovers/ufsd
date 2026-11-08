@@ -1,0 +1,12 @@
+ LIST CDS  SYSMOD(TUFS160) .
+SMPCDS   SYSMOD ENTRIES
+  NAME
+TUFS160   TYPE            = FUNCTION
+          STATUS          = REC  APP
+          FMID            = TUFS160
+          JCLIN           = YES
+          DATE/TIME REC   = 26.312  19:27:02
+                    APP   = 26.312  19:27:26
+          DELETE VER(001) = TUFS140
+          MOD             = UFSD      UFSDCLNP  UFSDSSIR  UFSFMT
+HMA2050    LIST PROCESSING COMPLETED - HIGHEST RETURN CODE IS 00

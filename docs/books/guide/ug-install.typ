@@ -19,15 +19,19 @@ The names of the data sets carry no version. #cmd("UFSD.LINKLIB") is the
 same name in every release. The #cmd("STEPLIB") of the procedure, client JCL
 that names the library and an APF entry are written once. The price is that
 two releases cannot be installed side by side: an upgrade replaces what is
-there. There is no way back to the previous release. The install job accepts
-the new level, and SMP refuses a #cmd("RESTORE") of an accepted function
-(@ug-remove-why). To take UFSD out of the system, follow @ug-remove.
+there. There is no way back to the previous release: a release deletes its
+predecessor, and SMP refuses a #cmd("RESTORE") of a function that deletes
+another one, before the accept job has run and after it (@ug-remove-why). Only
+a first install, which deletes nothing, can be taken out again with
+#cmd("RESTORE"), until you submit the accept job (@ug-install-accept). To take
+UFSD out of the system, follow @ug-remove.
 
 == What Is in the Package <ug-install-files>
 
 #idx("package", "contents")
 The package #cmd("ufsd-1.5.2-dist.zip") (or #cmd("ufsd-1.5.2-dist.tar.gz")) has
-five files. In their names, 1.5.2 is the release.
+six files. In their names, 1.5.2 is the release. (A package before 1.6.0 had
+five files, without the accept job, and its install job also accepted.)
 
 #tab(caption: [The files of the installation package])[
   #table(columns: (2.7in, 1fr),
@@ -39,8 +43,11 @@ five files. In their names, 1.5.2 is the release.
       procedures, a configuration pattern and a format job.],
     [#cmd("ufsd-1.5.2-alloc.jcl")], [Allocates the data sets SMP installs
       into. Run once.],
-    [#cmd("ufsd-1.5.2-inst.jcl")], [Receives both XMIT files and installs
-      them. Can be repeated.],
+    [#cmd("ufsd-1.5.2-inst.jcl")], [The job #cmd("UFSDINS"): receives both
+      XMIT files and applies the SYSMOD. Can be repeated.],
+    [#cmd("ufsd-1.5.2-accept.jcl")], [The job #cmd("UFSDACC"): accepts the
+      SYSMOD and scratches the staging library. You submit it when you have
+      tried the product (@ug-install-accept).],
   )
 ]
 
@@ -50,9 +57,10 @@ The load modules are #cmd("UFSD"), #cmd("UFSDSSIR"), #cmd("UFSDCLNP") and
 #deflist(width: 1.6in,
   [#cmd("UFSD.LINKLIB")], [The load modules. The #cmd("STEPLIB") points here.],
   [#cmd("UFSD.SAMPLIB")], [The patterns that you copy in @ug-install-proc.],
-  [#cmd("UFSD.AUFSDLOD")], [The distribution library of SMP. A later
-    PTF can be restored to the level in it. It is not a way back to the
-    previous release (@ug-remove-why).],
+  [#cmd("UFSD.AUFSDLOD")], [The distribution library of SMP. The accept job
+    fills it, and until then it is empty on a first install. A later PTF can
+    be restored to the level in it. It is not a way back to the previous
+    release (@ug-remove-why).],
 )
 
 The fourth file of the release, #cmd("ufsd-1.5.2-lib.tar.gz"), is not part of
@@ -188,8 +196,10 @@ a volume to allocate on. Add a #cmd("VOLUME()") operand to both
     VOLUME('PUB000')
 ```)
 
-Submit the job. It has eight steps, and each runs only if the one before it
-ended well, so the job stops at the first failure.
+Submit the job. It has six steps, and each runs only if the one before it
+ended well, so the job stops at the first failure. It ends after the
+#cmd("APPLY"): the SYSMOD is applied and not accepted. The accept is a job of
+its own (@ug-install-accept).
 
 #tab(caption: [The steps of the install job])[
   #table(columns: (1.1in, 1fr),
@@ -204,17 +214,14 @@ ended well, so the job stops at the first failure.
     [#cmd("APPLYCHK")], [A dry run. The #cmd("APPLY") runs only if this one
       ends with RC 0.],
     [#cmd("APPLY")], [Copies the load modules into #cmd("UFSD.LINKLIB").],
-    [#cmd("ACCEPT")], [Makes this level the base that the
-      #cmd("RESTORE") of a later PTF returns to. It also closes
-      #cmd("RESTORE") and #cmd("REJECT") for this release itself
-      (@ug-remove-why).],
-    [#cmd("CLEANUP")], [Scratches the staging library, which is spent now.],
   )
 ]
 
 === What a Good Run Looks Like <ug-install-good>
 
-On a new installation, every step ends with #cmd("COND CODE 0000"). In the SMP
+On a new installation, every step ends with #cmd("COND CODE 0000"). In an
+upgrade the #cmd("APPLY") ends with 4 and so does the job
+(@ug-install-from151). In the SMP
 output of the #cmd("APPLY") step, #cmd("HMA2380") appears once for each module
 and the step ends with return code 0:
 
@@ -223,7 +230,8 @@ and the step ends with return code 0:
 The step then prints more reports; the screen shows the first. The status
 #cmd("TUFS151 DELETED") also appears on a new installation, because the SYSMOD
 names TUFS151 in its #cmd("DELETE") operand. The
-#cmd("ACCEPT") step has the same messages for the library #cmd("AUFSDLOD").
+#cmd("ACCEPT") step of the accept job has the same messages for the library
+#cmd("AUFSDLOD") (@ug-install-accept).
 
 In an upgrade, the element reports that follow can show #cmd("NOT SEL") next
 to #cmd("TUFS151 DELETED"). That is normal. What shows that the upgrade
@@ -380,6 +388,94 @@ system use #cmd("/F UFSD,MOUNT LIST") (@ug-ops-mount).
 
 The complete order of the messages of a start is in @ug-ops-start.
 
+== Accepting the SYSMOD <ug-install-accept>
+
+#idx("ACCEPT")#idx("UFSDACC")#idx("accept job")
+The install job does not accept the SYSMOD. #cmd("ACCEPT") is the point without
+a way back: SMP refuses #cmd("RESTORE") and #cmd("REJECT") for an accepted
+function (@ug-remove-why). The decision is yours, so the accept job is a job of
+its own. Start the server and try it (@ug-install-start), then submit
+#cmd("ufsd-1.5.2-accept.jcl"). Nothing in it needs editing, because it names
+the same data sets as the install job.
+
+#tab(caption: [The steps of the accept job])[
+  #table(columns: (1.1in, 1fr),
+    [Step], [What it does],
+    [#cmd("GUARD")], [#cmd("LIST CDS SYSMOD()") of the FMID. Ends with RC 0
+      when the function is applied, with RC 4 when it is not. Only RC 0 goes
+      on.],
+    [#cmd("ACCEPT")], [Copies the four modules into #cmd("UFSD.AUFSDLOD") and
+      makes this level the base that the #cmd("RESTORE") of a later PTF returns
+      to.],
+    [#cmd("CLEANUP")], [Scratches the staging library
+      #cmd("UFSD.UFSDLOAD"). It runs only when #cmd("GUARD") and
+      #cmd("ACCEPT") both ended with RC 0.],
+  )
+]
+
+#screen(raw(read("../ex/ug-install/accept.txt")))
+
+The screen shows the #cmd("ACCEPT") step, with the FMID of the 1.6.0 package it
+was measured on. The job ends with #cmd("COND CODE 0000").
+
+What the system looks like between the two jobs, and after the second:
+
+#tab(caption: [The state after each job])[
+  #table(columns: (1.9in, 1fr, 1fr),
+    [], [After #cmd("UFSDINS")], [After #cmd("UFSDACC")],
+    [Job end], [First install: 0000. Upgrade: 0004 (#cmd("HMA2461")).],
+      [0000.],
+    [FMID in the target zone (CDS)], [#cmd("REC APP")], [#cmd("REC APP ACC")],
+    [FMID in the distribution zone (ACDS)], [not found],
+      [#cmd("REC APP ACC RGN")],
+    [Previous release (upgrade)], [CDS: only the mark #cmd("DELBY"). ACDS:
+      still #cmd("REC APP ACC RGN").], [The mark, in both zones.],
+    [#cmd("UFSD.AUFSDLOD")], [First install: empty. Upgrade: the modules of
+      the previous release.], [The new modules.],
+    [#cmd("UFSD.UFSDLOAD")], [present], [scratched],
+  )
+]
+
+This is the entry of the FMID in the target zone after the install job, and
+after the accept job:
+
+#screen(raw(read("../ex/ug-install/list-tufs160-applied.txt")))
+
+#screen(raw(read("../ex/ug-install/list-tufs160-accepted.txt")))
+
+The same #cmd("LIST") against the distribution zone (#cmd("LIST ACDS")) shows
+the function as #cmd("REC APP ACC RGN") after the accept job, and finds nothing
+before it.
+
+Until the accept job has run, the staging library is on the system, and
+#cmd("RESTORE") works on a first install: it deletes the four modules from
+#cmd("UFSD.LINKLIB") and takes the FMID out of the target zone. After an upgrade
+it does not work, because SMP refuses to restore a function that deletes
+another one, whether the accept job has run or not (@ug-remove-why). After a
+#cmd("RESTORE") the accept job does not run: #cmd("GUARD") ends with RC 4, the
+step #cmd("ACCEPT") is not applicable and ends with RC 8, and nothing is
+accepted or scratched. Run the install job again first.
+
+*A second run of the accept job* ends with #cmd("JCL ERROR"). The first run
+scratched the staging library, and the #cmd("ACCEPT") step names it:
+#cmd("IEF212I UFSDACC HMASMP ACCEPT UFSDLOAD - DATA SET NOT FOUND").
+#cmd("GUARD") ends with RC 0, no step after it runs, and the second run changes
+nothing.
+
+Check, after the accept job, that #cmd("UFSD.AUFSDLOD") lists the four members
+(as in @ug-install-verify), that #cmd("UFSD.UFSDLOAD") is gone, and that the
+#cmd("LIST") of the FMID shows #cmd("REC APP ACC").
+
+*What was measured, and with what.* There is no CI-built package of this release
+yet. The screens and the statements of this section were measured on a TK5 test
+container with a package of 1.6.0 built locally with mbt 3.0.1 (FMID
+#cmd("TUFS160"), #cmd("DELETE(TUFS140)")): a first install, an upgrade from
+1.4.0, the accept job after both, a second run, a #cmd("RESTORE") before the
+accept on a first install, and the accept job after it. The refusal of
+#cmd("RESTORE") on an upgrade was measured with a second local package, whose
+function deletes #cmd("TUFS160"). Not measured: the accept job on MVS/CE. Check
+the screens again on the package that the release run builds.
+
 == Upgrading from an Earlier Release <ug-install-upgrade>
 
 #idx("upgrade")
@@ -420,7 +516,8 @@ and then SMP installs nothing.
 === From 1.5.1 <ug-install-from151>
 
 An upgrade from the release just before is the steps in @ug-install-upload
-and @ug-install-job and nothing else. The names of the data sets do not
+and @ug-install-job, and the accept job (@ug-install-accept) when you have tried
+the new release, and nothing else. The names of the data sets do not
 change, and the SYSMOD removes its predecessor itself.
 
 - *Skip the allocation job.* #cmd("UFSD.LINKLIB") and #cmd("UFSD.AUFSDLOD")
@@ -454,8 +551,9 @@ change, and the SYSMOD removes its predecessor itself.
 
 #screen(raw(read("../ex/ug-install/apply-upgrade.txt")))
 
-That is the normal result of a replacement. The #cmd("ACCEPT") step of the job
-is set to run through it.
+That is the normal result of a replacement, and the install job ends with
+#cmd("COND CODE 0004"). The accept job does not look at that code: it asks SMP
+whether the SYSMOD is applied, and runs through (@ug-install-accept).
 
 Check the members, not the condition codes. For each module the two messages
 #cmd("HMA2240") (the old module is deleted) and #cmd("HMA2380") (the new one is
